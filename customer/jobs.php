@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 requireCustomer();
 if (!customerCan('jobs')) { header('Location: /customer/'); exit; }
-$title = 'Meine Jobs'; $page = 'jobs';
+$title = t('nav.jobs'); $page = 'jobs';
 $cid = me()['id'];
 
 $tab = $_GET['tab'] ?? 'upcoming';

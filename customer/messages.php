@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 requireCustomer();
 if (!customerCan('messages')) { header('Location: /customer/'); exit; }
-$title = 'Nachrichten'; $page = 'messages';
+$title = t('nav.messages'); $page = 'messages';
 $user = me();
 $cid = $user['id'];
 

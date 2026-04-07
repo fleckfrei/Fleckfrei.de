@@ -19,7 +19,7 @@ include __DIR__ . '/../includes/layout.php';
 
 <div class="max-w-2xl" x-data="{ submitted:false, loading:false, result:null, error:null }">
   <div class="bg-white rounded-xl border p-6" x-show="!submitted">
-    <h2 class="text-lg font-semibold mb-6">Neuen Termin buchen</h2>
+    <h2 class="text-lg font-semibold mb-6"><?= t('booking.title') ?></h2>
     <form @submit.prevent="
       loading=true; error=null;
       const fd = new FormData($event.target);

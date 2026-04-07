@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 requireEmployee();
 if (!employeeCan('portal_earnings')) { header('Location: /employee/'); exit; }
-$title = 'Verdienst'; $page = 'earnings';
+$title = t('nav.earnings'); $page = 'earnings';
 $user = me();
 $eid = $user['id'];
 

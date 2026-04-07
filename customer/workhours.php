@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 requireCustomer();
 if (!customerCan('workhours')) { header('Location: /customer/'); exit; }
-$title = 'Arbeitsstunden'; $page = 'workhours';
+$title = t('wh.title'); $page = 'workhours';
 $cid = me()['id'];
 
 $month = $_GET['month'] ?? date('Y-m');

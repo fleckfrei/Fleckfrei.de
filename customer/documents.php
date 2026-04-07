@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 requireCustomer();
 if (!customerCan('documents')) { header('Location: /customer/'); exit; }
-$title = 'Dokumente'; $page = 'documents';
+$title = t('nav.documents'); $page = 'documents';
 $cid = me()['id'];
 
 $invoices = all("SELECT * FROM invoices WHERE customer_id_fk=? ORDER BY issue_date DESC", [$cid]);

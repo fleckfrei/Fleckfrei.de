@@ -643,6 +643,18 @@ try {
             throw new Exception($result['message'] ?? 'Auth failed');
         })(),
 
+        // Settings: Update (admin API)
+        $action === 'settings/update' && $method === 'POST' => (function() use ($body) {
+            $allowed = ['first_name','last_name','company','phone','email','website','invoice_prefix','invoice_number','bank','bic','iban','USt_IdNr','business_number','fiscal_number','invoice_text','street','number','postal_code','city','country','note_for_email'];
+            $sets = []; $params = [];
+            foreach ($allowed as $f) {
+                if (isset($body[$f])) { $sets[] = "$f=?"; $params[] = $body[$f]; }
+            }
+            if (empty($sets)) throw new Exception('No fields to update');
+            q("UPDATE settings SET " . implode(',', $sets), $params);
+            return ['updated' => count($sets)];
+        })(),
+
         // Open Banking: List available banks
         $action === 'bank/list' && $method === 'GET' => (function() {
             $ob = new OpenBanking();

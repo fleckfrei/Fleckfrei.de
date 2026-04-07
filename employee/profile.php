@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 requireEmployee();
-$title = 'Mein Profil'; $page = 'profile';
+$title = t('nav.profile'); $page = 'profile';
 $user = me();
 $eid = $user['id'];
 
