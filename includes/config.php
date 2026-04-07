@@ -1,4 +1,7 @@
 <?php
+// Block direct access to includes
+if (basename($_SERVER['SCRIPT_FILENAME'] ?? '') === 'config.php') { http_response_code(403); exit; }
+
 date_default_timezone_set('Europe/Berlin');
 
 // ============================================================

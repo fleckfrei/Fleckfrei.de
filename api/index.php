@@ -97,6 +97,7 @@ try {
         // Cancel recurring: just this one or all future
         $action === 'jobs/cancel-recurring' && $method === 'POST' => (function() use ($body) {
             if (empty($body['j_id'])) throw new Exception('Need j_id');
+            $body['j_id'] = (int)$body['j_id'];
             $job = one("SELECT * FROM jobs WHERE j_id=?", [$body['j_id']]);
             if (!$job) throw new Exception('Job not found');
             $mode = $body['mode'] ?? 'single'; // 'single' or 'future'
@@ -121,17 +122,19 @@ try {
 
         // Update single job field
         $action === 'jobs/update' && $method === 'POST' => (function() use ($body) {
-            if (empty($body['j_id']) || empty($body['field'])) throw new Exception('Need j_id + field');
+            $jid = (int)($body['j_id'] ?? 0);
+            if (!$jid || empty($body['field'])) throw new Exception('Need j_id + field');
             $allowed = ['j_date','j_time','j_hours','customer_id_fk','s_id_fk','address','code_door','platform','job_for','emp_message','job_note','job_status','no_people'];
             if (!in_array($body['field'], $allowed)) throw new Exception('Field not editable: '.$body['field']);
             $val = $body['value'] ?: null;
-            q("UPDATE jobs SET {$body['field']}=? WHERE j_id=?", [$val, $body['j_id']]);
-            return ['updated' => $body['j_id'], 'field' => $body['field']];
+            q("UPDATE jobs SET {$body['field']}=? WHERE j_id=?", [$val, $jid]);
+            return ['updated' => $jid, 'field' => $body['field']];
         })(),
 
         // Assign employee (or un-assign with null)
         $action === 'jobs/assign' => (function() use ($body) {
             if (empty($body['j_id'])) throw new Exception('Need j_id');
+            $body['j_id'] = (int)$body['j_id'];
             $empId = $body['emp_id_fk'] ?? null;
             if ($empId) {
                 q("UPDATE jobs SET emp_id_fk=?, job_status=CASE WHEN job_status='PENDING' THEN 'CONFIRMED' ELSE job_status END WHERE j_id=?", [$empId, $body['j_id']]);
@@ -144,6 +147,7 @@ try {
         // Update job status + n8n webhook notification
         $action === 'jobs/status' => (function() use ($body) {
             if (empty($body['j_id']) || empty($body['status'])) throw new Exception('Need j_id + status');
+            $body['j_id'] = (int)$body['j_id'];
             $valid = ['PENDING','CONFIRMED','RUNNING','STARTED','COMPLETED','CANCELLED'];
             if (!in_array($body['status'], $valid)) throw new Exception('Invalid status');
             $extra = ''; $p = [$body['status']];

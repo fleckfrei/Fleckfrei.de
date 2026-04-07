@@ -12,6 +12,18 @@ function requireEmployee() { requireLogin('employee'); }
 function me() {
     return ['id'=>$_SESSION['uid']??0, 'name'=>$_SESSION['uname']??'', 'email'=>$_SESSION['uemail']??'', 'type'=>$_SESSION['utype']??''];
 }
+// CSRF token
+function csrfToken() {
+    if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    return $_SESSION['csrf_token'];
+}
+function csrfField() {
+    return '<input type="hidden" name="_csrf" value="' . csrfToken() . '"/>';
+}
+function verifyCsrf() {
+    $token = $_POST['_csrf'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    return hash_equals($_SESSION['csrf_token'] ?? '', $token);
+}
 // Check if employee has a specific permission
 function employeeCan($perm) {
     if (($_SESSION['utype'] ?? '') !== 'employee') return true;
