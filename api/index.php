@@ -235,8 +235,10 @@ try {
                 q("UPDATE jobs SET invoice_id=? WHERE j_id=?", [$invId, $j['j_id']]);
             }
 
-            // Email notification to customer
+            // Email + Telegram notification
             notifyInvoiceCreated($invId);
+            $custName = $cust['name'] ?? '';
+            telegramNotify("💰 <b>Rechnung erstellt</b>\n\n📄 $invNum\n👤 $custName\n💶 " . number_format($brutto,2,',','.') . " €\n📋 " . count($jobs) . " Jobs, {$totalHours}h\n📅 $startDate — $endDate");
 
             return ['invoice_id'=>$invId, 'invoice_number'=>$invNum, 'netto'=>$totalPrice, 'tax'=>$tax, 'total'=>$brutto, 'jobs_count'=>count($jobs), 'hours'=>$totalHours, 'period'=>"$startDate — $endDate"];
         })(),
@@ -464,8 +466,9 @@ try {
                $platform, $paymentMethod]);
             $jid = $db->lastInsertId();
 
-            // Send booking confirmation email
+            // Send booking confirmation email + Telegram
             notifyBookingConfirmation($jid);
+            telegramNotify("📩 <b>Neue Buchung</b>\n\n👤 $name ($customerType)\n📋 $service\n📅 $date um $time\n⏱ {$hours}h" . ($frequency ? "\n🔄 $frequency" : '') . "\n📍 $address\n🌐 $platform");
 
             return [
                 'booking_id' => 'FF-'.date('Ymd').'-'.$jid,

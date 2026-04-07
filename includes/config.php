@@ -36,6 +36,7 @@ define('API_KEY', '***REDACTED***');
 // ============================================================
 define('N8N_WEBHOOK_BOOKING', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-booking');
 define('N8N_WEBHOOK_STATUS', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-job-status');
+define('N8N_WEBHOOK_NOTIFY', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-notify');
 
 // ============================================================
 // FEATURES — An/Aus schalten pro Installation
@@ -81,6 +82,14 @@ function badge($status) {
     return "<span class=\"px-2 py-1 text-xs font-medium rounded-full bg-{$col}-100 text-{$col}-800\">$label</span>";
 }
 require_once __DIR__ . '/lang.php';
+
+function telegramNotify($message) {
+    if (!defined('N8N_WEBHOOK_NOTIFY') || !N8N_WEBHOOK_NOTIFY) return;
+    @file_get_contents(N8N_WEBHOOK_NOTIFY, false, stream_context_create([
+        'http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n",
+            'content'=>json_encode(['message' => $message]), 'timeout'=>3]
+    ]));
+}
 
 function webhookNotify($event, $data) {
     $url = match($event) {

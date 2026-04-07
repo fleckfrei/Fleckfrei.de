@@ -14,6 +14,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           [date('H:i:s'), $_POST['location']??'', $jid, $user['id']]);
         notifyJobStarted($jid);
         webhookNotify('status', ['j_id'=>$jid,'status'=>'RUNNING','employee'=>$user['name'],'time'=>date('H:i:s')]);
+        $jobInfo = one("SELECT j.*, c.name as cname, s.title as stitle FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.j_id=?", [$jid]);
+        telegramNotify("▶️ <b>Job gestartet</b>\n\n👷 " . e($user['name']) . "\n👤 " . e($jobInfo['cname']??'') . "\n📋 " . e($jobInfo['stitle']??'') . "\n⏰ " . date('H:i') . "\n📍 " . e($jobInfo['address']??''));
         audit('start', 'job', $jid, 'Partner: '.$user['name']);
         header("Location: /employee/?started=$jid"); exit;
     }
@@ -49,6 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           [$endTime, $_POST['location']??'', $totalHours, $_POST['note']??'', $photosJson, $jid, $user['id']]);
         notifyJobCompleted($jid);
         webhookNotify('status', ['j_id'=>$jid,'status'=>'COMPLETED','employee'=>$user['name'],'time'=>date('H:i:s'),'hours'=>$totalHours]);
+        $jobInfo = one("SELECT j.*, c.name as cname, s.title as stitle FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.j_id=?", [$jid]);
+        $photoCount = count($photos);
+        telegramNotify("✅ <b>Job erledigt</b>\n\n👷 " . e($user['name']) . "\n👤 " . e($jobInfo['cname']??'') . "\n📋 " . e($jobInfo['stitle']??'') . "\n⏱ " . round($totalHours,1) . "h\n⏰ " . ($jobInfo['start_time'] ? substr($jobInfo['start_time'],0,5) : '') . " — " . date('H:i') . ($photoCount ? "\n📸 {$photoCount} Foto(s)" : ''));
         audit('complete', 'job', $jid, 'Partner: '.$user['name'].', '.$totalHours.'h');
         header("Location: /employee/?stopped=$jid"); exit;
     }
@@ -56,6 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         q("UPDATE jobs SET job_status='CANCELLED', cancel_date=?, cancelled_role='employee', cancelled_by=? WHERE j_id=? AND emp_id_fk=?",
           [date('Y-m-d H:i:s'), $user['id'], $jid, $user['id']]);
         webhookNotify('status', ['j_id'=>$jid,'status'=>'CANCELLED','employee'=>$user['name'],'time'=>date('H:i:s')]);
+        $jobInfo = one("SELECT j.*, c.name as cname, s.title as stitle FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.j_id=?", [$jid]);
+        telegramNotify("❌ <b>Job storniert</b>\n\n👷 " . e($user['name']) . "\n👤 " . e($jobInfo['cname']??'') . "\n📋 " . e($jobInfo['stitle']??'') . "\n⏰ " . date('H:i'));
         audit('cancel', 'job', $jid, 'Partner: '.$user['name']);
         header("Location: /employee/?cancelled=$jid"); exit;
     }
