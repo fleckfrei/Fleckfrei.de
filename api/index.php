@@ -297,6 +297,17 @@ try {
             exit;
         })(),
 
+        // Customer details with address (for service form auto-fill)
+        $action === 'customer/details' && $method === 'GET' => (function() {
+            $cid = $_GET['id'] ?? '';
+            if (!$cid) throw new Exception('Need id');
+            $c = one("SELECT customer_id, name, surname, email, phone, customer_type FROM customer WHERE customer_id=?", [$cid]);
+            if (!$c) throw new Exception('Customer not found');
+            $addr = one("SELECT street, number, postal_code, city, country FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC LIMIT 1", [$cid]);
+            $c['address'] = $addr ?: ['street'=>'','number'=>'','postal_code'=>'','city'=>'','country'=>'Deutschland'];
+            return $c;
+        })(),
+
         // Customer field update
         $action === 'customer/update' && $method === 'POST' => (function() use ($body) {
             if (empty($body['customer_id']) || empty($body['field'])) throw new Exception('Need customer_id + field');

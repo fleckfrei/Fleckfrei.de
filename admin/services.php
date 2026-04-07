@@ -44,7 +44,7 @@ include __DIR__ . '/../includes/layout.php';
   </a>
 </div>
 
-<div x-data="{ editOpen:false, s:{} }" class="bg-white rounded-xl border">
+<div x-data="serviceForm()" class="bg-white rounded-xl border">
   <div class="p-5 border-b flex items-center justify-between">
     <h3 class="font-semibold"><?= $tab==='archive' ? 'Archivierte' : 'Aktive' ?> Services (<?= count($services) ?>)</h3>
     <div class="flex gap-3">
@@ -89,12 +89,12 @@ include __DIR__ . '/../includes/layout.php';
           <input type="hidden" name="action" :value="s.s_id ? 'edit_service' : 'add_service'"/>
           <input type="hidden" name="s_id" :value="s.s_id"/>
           <div class="col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Titel *</label><input name="title" :value="s.title" required class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
-          <div><label class="block text-xs font-medium text-gray-500 mb-1">Kunde</label><select name="customer_id_fk" class="w-full px-3 py-2 border rounded-xl text-sm"><option value="0">—</option><?php foreach($customers as $c): ?><option value="<?=$c['customer_id']?>" :selected="s.customer_id_fk==<?=$c['customer_id']?>"><?=e($c['name'])?></option><?php endforeach; ?></select></div>
-          <div class="col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Strasse</label><input name="street" :value="s.street" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
-          <div><label class="block text-xs font-medium text-gray-500 mb-1">Nr.</label><input name="number" :value="s.number" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
-          <div><label class="block text-xs font-medium text-gray-500 mb-1">PLZ</label><input name="postal_code" :value="s.postal_code" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
-          <div><label class="block text-xs font-medium text-gray-500 mb-1">Stadt</label><input name="city" :value="s.city" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
-          <div><label class="block text-xs font-medium text-gray-500 mb-1">Land</label><input name="country" :value="s.country" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Kunde</label><select name="customer_id_fk" @change="autoFillCustomer($event.target.value)" class="w-full px-3 py-2 border rounded-xl text-sm"><option value="0">—</option><?php foreach($customers as $c): ?><option value="<?=$c['customer_id']?>" :selected="s.customer_id_fk==<?=$c['customer_id']?>"><?=e($c['name'])?></option><?php endforeach; ?></select></div>
+          <div class="col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Strasse</label><input name="street" x-model="s.street" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Nr.</label><input name="number" x-model="s.number" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">PLZ</label><input name="postal_code" x-model="s.postal_code" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Stadt</label><input name="city" x-model="s.city" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Land</label><input name="country" x-model="s.country" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
           <div><label class="block text-xs font-medium text-gray-500 mb-1">Netto/h</label><input type="number" name="price" :value="s.price" step="0.01" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
           <div><label class="block text-xs font-medium text-gray-500 mb-1">Brutto/h</label><input type="number" name="total_price" :value="s.total_price" step="0.01" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
           <div><label class="block text-xs font-medium text-gray-500 mb-1">Einheit</label><input name="unit" :value="s.unit" class="w-full px-3 py-2 border rounded-xl text-sm" placeholder="hour"/></div>
@@ -117,4 +117,31 @@ include __DIR__ . '/../includes/layout.php';
     </div>
   </template>
 </div>
-<?php $script="function filterRows(q){q=q.toLowerCase();document.querySelectorAll('#tbl tbody tr').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(q)?'':'none'})}"; include __DIR__.'/../includes/footer.php'; ?>
+<?php
+$apiKey = API_KEY;
+$script = <<<JS
+function filterRows(q){q=q.toLowerCase();document.querySelectorAll('#tbl tbody tr').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(q)?'':'none'})}
+
+function serviceForm() {
+    return {
+        editOpen: false,
+        s: {},
+        autoFillCustomer(custId) {
+            if (!custId || custId === '0') return;
+            fetch('/api/index.php?action=customer/details&id=' + custId + '&key=$apiKey')
+                .then(r => r.json())
+                .then(d => {
+                    if (!d.success || !d.data.address) return;
+                    const a = d.data.address;
+                    if (!this.s.street) this.s.street = a.street || '';
+                    if (!this.s.number) this.s.number = a.number || '';
+                    if (!this.s.postal_code) this.s.postal_code = a.postal_code || '';
+                    if (!this.s.city) this.s.city = a.city || '';
+                    if (!this.s.country || this.s.country === 'Deutschland') this.s.country = a.country || 'Deutschland';
+                })
+                .catch(() => {});
+        }
+    };
+}
+JS;
+include __DIR__.'/../includes/footer.php'; ?>
