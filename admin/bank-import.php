@@ -146,20 +146,26 @@ include __DIR__ . '/../includes/layout.php';
         </div>
         <p class="text-sm text-gray-500 mb-4">Verbinde dein N26 Konto direkt. Zahlungen werden automatisch gematcht — täglich um 9 Uhr, ohne manuellen Aufwand.</p>
 
-        <?php if (FEATURE_AUTO_BANK && OPENBANKING_ACCOUNT_ID): ?>
-        <div class="flex gap-3">
-          <button onclick="runAutoSync()" class="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm">Jetzt synchronisieren</button>
+        <?php
+        $obAccountFile = __DIR__ . '/../includes/openbanking_account.txt';
+        $obAccountId = file_exists($obAccountFile) ? trim(file_get_contents($obAccountFile)) : OPENBANKING_ACCOUNT_ID;
+        $obConnected = !empty($obAccountId);
+        ?>
+        <?php if ($obConnected): ?>
+        <div class="flex gap-3 mb-3">
+          <button onclick="runAutoSync()" id="syncBtn" class="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm">Jetzt synchronisieren</button>
           <span id="syncStatus" class="text-sm text-gray-400 self-center"></span>
+        </div>
+        <p class="text-xs text-gray-400">Account: <?= e($obAccountId) ?> | Automatisch täglich 9 Uhr</p>
+        <?php elseif (FEATURE_AUTO_BANK): ?>
+        <div class="flex gap-3">
+          <button onclick="connectBank()" class="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm">N26 Konto verbinden</button>
+          <span class="text-sm text-gray-400 self-center">Einmalige Autorisierung</span>
         </div>
         <?php else: ?>
         <div class="bg-blue-50 rounded-lg p-4 text-sm">
-          <p class="text-blue-800 font-medium mb-2">So aktivierst du den Auto-Import:</p>
-          <ol class="text-blue-700 space-y-1">
-            <li>1. Erstelle einen kostenlosen Account bei <a href="https://enablebanking.com" target="_blank" class="underline font-medium">Enable Banking</a></li>
-            <li>2. Gib mir die API Keys (Application ID + Secret)</li>
-            <li>3. Verbinde dein N26 Konto (einmal autorisieren)</li>
-            <li>4. Fertig — ab dann alles automatisch</li>
-          </ol>
+          <p class="text-blue-800 font-medium mb-2">Auto-Import nicht konfiguriert</p>
+          <p class="text-blue-700">API-Keys fehlen in der Konfiguration.</p>
         </div>
         <?php endif; ?>
       </div>
@@ -273,4 +279,45 @@ include __DIR__ . '/../includes/layout.php';
 </form>
 <?php endif; ?>
 
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+<?php
+$apiKey = API_KEY;
+$script = <<<JS
+function connectBank() {
+    fetch('/api/index.php?action=bank/connect', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-API-Key': '$apiKey'},
+        body: JSON.stringify({bank_id: 'N26'})
+    }).then(r => r.json()).then(d => {
+        if (d.success && d.data.url) {
+            window.location.href = d.data.url; // Redirect to bank auth
+        } else {
+            alert('Fehler: ' + (d.error || d.data?.error || 'Verbindung fehlgeschlagen'));
+        }
+    }).catch(() => alert('Netzwerk-Fehler'));
+}
+
+function runAutoSync() {
+    const btn = document.getElementById('syncBtn');
+    const status = document.getElementById('syncStatus');
+    btn.disabled = true; btn.textContent = 'Synchronisiere...';
+    status.textContent = '';
+
+    fetch('/api/index.php?action=bank/auto-sync', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-API-Key': '$apiKey'},
+        body: '{}'
+    }).then(r => r.json()).then(d => {
+        btn.disabled = false; btn.textContent = 'Jetzt synchronisieren';
+        if (d.success) {
+            const data = d.data;
+            status.textContent = data.applied + ' Zahlungen gematcht | ' + data.unmatched + ' offen | Kontostand: ' + (data.balance || '?') + ' EUR';
+            status.className = 'text-sm text-green-600 self-center';
+            if (data.applied > 0) setTimeout(() => location.reload(), 2000);
+        } else {
+            status.textContent = 'Fehler: ' + (d.error || 'Unbekannt');
+            status.className = 'text-sm text-red-600 self-center';
+        }
+    }).catch(() => { btn.disabled = false; btn.textContent = 'Jetzt synchronisieren'; status.textContent = 'Netzwerk-Fehler'; });
+}
+JS;
+include __DIR__ . '/../includes/footer.php'; ?>
