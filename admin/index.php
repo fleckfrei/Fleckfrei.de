@@ -9,19 +9,19 @@ $month = date('Y-m', strtotime($filterDate));
 $monthNames = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 $monthLabel = $monthNames[(int)date('n', strtotime($filterDate))-1] . ' ' . date('Y', strtotime($filterDate));
 
-// Stats — only ACTIVE customers, clear labels
-$s = [
-    'today' => val("SELECT COUNT(*) FROM jobs WHERE j_date=? AND status=1", [$filterDate]),
-    'pending' => val("SELECT COUNT(*) FROM jobs WHERE job_status='PENDING' AND status=1 AND j_date>=?", [$today]),
-    'running' => val("SELECT COUNT(*) FROM jobs WHERE (job_status='RUNNING' OR job_status='STARTED') AND status=1"),
-    'completed_month' => val("SELECT COUNT(*) FROM jobs WHERE job_status='COMPLETED' AND j_date LIKE ? AND status=1", ["$month%"]),
-    'customers_active' => val("SELECT COUNT(*) FROM customer WHERE status=1"),
-    'employees' => val("SELECT COUNT(*) FROM employee WHERE status=1"),
-    'unpaid_count' => val("SELECT COUNT(*) FROM invoices WHERE invoice_paid='no' AND remaining_price > 0"),
-    'unpaid_netto' => val("SELECT COALESCE(SUM(remaining_price),0) FROM invoices WHERE invoice_paid='no' AND remaining_price > 0"),
-    'revenue_month' => val("SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE invoice_paid='yes' AND issue_date LIKE ?", ["$month%"]),
-];
-$unpaidBrutto = round($s['unpaid_netto'] * 1.19, 2);
+// Stats — ALL in ONE query (9 queries → 1 = 8x faster on remote DB)
+$s = one("SELECT
+    (SELECT COUNT(*) FROM jobs WHERE j_date=? AND status=1) as today,
+    (SELECT COUNT(*) FROM jobs WHERE job_status='PENDING' AND status=1 AND j_date>=?) as pending,
+    (SELECT COUNT(*) FROM jobs WHERE job_status IN ('RUNNING','STARTED') AND status=1) as running,
+    (SELECT COUNT(*) FROM jobs WHERE job_status='COMPLETED' AND j_date LIKE ? AND status=1) as completed_month,
+    (SELECT COUNT(*) FROM customer WHERE status=1) as customers_active,
+    (SELECT COUNT(*) FROM employee WHERE status=1) as employees,
+    (SELECT COUNT(*) FROM invoices WHERE invoice_paid='no' AND remaining_price > 0) as unpaid_count,
+    (SELECT COALESCE(SUM(remaining_price),0) FROM invoices WHERE invoice_paid='no' AND remaining_price > 0) as unpaid_netto,
+    (SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE invoice_paid='yes' AND issue_date LIKE ?) as revenue_month",
+    [$filterDate, $today, "$month%", "$month%"]);
+$unpaidBrutto = round(($s['unpaid_netto'] ?? 0) * 1.19, 2);
 
 // Data for dropdowns
 $allEmployees = all("SELECT emp_id, name, surname FROM employee WHERE status=1 ORDER BY name");
@@ -50,8 +50,12 @@ $dailyJobs = all("SELECT j_date, COUNT(*) as cnt, SUM(CASE WHEN job_status='COMP
 // === Extended KPIs ===
 // Previous month comparison
 $prevMonth = date('Y-m', strtotime("$month-01 -1 month"));
-$prevCompleted = val("SELECT COUNT(*) FROM jobs WHERE job_status='COMPLETED' AND j_date LIKE ? AND status=1", ["$prevMonth%"]);
-$prevRevenue = val("SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE invoice_paid='yes' AND issue_date LIKE ?", ["$prevMonth%"]);
+$prevStats = one("SELECT
+    (SELECT COUNT(*) FROM jobs WHERE job_status='COMPLETED' AND j_date LIKE ? AND status=1) as prev_completed,
+    (SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE invoice_paid='yes' AND issue_date LIKE ?) as prev_revenue",
+    ["$prevMonth%", "$prevMonth%"]);
+$prevCompleted = $prevStats['prev_completed'] ?? 0;
+$prevRevenue = $prevStats['prev_revenue'] ?? 0;
 $jobsDelta = $s['completed_month'] - $prevCompleted;
 $revenueDelta = $s['revenue_month'] - $prevRevenue;
 
@@ -77,7 +81,7 @@ $topCustomers = all("SELECT c.name, c.customer_type,
 
 // Messages unread
 $unreadMsgs = 0;
-try { $unreadMsgs = val("SELECT COUNT(*) FROM messages WHERE recipient_type='admin' AND read_at IS NULL") ?: 0; } catch (Exception $e) {}
+try { $unreadMsgs = valLocal("SELECT COUNT(*) FROM messages WHERE recipient_type='admin' AND read_at IS NULL") ?: 0; } catch (Exception $e) {}
 
 include __DIR__ . '/../includes/layout.php';
 ?>

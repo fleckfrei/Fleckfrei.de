@@ -60,21 +60,22 @@ define('FEATURE_INVOICE_AUTO', true); // Auto-Rechnungserstellung
 // ============================================================
 // SYSTEM — Nicht ändern
 // ============================================================
-// Master DB — try remote Hostinger first, fallback to local GoDaddy clone
+// Master DB — persistent connection to Hostinger (reduces latency)
 try {
     $db = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_TIMEOUT => 3
+        PDO::ATTR_PERSISTENT => true,     // Reuse connection across requests
+        PDO::ATTR_TIMEOUT => 3,
+        PDO::ATTR_EMULATE_PREPARES => true // Faster for simple queries
     ]);
-    define('DB_MODE', 'remote'); // Direct La-Renting DB — real-time!
+    define('DB_MODE', 'remote');
 } catch (Exception $e) {
-    // Fallback to local GoDaddy DB (synced copy)
     $db = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
     ]);
-    define('DB_MODE', 'local'); // Fallback — synced every 1 min
+    define('DB_MODE', 'local');
 }
 
 // Local DB for Fleckfrei-specific tables (messages, audit, settings)
