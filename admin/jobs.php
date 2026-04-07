@@ -469,6 +469,9 @@ document.getElementById('empFilter').onchange = () => cal.refetchEvents();
 document.getElementById('statusFilter').onchange = () => cal.refetchEvents();
 document.getElementById('typeFilter').onchange = () => cal.refetchEvents();
 
+// Auto-refresh every 30s for live status updates (partner start/stop)
+setInterval(() => { cal.refetchEvents(); }, 30000);
+
 // Day Panel — shows all jobs for clicked date
 function loadDayPanel(dateStr) {
     const panel = document.getElementById('dayPanelJobs');

@@ -13,6 +13,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         q("UPDATE jobs SET job_status='RUNNING', start_time=?, start_location=?, is_start_location=1 WHERE j_id=? AND emp_id_fk=?",
           [date('H:i:s'), $_POST['location']??'', $jid, $user['id']]);
         notifyJobStarted($jid);
+        webhookNotify('status', ['j_id'=>$jid,'status'=>'RUNNING','employee'=>$user['name'],'time'=>date('H:i:s')]);
+        audit('start', 'job', $jid, 'Partner: '.$user['name']);
         header("Location: /employee/?started=$jid"); exit;
     }
     if ($act === 'stop_job') {
@@ -46,11 +48,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         q("UPDATE jobs SET job_status='COMPLETED', end_time=?, end_location=?, is_end_location=1, total_hours=?, job_note=?, job_photos=? WHERE j_id=? AND emp_id_fk=?",
           [$endTime, $_POST['location']??'', $totalHours, $_POST['note']??'', $photosJson, $jid, $user['id']]);
         notifyJobCompleted($jid);
+        webhookNotify('status', ['j_id'=>$jid,'status'=>'COMPLETED','employee'=>$user['name'],'time'=>date('H:i:s'),'hours'=>$totalHours]);
+        audit('complete', 'job', $jid, 'Partner: '.$user['name'].', '.$totalHours.'h');
         header("Location: /employee/?stopped=$jid"); exit;
     }
     if ($act === 'cancel_job') {
         q("UPDATE jobs SET job_status='CANCELLED', cancel_date=?, cancelled_role='employee', cancelled_by=? WHERE j_id=? AND emp_id_fk=?",
           [date('Y-m-d H:i:s'), $user['id'], $jid, $user['id']]);
+        webhookNotify('status', ['j_id'=>$jid,'status'=>'CANCELLED','employee'=>$user['name'],'time'=>date('H:i:s')]);
+        audit('cancel', 'job', $jid, 'Partner: '.$user['name']);
         header("Location: /employee/?cancelled=$jid"); exit;
     }
 }
