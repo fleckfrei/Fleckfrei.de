@@ -30,7 +30,7 @@ include __DIR__ . '/../includes/layout.php';
 ?>
 
 <div class="mb-6">
-  <h2 class="text-xl font-semibold">Willkommen, <?= e($customer['name']) ?>!</h2>
+  <h2 class="text-xl font-semibold"><?= t('dash.welcome') ?>, <?= e($customer['name']) ?>!</h2>
   <p class="text-sm text-gray-500"><?= e($customer['customer_type']) ?> — <?= e($customer['email']) ?></p>
 </div>
 
@@ -38,15 +38,15 @@ include __DIR__ . '/../includes/layout.php';
 <!-- Stats -->
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
   <?php if (customerCan('jobs')): ?>
-  <div class="bg-white rounded-xl border p-4 card-hover"><div class="text-2xl font-bold text-brand"><?= count($upcomingJobs) ?></div><div class="text-sm text-gray-500">Kommende Jobs</div></div>
-  <div class="bg-white rounded-xl border p-4 card-hover"><div class="text-2xl font-bold"><?= $completedJobs ?></div><div class="text-sm text-gray-500">Erledigt</div></div>
+  <div class="bg-white rounded-xl border p-4 card-hover"><div class="text-2xl font-bold text-brand"><?= count($upcomingJobs) ?></div><div class="text-sm text-gray-500"><?= t('jobs.upcoming') ?></div></div>
+  <div class="bg-white rounded-xl border p-4 card-hover"><div class="text-2xl font-bold"><?= $completedJobs ?></div><div class="text-sm text-gray-500"><?= t('jobs.completed') ?></div></div>
   <?php endif; ?>
   <?php if (customerCan('invoices')): ?>
-  <div class="bg-white rounded-xl border p-4 card-hover"><div class="text-2xl font-bold <?= $totalUnpaid > 0 ? 'text-red-600' : 'text-green-600' ?>"><?= money($totalUnpaid) ?></div><div class="text-sm text-gray-500">Offene Rechnungen</div></div>
+  <div class="bg-white rounded-xl border p-4 card-hover"><div class="text-2xl font-bold <?= $totalUnpaid > 0 ? 'text-red-600' : 'text-green-600' ?>"><?= money($totalUnpaid) ?></div><div class="text-sm text-gray-500"><?= t('dash.open_invoices') ?></div></div>
   <?php endif; ?>
   <?php if (customerCan('workhours')): ?>
   <?php $totalH = val("SELECT COALESCE(SUM(GREATEST(COALESCE(total_hours,j_hours),2)),0) FROM jobs WHERE customer_id_fk=? AND job_status='COMPLETED' AND status=1", [$cid]); ?>
-  <div class="bg-white rounded-xl border p-4 card-hover"><div class="text-2xl font-bold text-brand"><?= round($totalH,1) ?>h</div><div class="text-sm text-gray-500">Stunden gesamt</div></div>
+  <div class="bg-white rounded-xl border p-4 card-hover"><div class="text-2xl font-bold text-brand"><?= round($totalH,1) ?>h</div><div class="text-sm text-gray-500"><?= t('common.hours') ?> gesamt</div></div>
   <?php endif; ?>
 </div>
 <?php endif; ?>
@@ -61,7 +61,7 @@ include __DIR__ . '/../includes/layout.php';
 <?php if (customerCan('jobs') && !empty($upcomingJobs)): ?>
 <!-- Upcoming Jobs -->
 <div class="bg-white rounded-xl border mb-6">
-  <div class="p-5 border-b"><h3 class="font-semibold">Kommende Jobs</h3></div>
+  <div class="p-5 border-b"><h3 class="font-semibold"><?= t('jobs.upcoming') ?></h3></div>
   <div class="divide-y">
     <?php foreach ($upcomingJobs as $j): ?>
     <div class="px-5 py-4 flex items-center justify-between">

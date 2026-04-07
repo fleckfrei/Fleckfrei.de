@@ -98,8 +98,8 @@ include __DIR__ . '/../includes/layout.php';
 <?php if(!empty($_GET['stopped'])): ?><div class="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-xl mb-4">Job beendet! Arbeitszeit gespeichert.</div><?php endif; ?>
 
 <div class="mb-6">
-  <h2 class="text-lg font-semibold mb-1">Hallo <?= e($empData['name']) ?>!</h2>
-  <p class="text-gray-500">Heute: <?= date('d.m.Y') ?> — <?= count($todayJobs) ?> Job(s)</p>
+  <h2 class="text-lg font-semibold mb-1"><?= t('emp.hello') ?> <?= e($empData['name']) ?>!</h2>
+  <p class="text-gray-500"><?= t('emp.today') ?>: <?= date('d.m.Y') ?> — <?= count($todayJobs) ?> Job(s)</p>
 </div>
 
 <!-- Today's Jobs -->
@@ -134,7 +134,7 @@ include __DIR__ . '/../includes/layout.php';
       <input type="hidden" name="j_id" value="<?= $j['j_id'] ?>"/>
       <input type="hidden" name="location" id="loc_start_<?= $j['j_id'] ?>"/>
       <button type="submit" class="w-full py-3 bg-brand text-white rounded-xl font-semibold text-lg hover:bg-brand/90 transition">
-        ▶ JOB STARTEN
+        ▶ <?= t('jobs.start') ?>
       </button>
     </form>
     <?php elseif ($j['job_status'] === 'RUNNING'): ?>
@@ -159,7 +159,7 @@ include __DIR__ . '/../includes/layout.php';
         <p class="text-xs text-gray-400 mt-1">Max. 10MB pro Foto. JPG, PNG, WebP.</p>
       </div>
       <button type="submit" class="w-full py-3 bg-red-600 text-white rounded-xl font-semibold text-lg hover:bg-red-700 transition">
-        JOB BEENDEN
+        <?= t('jobs.stop') ?>
       </button>
     </form>
     <?php elseif ($j['job_status'] === 'COMPLETED'): ?>
@@ -188,12 +188,12 @@ include __DIR__ . '/../includes/layout.php';
   </div>
   <?php endforeach; ?>
   <?php if (empty($todayJobs)): ?>
-  <div class="bg-white rounded-xl border p-8 text-center text-gray-400">Keine Jobs für heute.</div>
+  <div class="bg-white rounded-xl border p-8 text-center text-gray-400"><?= t('emp.no_jobs_today') ?></div>
   <?php endif; ?>
 </div>
 
 <?php if (!empty($upcomingJobs)): ?>
-<h3 class="font-semibold mb-3">Kommende Jobs</h3>
+<h3 class="font-semibold mb-3"><?= t('emp.upcoming') ?></h3>
 <div class="bg-white rounded-xl border divide-y">
   <?php foreach ($upcomingJobs as $j): ?>
   <div class="px-5 py-3 flex items-center justify-between">

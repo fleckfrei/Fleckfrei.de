@@ -30,11 +30,11 @@ try { $addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=?", 
 include __DIR__ . '/../includes/layout.php';
 ?>
 
-<?php if (!empty($_GET['saved'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">Profil gespeichert.</div><?php endif; ?>
+<?php if (!empty($_GET['saved'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4"><?= t('profile.saved') ?></div><?php endif; ?>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
   <div class="bg-white rounded-xl border p-5">
-    <h3 class="font-semibold mb-4">Persönliche Daten</h3>
+    <h3 class="font-semibold mb-4"><?= t('profile.personal') ?></h3>
     <form method="POST" class="space-y-4">
       <input type="hidden" name="action" value="update_profile"/>
       <div class="grid grid-cols-2 gap-4">
@@ -46,13 +46,14 @@ include __DIR__ . '/../includes/layout.php';
       <div><label class="block text-sm font-medium text-gray-600 mb-1">Typ</label><input value="<?= e($c['customer_type']) ?>" disabled class="w-full px-3 py-2.5 border rounded-xl bg-gray-50 text-gray-500"/></div>
       <div><label class="block text-sm font-medium text-gray-600 mb-1">Notizen</label><textarea name="notes" rows="3" class="w-full px-3 py-2.5 border rounded-xl"><?= e($c['notes']) ?></textarea></div>
       <div><label class="block text-sm font-medium text-gray-600 mb-1">Neues Passwort (leer lassen = nicht ändern)</label><input type="password" name="new_password" class="w-full px-3 py-2.5 border rounded-xl" placeholder="••••••••"/></div>
-      <button type="submit" class="w-full px-4 py-2.5 bg-brand text-white rounded-xl font-medium">Speichern</button>
+      <?= csrfField() ?>
+      <button type="submit" class="w-full px-4 py-2.5 bg-brand text-white rounded-xl font-medium"><?= t('common.save') ?></button>
     </form>
   </div>
 
   <div>
     <div class="bg-white rounded-xl border p-5 mb-6">
-      <h3 class="font-semibold mb-4">Adressen</h3>
+      <h3 class="font-semibold mb-4"><?= t('profile.addresses') ?></h3>
       <?php if (!empty($addresses)): ?>
       <div class="space-y-3">
         <?php foreach ($addresses as $a): ?>
