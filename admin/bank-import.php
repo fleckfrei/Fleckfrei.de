@@ -125,33 +125,85 @@ include __DIR__ . '/../includes/layout.php';
 <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4"><?= (int)$_GET['applied'] ?> Zahlungen verbucht!</div>
 <?php endif; ?>
 
-<!-- Upload Form -->
+<!-- Bank Import Options -->
 <?php if (!$results): ?>
-<div class="max-w-xl mx-auto">
-  <div class="bg-white rounded-xl border p-8 text-center">
-    <div class="w-16 h-16 rounded-2xl bg-brand/10 flex items-center justify-center mx-auto mb-4">
-      <svg class="w-8 h-8 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-    </div>
-    <h2 class="text-lg font-semibold mb-2">N26 Kontoauszug importieren</h2>
-    <p class="text-sm text-gray-500 mb-6">Lade deine N26 CSV-Datei hoch. Das System matched automatisch Zahlungseingänge mit offenen Rechnungen.</p>
-    <form method="POST" enctype="multipart/form-data">
-      <input type="hidden" name="action" value="upload"/>
-      <label class="block border-2 border-dashed border-gray-300 rounded-xl p-8 cursor-pointer hover:border-brand hover:bg-brand/5 transition mb-4">
-        <input type="file" name="csv" accept=".csv" required class="hidden" onchange="this.closest('form').querySelector('#fileName').textContent=this.files[0].name"/>
-        <div class="text-sm text-gray-500" id="fileName">CSV-Datei auswählen...</div>
-      </label>
-      <button type="submit" class="w-full px-4 py-3 bg-brand text-white rounded-xl font-medium">Importieren & Matchen</button>
-    </form>
-    <div class="mt-6 text-left">
-      <h4 class="text-xs font-semibold text-gray-400 uppercase mb-2">So funktioniert's</h4>
-      <ol class="text-xs text-gray-500 space-y-1.5">
-        <li>1. N26 App → Konto → Kontoauszug → CSV herunterladen</li>
-        <li>2. Hier hochladen</li>
-        <li>3. System matched automatisch: Rechnungsnr., Betrag, Kundenname</li>
-        <li>4. Du prüfst die Matches und bestätigst</li>
-      </ol>
+<div class="max-w-2xl mx-auto space-y-6">
+
+  <!-- Auto Bank (Open Banking) -->
+  <div class="bg-white rounded-xl border p-6">
+    <div class="flex items-start gap-4">
+      <div class="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <div class="flex-1">
+        <div class="flex items-center gap-2 mb-1">
+          <h2 class="text-lg font-semibold">Automatischer Bank-Import</h2>
+          <?php if (FEATURE_AUTO_BANK && OPENBANKING_ACCOUNT_ID): ?>
+          <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Verbunden</span>
+          <?php else: ?>
+          <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-500">Nicht konfiguriert</span>
+          <?php endif; ?>
+        </div>
+        <p class="text-sm text-gray-500 mb-4">Verbinde dein N26 Konto direkt. Zahlungen werden automatisch gematcht — täglich um 9 Uhr, ohne manuellen Aufwand.</p>
+
+        <?php if (FEATURE_AUTO_BANK && OPENBANKING_ACCOUNT_ID): ?>
+        <div class="flex gap-3">
+          <button onclick="runAutoSync()" class="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm">Jetzt synchronisieren</button>
+          <span id="syncStatus" class="text-sm text-gray-400 self-center"></span>
+        </div>
+        <?php else: ?>
+        <div class="bg-blue-50 rounded-lg p-4 text-sm">
+          <p class="text-blue-800 font-medium mb-2">So aktivierst du den Auto-Import:</p>
+          <ol class="text-blue-700 space-y-1">
+            <li>1. Erstelle einen kostenlosen Account bei <a href="https://enablebanking.com" target="_blank" class="underline font-medium">Enable Banking</a></li>
+            <li>2. Gib mir die API Keys (Application ID + Secret)</li>
+            <li>3. Verbinde dein N26 Konto (einmal autorisieren)</li>
+            <li>4. Fertig — ab dann alles automatisch</li>
+          </ol>
+        </div>
+        <?php endif; ?>
+      </div>
     </div>
   </div>
+
+  <!-- Manual CSV Import -->
+  <div class="bg-white rounded-xl border p-6">
+    <div class="flex items-start gap-4">
+      <div class="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center flex-shrink-0">
+        <svg class="w-6 h-6 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+      </div>
+      <div class="flex-1">
+        <h2 class="text-lg font-semibold mb-1">Manueller CSV Import</h2>
+        <p class="text-sm text-gray-500 mb-4">N26 CSV hochladen — System matched automatisch mit offenen Rechnungen.</p>
+        <form method="POST" enctype="multipart/form-data" class="flex gap-3">
+          <input type="hidden" name="action" value="upload"/>
+          <label class="flex-1 border-2 border-dashed border-gray-300 rounded-xl px-4 py-3 cursor-pointer hover:border-brand hover:bg-brand/5 transition text-sm text-gray-500">
+            <input type="file" name="csv" accept=".csv" required class="hidden" onchange="this.closest('label').querySelector('span').textContent=this.files[0].name"/>
+            <span>CSV-Datei auswählen...</span>
+          </label>
+          <button type="submit" class="px-6 py-3 bg-brand text-white rounded-xl font-medium text-sm whitespace-nowrap">Importieren</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Import History -->
+  <?php
+  $recentPayments = allLocal("SELECT ip.*, i.invoice_number, c.name as cname FROM invoice_payments ip LEFT JOIN invoices i ON ip.invoice_id_fk=i.inv_id LEFT JOIN customer c ON i.customer_id_fk=c.customer_id WHERE ip.payment_method LIKE '%Bank%' OR ip.payment_method LIKE '%Auto%' ORDER BY ip.payment_date DESC LIMIT 10");
+  if (!empty($recentPayments)):
+  ?>
+  <div class="bg-white rounded-xl border p-5">
+    <h3 class="font-semibold mb-3">Letzte Bank-Zahlungen</h3>
+    <div class="divide-y">
+      <?php foreach ($recentPayments as $p): ?>
+      <div class="py-2 flex justify-between text-sm">
+        <span><?= date('d.m.Y', strtotime($p['payment_date'])) ?> — <?= e($p['cname'] ?? '') ?> (<?= e($p['invoice_number'] ?? '') ?>)</span>
+        <span class="font-medium text-green-600"><?= money($p['amount']) ?></span>
+      </div>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php endif; ?>
 </div>
 
 <?php else: ?>

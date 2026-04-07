@@ -50,6 +50,14 @@ define('N8N_WEBHOOK_NOTIFY', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-no
 // ============================================================
 // FEATURES — An/Aus schalten pro Installation
 // ============================================================
+// ============================================================
+// OPEN BANKING — Enable Banking (N26 Auto-Import)
+// ============================================================
+define('OPENBANKING_APP_ID', '');       // Enable Banking Application ID
+define('OPENBANKING_SECRET', '');       // Enable Banking Secret Key
+define('OPENBANKING_ACCOUNT_ID', '');   // N26 Account ID (set after linking)
+define('FEATURE_AUTO_BANK', false);     // Auto bank import on/off
+
 define('FEATURE_OSINT', true);        // OSINT Scanner Seite
 define('FEATURE_RECURRING', true);    // Wiederkehrende Jobs
 define('FEATURE_AUDIT', true);        // Audit-Log

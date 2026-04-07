@@ -7,6 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/email.php';
+require_once __DIR__ . '/../includes/openbanking.php';
 
 // Auth: session OR API key
 session_start();
@@ -566,6 +567,67 @@ try {
             $count = val("SELECT COUNT(*) FROM messages");
             $results[] = "messages count: $count";
             return $results;
+        })(),
+
+        // Open Banking: Auto fetch + match bank transactions
+        $action === 'bank/auto-sync' && $method === 'POST' => (function() {
+            if (!FEATURE_AUTO_BANK || !OPENBANKING_ACCOUNT_ID) throw new Exception('Open Banking not configured');
+            $ob = new OpenBanking();
+            if (!$ob->isConfigured()) throw new Exception('Missing API credentials');
+
+            // Fetch last 7 days of transactions
+            $dateFrom = date('Y-m-d', strtotime('-7 days'));
+            $txResp = $ob->getTransactions(OPENBANKING_ACCOUNT_ID, $dateFrom);
+            if (!$txResp || empty($txResp['transactions'])) throw new Exception('No transactions found');
+
+            $transactions = array_merge(
+                $txResp['transactions']['booked'] ?? [],
+                $txResp['transactions']['pending'] ?? []
+            );
+
+            // Only incoming (positive amounts)
+            $incoming = array_filter($transactions, fn($tx) => (float)($tx['transactionAmount']['amount'] ?? 0) > 0);
+
+            // Match with invoices
+            $results = matchTransactionsWithInvoices($incoming);
+
+            // Auto-apply matches
+            $applied = 0;
+            if (!empty($results['matched'])) {
+                $applied = autoApplyMatches($results['matched']);
+                // Telegram notification
+                $matchedTotal = array_sum(array_column(array_column($results['matched'], 'tx'), 'amount'));
+                telegramNotify("🏦 <b>Auto Bank-Import</b>\n\n✅ $applied Zahlungen gematcht (" . number_format($matchedTotal, 2) . " €)\n❓ " . count($results['unmatched']) . " nicht zugeordnet");
+            }
+
+            // Get balance
+            $balResp = $ob->getBalances(OPENBANKING_ACCOUNT_ID);
+            $balance = $balResp['balances'][0]['balanceAmount']['amount'] ?? null;
+
+            return [
+                'matched' => count($results['matched']),
+                'unmatched' => count($results['unmatched']),
+                'applied' => $applied,
+                'balance' => $balance,
+                'transactions_checked' => count($incoming)
+            ];
+        })(),
+
+        // Open Banking: Start bank connection flow
+        $action === 'bank/connect' && $method === 'POST' => (function() use ($body) {
+            $ob = new OpenBanking();
+            if (!$ob->isConfigured()) throw new Exception('Missing API credentials');
+            $bankId = $body['bank_id'] ?? 'N26_NTSBDEB1';
+            $redirect = 'https://app.' . SITE_DOMAIN . '/admin/bank-import.php?connected=1';
+            $result = $ob->startAuth($bankId, $redirect);
+            return $result;
+        })(),
+
+        // Open Banking: List available banks
+        $action === 'bank/list' && $method === 'GET' => (function() {
+            $ob = new OpenBanking();
+            if (!$ob->isConfigured()) throw new Exception('Missing API credentials');
+            return $ob->getBanks('DE');
         })(),
 
         // Security: Bulk hash all plaintext passwords
