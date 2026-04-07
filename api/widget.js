@@ -50,10 +50,31 @@
             <button id="ff-close" onclick="ffToggle()">&times;</button>
         </div>
         <div id="ff-identify">
-            <p style="font-size:14px;color:#374151;margin:0 0 12px;font-weight:500">Wie können wir Ihnen helfen?</p>
-            <input type="text" id="ff-name" placeholder="Ihr Name" />
-            <input type="email" id="ff-email" placeholder="E-Mail (optional)" />
+            <p style="font-size:15px;color:#374151;margin:0 0 12px;font-weight:600">Wie können wir Ihnen helfen?</p>
+            <p style="font-size:12px;color:#9ca3af;margin:0 0 12px">Bitte füllen Sie die Felder aus, damit wir Sie kontaktieren können.</p>
+            <input type="text" id="ff-name" placeholder="Ihr Name *" required />
+            <input type="email" id="ff-email" placeholder="E-Mail *" required />
+            <input type="tel" id="ff-phone" placeholder="Telefon / Handy *" />
+            <div style="margin:8px 0;font-size:12px;color:#6b7280">
+                <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;cursor:pointer">
+                    <input type="checkbox" id="ff-gdpr" style="margin-top:2px;accent-color:${BRAND}" required />
+                    <span>Ich stimme der <a href="/datenschutz.html" target="_blank" style="color:${BRAND};text-decoration:underline">Datenschutzerklärung</a> zu. *</span>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;cursor:pointer">
+                    <input type="checkbox" id="ff-newsletter" style="margin-top:2px;accent-color:${BRAND}" />
+                    <span>Newsletter & Angebote per E-Mail</span>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;cursor:pointer">
+                    <input type="checkbox" id="ff-wa" style="margin-top:2px;accent-color:#25D366" />
+                    <span>WhatsApp Benachrichtigungen</span>
+                </label>
+                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+                    <input type="checkbox" id="ff-tg" style="margin-top:2px;accent-color:#0088cc" />
+                    <span>Telegram Updates</span>
+                </label>
+            </div>
             <button onclick="ffIdentify()">Chat starten</button>
+            <p id="ff-error" style="color:#ef4444;font-size:12px;margin:8px 0 0;display:none"></p>
         </div>
         <div id="ff-msgs" style="display:none"></div>
         <div id="ff-input-area" style="display:none">
@@ -78,11 +99,29 @@
 
     window.ffIdentify = function() {
         const name = document.getElementById('ff-name').value.trim();
-        if (!name) return;
+        const email = document.getElementById('ff-email').value.trim();
+        const phone = document.getElementById('ff-phone').value.trim();
+        const gdpr = document.getElementById('ff-gdpr').checked;
+        const errEl = document.getElementById('ff-error');
+
+        // Validation
+        if (!name) { errEl.textContent = 'Bitte geben Sie Ihren Namen ein.'; errEl.style.display = 'block'; return; }
+        if (!email || !email.includes('@')) { errEl.textContent = 'Bitte geben Sie eine gültige E-Mail ein.'; errEl.style.display = 'block'; return; }
+        if (!phone || phone.length < 6) { errEl.textContent = 'Bitte geben Sie Ihre Telefonnummer ein.'; errEl.style.display = 'block'; return; }
+        if (!gdpr) { errEl.textContent = 'Bitte stimmen Sie der Datenschutzerklärung zu.'; errEl.style.display = 'block'; return; }
+        errEl.style.display = 'none';
+
         fetch(API + '?action=identify', {
             method: 'POST', credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email: document.getElementById('ff-email').value })
+            body: JSON.stringify({
+                name, email, phone,
+                newsletter: document.getElementById('ff-newsletter').checked,
+                whatsapp: document.getElementById('ff-wa').checked,
+                telegram: document.getElementById('ff-tg').checked,
+                gdpr_consent: true,
+                consent_time: new Date().toISOString()
+            })
         }).then(r => r.json()).then(d => {
             if (d.success) { identified = true; showChat(); }
         });

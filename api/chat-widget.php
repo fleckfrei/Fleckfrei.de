@@ -32,11 +32,54 @@ try {
             return ['chat_id' => $_SESSION['chat_id'], 'name' => $_SESSION['chat_name']];
         })(),
 
-        // Set visitor name/email
+        // Set visitor data + marketing consent
         $action === 'identify' && $_SERVER['REQUEST_METHOD'] === 'POST' => (function() use ($body) {
+            global $dbLocal;
             $_SESSION['chat_name'] = $body['name'] ?? '';
             $_SESSION['chat_email'] = $body['email'] ?? '';
             $_SESSION['chat_phone'] = $body['phone'] ?? '';
+
+            // Store lead in DB for marketing
+            try {
+                $dbLocal->exec("CREATE TABLE IF NOT EXISTS chat_leads (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    chat_id VARCHAR(50),
+                    name VARCHAR(100),
+                    email VARCHAR(100),
+                    phone VARCHAR(50),
+                    newsletter TINYINT(1) DEFAULT 0,
+                    whatsapp TINYINT(1) DEFAULT 0,
+                    telegram TINYINT(1) DEFAULT 0,
+                    gdpr_consent TINYINT(1) DEFAULT 0,
+                    consent_time DATETIME,
+                    ip VARCHAR(45),
+                    user_agent TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_email (email)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            } catch (Exception $e) {}
+
+            $stmt = $dbLocal->prepare("INSERT INTO chat_leads (chat_id,name,email,phone,newsletter,whatsapp,telegram,gdpr_consent,consent_time,ip,user_agent) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+            $stmt->execute([
+                $_SESSION['chat_id'] ?? '',
+                $body['name'] ?? '',
+                $body['email'] ?? '',
+                $body['phone'] ?? '',
+                !empty($body['newsletter']) ? 1 : 0,
+                !empty($body['whatsapp']) ? 1 : 0,
+                !empty($body['telegram']) ? 1 : 0,
+                !empty($body['gdpr_consent']) ? 1 : 0,
+                $body['consent_time'] ?? date('Y-m-d H:i:s'),
+                $_SERVER['REMOTE_ADDR'] ?? '',
+                $_SERVER['HTTP_USER_AGENT'] ?? ''
+            ]);
+
+            // Telegram notification with lead details
+            telegramNotify("📋 <b>Neuer Chat-Lead</b>\n\n👤 " . ($body['name']??'') . "\n📧 " . ($body['email']??'') . "\n📱 " . ($body['phone']??'') .
+                "\n\n" . (!empty($body['newsletter']) ? '✅' : '❌') . " Newsletter" .
+                "\n" . (!empty($body['whatsapp']) ? '✅' : '❌') . " WhatsApp" .
+                "\n" . (!empty($body['telegram']) ? '✅' : '❌') . " Telegram");
+
             return ['identified' => true];
         })(),
 
