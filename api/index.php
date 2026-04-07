@@ -571,45 +571,62 @@ try {
 
         // Open Banking: Auto fetch + match bank transactions
         $action === 'bank/auto-sync' && $method === 'POST' => (function() {
-            if (!FEATURE_AUTO_BANK || !OPENBANKING_ACCOUNT_ID) throw new Exception('Open Banking not configured');
+            if (!FEATURE_AUTO_BANK) throw new Exception('Open Banking not enabled');
             $ob = new OpenBanking();
             if (!$ob->isConfigured()) throw new Exception('Missing API credentials');
 
-            // Fetch last 7 days of transactions
+            // Read account UIDs from file
+            $accountFile = __DIR__ . '/../includes/openbanking_account.txt';
+            if (!file_exists($accountFile)) throw new Exception('No bank accounts linked');
+            $accountIds = array_filter(array_map('trim', explode("\n", file_get_contents($accountFile))));
+            if (empty($accountIds)) throw new Exception('No valid account IDs');
+
+            // Use Main Account (4th = index 3, or first available)
+            $mainAccount = $accountIds[3] ?? $accountIds[0];
+
+            // Fetch last 7 days
             $dateFrom = date('Y-m-d', strtotime('-7 days'));
-            $txResp = $ob->getTransactions(OPENBANKING_ACCOUNT_ID, $dateFrom);
-            if (!$txResp || empty($txResp['transactions'])) throw new Exception('No transactions found');
+            $txResp = $ob->getTransactions($mainAccount, $dateFrom);
+            if (!$txResp) throw new Exception('API error');
 
-            $transactions = array_merge(
-                $txResp['transactions']['booked'] ?? [],
-                $txResp['transactions']['pending'] ?? []
-            );
+            // Handle both formats: {transactions: [...]} or {transactions: {booked: [...]}}
+            $transactions = [];
+            if (isset($txResp['transactions'])) {
+                if (isset($txResp['transactions']['booked'])) {
+                    $transactions = array_merge($txResp['transactions']['booked'] ?? [], $txResp['transactions']['pending'] ?? []);
+                } else {
+                    $transactions = $txResp['transactions'];
+                }
+            }
 
-            // Only incoming (positive amounts)
-            $incoming = array_filter($transactions, fn($tx) => (float)($tx['transactionAmount']['amount'] ?? 0) > 0);
+            // Only incoming (credit indicator or positive amount)
+            $incoming = array_filter($transactions, function($tx) {
+                $indicator = $tx['credit_debit_indicator'] ?? '';
+                $amount = (float)($tx['transaction_amount']['amount'] ?? 0);
+                return $indicator === 'CRDT' || ($indicator !== 'DBIT' && $amount > 0);
+            });
 
-            // Match with invoices
             $results = matchTransactionsWithInvoices($incoming);
 
-            // Auto-apply matches
             $applied = 0;
             if (!empty($results['matched'])) {
                 $applied = autoApplyMatches($results['matched']);
-                // Telegram notification
                 $matchedTotal = array_sum(array_column(array_column($results['matched'], 'tx'), 'amount'));
                 telegramNotify("🏦 <b>Auto Bank-Import</b>\n\n✅ $applied Zahlungen gematcht (" . number_format($matchedTotal, 2) . " €)\n❓ " . count($results['unmatched']) . " nicht zugeordnet");
             }
 
             // Get balance
-            $balResp = $ob->getBalances(OPENBANKING_ACCOUNT_ID);
-            $balance = $balResp['balances'][0]['balanceAmount']['amount'] ?? null;
+            $balResp = $ob->getBalances($mainAccount);
+            $balance = $balResp['balances'][0]['balance_amount']['amount'] ?? null;
 
             return [
                 'matched' => count($results['matched']),
                 'unmatched' => count($results['unmatched']),
                 'applied' => $applied,
                 'balance' => $balance,
-                'transactions_checked' => count($incoming)
+                'transactions_total' => count($transactions),
+                'transactions_incoming' => count($incoming),
+                'account' => $mainAccount
             ];
         })(),
 
@@ -617,10 +634,13 @@ try {
         $action === 'bank/connect' && $method === 'POST' => (function() use ($body) {
             $ob = new OpenBanking();
             if (!$ob->isConfigured()) throw new Exception('Missing API credentials');
-            $bankId = $body['bank_id'] ?? 'N26_NTSBDEB1';
-            $redirect = 'https://app.' . SITE_DOMAIN . '/admin/bank-import.php?connected=1';
-            $result = $ob->startAuth($bankId, $redirect);
-            return $result;
+            $bankName = $body['bank_name'] ?? 'N26';
+            $psuType = $body['psu_type'] ?? 'business';
+            $result = $ob->startAuth($bankName, 'DE', $psuType);
+            if (!empty($result['url'])) {
+                return ['url' => $result['url'], 'authorization_id' => $result['authorization_id'] ?? ''];
+            }
+            throw new Exception($result['message'] ?? 'Auth failed');
         })(),
 
         // Open Banking: List available banks

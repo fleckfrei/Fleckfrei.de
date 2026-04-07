@@ -21,7 +21,7 @@ class OpenBanking {
         if (!$privateKey) return null;
 
         // Build JWT
-        $header = base64url_encode(json_encode(['alg' => 'RS256', 'typ' => 'JWT']));
+        $header = base64url_encode(json_encode(['alg' => 'RS256', 'typ' => 'JWT', 'kid' => OPENBANKING_APP_ID]));
         $now = time();
         $payload = base64url_encode(json_encode([
             'iss' => 'enablebanking.com',
@@ -38,10 +38,10 @@ class OpenBanking {
         return $this->token;
     }
 
-    // Start bank authorization
-    public function startSession($bankName = 'N26', $country = 'DE') {
+    // Start bank authorization (returns auth URL for redirect)
+    public function startAuth($bankName = 'N26', $country = 'DE', $psuType = 'business') {
         $redirectUrl = 'https://app.' . SITE_DOMAIN . '/admin/bank-callback.php';
-        return $this->request('/sessions', 'POST', [
+        return $this->request('/auth', 'POST', [
             'access' => [
                 'valid_until' => date('Y-m-d\TH:i:s\Z', strtotime('+90 days'))
             ],
@@ -51,8 +51,13 @@ class OpenBanking {
             ],
             'state' => bin2hex(random_bytes(16)),
             'redirect_url' => $redirectUrl,
-            'psu_type' => 'personal'
-        ]);
+            'psu_type' => $psuType
+        ], true, ['PSU-IP-Address: ' . ($_SERVER['REMOTE_ADDR'] ?? '132.148.114.246')]);
+    }
+
+    // Complete session after auth redirect (get account IDs)
+    public function createSession($code) {
+        return $this->request('/sessions', 'POST', ['code' => $code]);
     }
 
     // Get session (after redirect back)
@@ -79,17 +84,17 @@ class OpenBanking {
         return $this->request("/accounts/$accountId/transactions$qs");
     }
 
-    private function request($endpoint, $method = 'GET', $data = null) {
+    private function request($endpoint, $method = 'GET', $data = null, $auth = true, $extraHeaders = []) {
         $url = $this->baseUrl . $endpoint;
-        $token = $this->getToken();
-        if (!$token) return ['error' => 'JWT auth failed'];
+        $headers = ['Content-Type: application/json', 'Accept: application/json'];
+        if ($auth) {
+            $token = $this->getToken();
+            if (!$token) return ['error' => 'JWT auth failed'];
+            $headers[] = 'Authorization: Bearer ' . $token;
+        }
+        $headers = array_merge($headers, $extraHeaders);
 
         $ch = curl_init($url);
-        $headers = [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'Authorization: Bearer ' . $token
-        ];
 
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -123,9 +128,10 @@ function matchTransactionsWithInvoices($transactions) {
     $results = ['matched' => [], 'unmatched' => []];
 
     foreach ($transactions as $tx) {
-        $amount = abs((float)($tx['transaction_amount']['amount'] ?? $tx['transactionAmount']['amount'] ?? $tx['amount'] ?? 0));
-        $ref = $tx['remittance_information_unstructured'] ?? $tx['remittanceInformationUnstructured'] ?? $tx['reference'] ?? '';
-        $debtor = $tx['debtor_name'] ?? $tx['debtorName'] ?? $tx['payee'] ?? '';
+        $amount = abs((float)($tx['transaction_amount']['amount'] ?? $tx['amount'] ?? 0));
+        $ref = $tx['remittance_information_unstructured'] ?? '';
+        if (!$ref && !empty($tx['remittance_information'])) $ref = is_array($tx['remittance_information']) ? implode(' ', $tx['remittance_information']) : $tx['remittance_information'];
+        $debtor = $tx['debtor']['name'] ?? $tx['debtor_name'] ?? $tx['creditor']['name'] ?? '';
         if ($amount <= 0) continue;
 
         $match = null;
@@ -169,8 +175,15 @@ function autoApplyMatches($matched) {
         $newRemaining = max(0, $inv['remaining_price'] - $amount);
         $paid = $newRemaining <= 0 ? 'yes' : 'no';
         q("UPDATE invoices SET remaining_price=?, invoice_paid=? WHERE inv_id=?", [$newRemaining, $paid, (int)$inv['inv_id']]);
-        qLocal("INSERT INTO invoice_payments (invoice_id_fk, amount, payment_date, payment_method, note) VALUES (?,?,?,?,?)",
-            [(int)$inv['inv_id'], $amount, $m['tx']['date'] ?: date('Y-m-d'), 'Bank (Auto)', 'Auto: ' . $m['type']]);
+        // invoice_payments table (compatible with both DB schemas)
+        try {
+            q("INSERT INTO invoice_payments (inv_id_fk, issue_date, price, remarks) VALUES (?,?,?,?)",
+                [(int)$inv['inv_id'], $m['tx']['date'] ?: date('Y-m-d'), $amount, 'Bank Auto: ' . $m['type']]);
+        } catch (Exception $e) {
+            // Try alternative column names
+            try { q("INSERT INTO invoice_payments (invoice_id_fk, amount, payment_date, payment_method, note) VALUES (?,?,?,?,?)",
+                [(int)$inv['inv_id'], $amount, $m['tx']['date'] ?: date('Y-m-d'), 'Bank (Auto)', 'Auto: ' . $m['type']]); } catch (Exception $e2) {}
+        }
         audit('auto_payment', 'invoice', (int)$inv['inv_id'], "Bank Auto: {$amount} EUR, {$m['type']}");
         $applied++;
     }

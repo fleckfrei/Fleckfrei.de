@@ -3,23 +3,23 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/openbanking.php';
 requireAdmin();
 
-// Enable Banking redirects here after bank authorization
-$sessionId = $_GET['session_id'] ?? '';
-
-if ($sessionId) {
+$code = $_GET['code'] ?? '';
+if ($code) {
     $ob = new OpenBanking();
-    $session = $ob->getSession($sessionId);
+    $session = $ob->createSession($code);
 
     if ($session && !empty($session['accounts'])) {
-        // Store the first account ID
-        $accountId = $session['accounts'][0];
-        // Save to a local file (can't update config.php constants at runtime)
-        file_put_contents(__DIR__ . '/../includes/openbanking_account.txt', $accountId);
-        audit('bank_connected', 'system', 0, "N26 Account linked: $accountId");
-        telegramNotify("🏦 <b>Bank verbunden!</b>\n\nN26 Account: $accountId\nAuto-Import ist jetzt aktiv.");
-        header("Location: /admin/bank-import.php?connected=1&account=$accountId");
+        // Extract UIDs from account objects
+        $uids = array_map(fn($a) => is_array($a) ? ($a['uid'] ?? '') : (string)$a, $session['accounts']);
+        $uids = array_filter($uids);
+        file_put_contents(__DIR__ . '/../includes/openbanking_account.txt', implode("\n", $uids));
+        file_put_contents(__DIR__ . '/../includes/openbanking_session.json', json_encode($session, JSON_PRETTY_PRINT));
+        audit('bank_connected', 'system', 0, count($uids) . ' N26 accounts linked');
+        telegramNotify("🏦 <b>N26 verbunden!</b>\n\n" . count($uids) . " Konten verlinkt");
+        header("Location: /admin/bank-import.php?connected=" . count($uids));
         exit;
     }
+    header("Location: /admin/bank-import.php?error=" . urlencode($session['message'] ?? 'no accounts'));
+    exit;
 }
-
-header("Location: /admin/bank-import.php?error=connection_failed");
+header("Location: /admin/bank-import.php?error=no_code");

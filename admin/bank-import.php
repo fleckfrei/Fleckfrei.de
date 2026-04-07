@@ -148,8 +148,13 @@ include __DIR__ . '/../includes/layout.php';
 
         <?php
         $obAccountFile = __DIR__ . '/../includes/openbanking_account.txt';
-        $obAccountId = file_exists($obAccountFile) ? trim(file_get_contents($obAccountFile)) : OPENBANKING_ACCOUNT_ID;
-        $obConnected = !empty($obAccountId);
+        $obAccountIds = [];
+        if (file_exists($obAccountFile)) {
+            $obAccountIds = array_filter(array_map('trim', explode("\n", file_get_contents($obAccountFile))));
+            $obAccountIds = array_filter($obAccountIds, fn($a) => $a && $a !== 'Array');
+        }
+        $obAccountId = $obAccountIds[0] ?? OPENBANKING_ACCOUNT_ID;
+        $obConnected = !empty($obAccountId) && $obAccountId !== 'Array';
         ?>
         <?php if ($obConnected): ?>
         <div class="flex gap-3 mb-3">
@@ -158,9 +163,19 @@ include __DIR__ . '/../includes/layout.php';
         </div>
         <p class="text-xs text-gray-400">Account: <?= e($obAccountId) ?> | Automatisch täglich 9 Uhr</p>
         <?php elseif (FEATURE_AUTO_BANK): ?>
-        <div class="flex gap-3">
-          <button onclick="connectBank()" class="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm">N26 Konto verbinden</button>
-          <span class="text-sm text-gray-400 self-center">Einmalige Autorisierung</span>
+        <?php
+        // Generate auth URL server-side (includes user's IP)
+        require_once __DIR__ . '/../includes/openbanking.php';
+        $ob = new OpenBanking();
+        $authResult = $ob->startAuth('N26', 'DE', 'business');
+        $authUrl = $authResult['url'] ?? '';
+        ?>
+        <?php if ($authUrl): ?>
+        <a href="<?= e($authUrl) ?>" class="inline-block px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm hover:bg-blue-700 transition">N26 Konto verbinden</a>
+        <span class="text-sm text-gray-400 ml-3">Einmalige Autorisierung bei N26</span>
+        <?php else: ?>
+        <p class="text-sm text-red-600">Auth-URL konnte nicht erstellt werden. <?= e($authResult['message'] ?? '') ?></p>
+        <?php endif; ?>
         </div>
         <?php else: ?>
         <div class="bg-blue-50 rounded-lg p-4 text-sm">

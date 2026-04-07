@@ -53,7 +53,7 @@ define('N8N_WEBHOOK_NOTIFY', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-no
 // ============================================================
 // OPEN BANKING — Enable Banking (N26 Auto-Import)
 // ============================================================
-define('OPENBANKING_APP_ID', '556ddcde-851b-452e-be27-b1cea95ffc7e');
+define('OPENBANKING_APP_ID', '681f85da-7d47-492e-9b77-1688b06ca401');
 define('OPENBANKING_PEM_PATH', __DIR__ . '/openbanking.pem');
 define('OPENBANKING_ACCOUNT_ID', '');   // N26 Account ID (set after bank linking)
 define('FEATURE_AUTO_BANK', true);
