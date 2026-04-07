@@ -1,91 +1,87 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 requireAdmin();
-$title = 'Nachrichten'; $page = 'messages';
+$title = 'Chat'; $page = 'messages';
+
+// Delete message (admin only, silent)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'delete_msg') {
+    qLocal("DELETE FROM messages WHERE msg_id=?", [(int)$_POST['msg_id']]);
+    header("Location: " . $_SERVER['REQUEST_URI']); exit;
+}
 
 // Send message
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $act = $_POST['action'] ?? '';
-    if ($act === 'send') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'send') {
+    $recipType = $_POST['recipient_type'];
+    $recipId = (int)$_POST['recipient_id'];
+    $msg = trim($_POST['message'] ?? '');
+    if ($msg && $recipId) {
         qLocal("INSERT INTO messages (sender_type,sender_id,sender_name,recipient_type,recipient_id,message,job_id,channel) VALUES ('admin',?,?,?,?,?,?,?)",
-          [me()['id'], SITE . ' Team', $_POST['recipient_type'], $_POST['recipient_id'], $_POST['message'], $_POST['job_id']??null, 'portal']);
-        audit('send', 'message', 0, 'To: '.$_POST['recipient_type'].'#'.$_POST['recipient_id']);
+          [me()['id'], SITE . ' Team', $recipType, $recipId, $msg, $_POST['job_id']??null, 'portal']);
 
-        // Trigger n8n webhook for AI translation if sending to customer/employee
-        $recipientType = $_POST['recipient_type'];
-        if ($recipientType === 'customer' || $recipientType === 'employee') {
-            $table = $recipientType === 'customer' ? 'customer' : 'employee';
-            $idCol = $recipientType === 'customer' ? 'customer_id' : 'emp_id';
-            $recipient = one("SELECT name, email, phone FROM $table WHERE $idCol=?", [$_POST['recipient_id']]);
-            $webhook = 'https://n8n.la-renting.com/webhook/fleckfrei-v2-message';
-            @file_get_contents($webhook, false, stream_context_create([
-                'http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n", 'timeout'=>3,
-                    'content'=>json_encode([
-                        'event' => 'new_message',
-                        'from' => 'admin',
-                        'from_name' => me()['name'],
-                        'to_type' => $recipientType,
-                        'to_name' => $recipient['name'] ?? '',
-                        'to_email' => $recipient['email'] ?? '',
-                        'to_phone' => $recipient['phone'] ?? '',
-                        'message' => $_POST['message'],
-                        'job_id' => $_POST['job_id'] ?? null,
-                    ])]
-            ]));
-        }
-
-        header("Location: /admin/messages.php?sent=1"); exit;
+        // n8n webhook for KI processing
+        $table = $recipType === 'customer' ? 'customer' : 'employee';
+        $idCol = $recipType === 'customer' ? 'customer_id' : 'emp_id';
+        $recipient = one("SELECT name, email, phone FROM $table WHERE $idCol=?", [$recipId]);
+        @file_get_contents('https://n8n.la-renting.com/webhook/fleckfrei-v2-message', false, stream_context_create([
+            'http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n", 'timeout'=>3,
+                'content'=>json_encode(['event'=>'new_message','from'=>'admin','from_name'=>SITE.' Team','to_type'=>$recipType,'to_name'=>$recipient['name']??'','to_email'=>$recipient['email']??'','to_phone'=>$recipient['phone']??'','message'=>$msg,'job_id'=>$_POST['job_id']??null])]
+        ]));
     }
+    header("Location: /admin/messages.php?chat={$recipType}_{$recipId}"); exit;
 }
 
-// Filter
-$filterType = $_GET['type'] ?? '';
-$filterId = $_GET['id'] ?? '';
+// Build conversations list
+$conversations = allLocal("SELECT
+    CASE WHEN sender_type='admin' THEN CONCAT(recipient_type,'_',recipient_id) ELSE CONCAT(sender_type,'_',sender_id) END as conv_key,
+    MAX(created_at) as last_msg_time,
+    COUNT(*) as msg_count,
+    SUM(CASE WHEN recipient_type='admin' AND read_at IS NULL THEN 1 ELSE 0 END) as unread
+    FROM messages
+    GROUP BY conv_key
+    ORDER BY last_msg_time DESC");
 
-// Messages from local DB
-$sql = "SELECT * FROM messages";
-$p = [];
-if ($filterType && $filterId) {
-    $sql .= " WHERE (sender_type=? AND sender_id=?) OR (recipient_type=? AND recipient_id=?)";
-    $p = [$filterType, $filterId, $filterType, $filterId];
+// Resolve conversation names
+foreach ($conversations as &$conv) {
+    [$type, $id] = explode('_', $conv['conv_key'], 2);
+    $conv['type'] = $type;
+    $conv['id'] = (int)$id;
+    if ($type === 'customer') {
+        $conv['name'] = val("SELECT name FROM customer WHERE customer_id=?", [$id]) ?: 'Kunde #'.$id;
+        $conv['icon'] = 'blue';
+    } elseif ($type === 'employee') {
+        $r = one("SELECT name, surname FROM employee WHERE emp_id=?", [$id]);
+        $conv['name'] = $r ? $r['name'].' '.($r['surname']??'') : 'Partner #'.$id;
+        $conv['icon'] = 'purple';
+    } else {
+        $conv['name'] = $type.' #'.$id;
+        $conv['icon'] = 'gray';
+    }
+    // Last message preview
+    $lastMsg = oneLocal("SELECT message, sender_type FROM messages WHERE
+        (sender_type=? AND sender_id=?) OR (recipient_type=? AND recipient_id=?)
+        ORDER BY created_at DESC LIMIT 1", [$type, $id, $type, $id]);
+    $conv['preview'] = $lastMsg ? mb_substr($lastMsg['message'], 0, 60) . (mb_strlen($lastMsg['message']) > 60 ? '...' : '') : '';
+    $conv['last_sender'] = $lastMsg ? ($lastMsg['sender_type'] === 'admin' ? 'Du: ' : '') : '';
 }
-$sql .= " ORDER BY created_at DESC LIMIT 200";
-$messages = allLocal($sql, $p);
+unset($conv);
 
-// Resolve names from master DB
-$nameCache = [];
-foreach ($messages as &$m) {
-    // Resolve sender
-    if ($m['sender_type'] === 'admin') { $m['resolved_sender'] = $m['sender_name'] ?: 'Admin'; }
-    elseif ($m['sender_type'] === 'customer') {
-        $key = 'c'.$m['sender_id'];
-        if (!isset($nameCache[$key])) $nameCache[$key] = val("SELECT name FROM customer WHERE customer_id=?", [$m['sender_id']]) ?: '?';
-        $m['resolved_sender'] = $nameCache[$key];
-    } elseif ($m['sender_type'] === 'employee') {
-        $key = 'e'.$m['sender_id'];
-        if (!isset($nameCache[$key])) $nameCache[$key] = val("SELECT name FROM employee WHERE emp_id=?", [$m['sender_id']]) ?: '?';
-        $m['resolved_sender'] = $nameCache[$key];
-    } else { $m['resolved_sender'] = $m['sender_name'] ?: $m['sender_type']; }
-    // Resolve recipient
-    if ($m['recipient_type'] === 'admin') { $m['resolved_recipient'] = 'Admin'; }
-    elseif ($m['recipient_type'] === 'customer') {
-        $key = 'c'.$m['recipient_id'];
-        if (!isset($nameCache[$key])) $nameCache[$key] = val("SELECT name FROM customer WHERE customer_id=?", [$m['recipient_id']]) ?: '?';
-        $m['resolved_recipient'] = $nameCache[$key];
-    } elseif ($m['recipient_type'] === 'employee') {
-        $key = 'e'.$m['recipient_id'];
-        if (!isset($nameCache[$key])) $nameCache[$key] = val("SELECT name FROM employee WHERE emp_id=?", [$m['recipient_id']]) ?: '?';
-        $m['resolved_recipient'] = $nameCache[$key];
-    } else { $m['resolved_recipient'] = $m['recipient_type']; }
-}
-unset($m);
-
-// Unread count
-$unreadCount = valLocal("SELECT COUNT(*) FROM messages WHERE recipient_type='admin' AND read_at IS NULL");
-
-// Mark messages as read
-if ($unreadCount > 0) {
-    qLocal("UPDATE messages SET read_at=NOW() WHERE recipient_type='admin' AND read_at IS NULL");
+// Active chat
+$activeChat = $_GET['chat'] ?? '';
+$chatMessages = [];
+$chatName = '';
+$chatType = '';
+$chatId = 0;
+if ($activeChat && str_contains($activeChat, '_')) {
+    [$chatType, $chatId] = explode('_', $activeChat, 2);
+    $chatId = (int)$chatId;
+    $chatMessages = allLocal("SELECT * FROM messages WHERE
+        (sender_type=? AND sender_id=?) OR (recipient_type=? AND recipient_id=?)
+        ORDER BY created_at ASC", [$chatType, $chatId, $chatType, $chatId]);
+    // Mark as read
+    qLocal("UPDATE messages SET read_at=NOW() WHERE recipient_type='admin' AND read_at IS NULL AND sender_type=? AND sender_id=?", [$chatType, $chatId]);
+    // Get name
+    if ($chatType === 'customer') $chatName = val("SELECT name FROM customer WHERE customer_id=?", [$chatId]) ?: 'Kunde';
+    elseif ($chatType === 'employee') { $r = one("SELECT name, surname FROM employee WHERE emp_id=?", [$chatId]); $chatName = $r ? $r['name'].' '.($r['surname']??'') : 'Partner'; }
 }
 
 $customers = all("SELECT customer_id, name FROM customer WHERE status=1 ORDER BY name");
@@ -94,112 +90,172 @@ $employees = all("SELECT emp_id, name, surname FROM employee WHERE status=1 ORDE
 include __DIR__ . '/../includes/layout.php';
 ?>
 
-<?php if(!empty($_GET['sent'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">Nachricht gesendet.</div><?php endif; ?>
+<style>
+.chat-container { display: flex; height: calc(100vh - 180px); min-height: 500px; }
+.chat-sidebar { width: 320px; border-right: 1px solid #e5e7eb; overflow-y: auto; flex-shrink: 0; }
+.chat-main { flex: 1; display: flex; flex-direction: column; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 20px; background: #f0f2f5; }
+.chat-input { border-top: 1px solid #e5e7eb; padding: 12px 16px; background: white; }
+.bubble { max-width: 75%; padding: 8px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; position: relative; word-wrap: break-word; }
+.bubble-out { background: #d9fdd3; margin-left: auto; border-bottom-right-radius: 4px; }
+.bubble-in { background: white; margin-right: auto; border-bottom-left-radius: 4px; box-shadow: 0 1px 1px rgba(0,0,0,0.06); }
+.bubble-system { background: #fef3c7; margin: 0 auto; text-align: center; font-size: 12px; border-radius: 8px; }
+.conv-item { padding: 12px 16px; cursor: pointer; transition: background 0.1s; border-bottom: 1px solid #f3f4f6; }
+.conv-item:hover { background: #f9fafb; }
+.conv-item.active { background: <?= BRAND_LIGHT ?>; border-left: 3px solid <?= BRAND ?>; }
+@media (max-width: 768px) { .chat-sidebar { width: 100%; } .chat-main { display: none; } }
+</style>
 
-<div x-data="{ composeOpen:false, recipientType:'customer', recipientId:'' }">
-  <!-- Stats -->
-  <div class="grid grid-cols-3 gap-4 mb-6">
-    <div class="bg-white rounded-xl border p-4"><div class="text-2xl font-bold text-brand"><?= count($messages) ?></div><div class="text-sm text-gray-500">Nachrichten gesamt</div></div>
-    <div class="bg-white rounded-xl border p-4"><div class="text-2xl font-bold text-orange-600"><?= $unreadCount ?></div><div class="text-sm text-gray-500">Ungelesen (gerade gelesen)</div></div>
-    <div class="bg-white rounded-xl border p-4"><div class="text-2xl font-bold"><?= valLocal("SELECT COUNT(DISTINCT CONCAT(sender_type,'-',sender_id)) FROM messages") ?></div><div class="text-sm text-gray-500">Aktive Kontakte</div></div>
-  </div>
-
-  <!-- Message List -->
-  <div class="bg-white rounded-xl border">
-    <div class="p-5 border-b flex items-center justify-between">
-      <h3 class="font-semibold">Alle Nachrichten</h3>
-      <div class="flex gap-3">
-        <input type="text" placeholder="Suchen..." class="px-3 py-2 border rounded-lg text-sm w-64" oninput="filterRows(this.value)"/>
-        <button @click="composeOpen=true" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium">Neue Nachricht</button>
+<div class="bg-white rounded-xl border overflow-hidden" x-data="{ newChat: false }">
+  <div class="chat-container">
+    <!-- Sidebar: Conversations -->
+    <div class="chat-sidebar">
+      <div class="p-3 border-b flex items-center justify-between bg-gray-50">
+        <h3 class="font-semibold text-sm">Chats (<?= count($conversations) ?>)</h3>
+        <button @click="newChat=!newChat" class="px-2 py-1 bg-brand text-white rounded-lg text-xs">+ Neu</button>
       </div>
-    </div>
-    <div class="divide-y" id="msg-list">
-      <?php foreach ($messages as $m):
-        $isIncoming = $m['recipient_type'] === 'admin';
-        $senderLabel = $m['sender_type'] === 'admin' ? 'Du' : e($m['resolved_sender'] ?: $m['sender_type']);
-        $recipLabel = $m['recipient_type'] === 'admin' ? 'Du' : e($m['resolved_recipient'] ?: $m['recipient_type']);
-        $typeColor = match($m['sender_type']) {
-            'customer' => 'blue', 'employee' => 'purple', 'ai' => 'amber', 'system' => 'gray', default => 'brand'
-        };
-      ?>
-      <div class="px-5 py-4 hover:bg-gray-50 <?= $isIncoming && !$m['read_at'] ? 'bg-blue-50/30' : '' ?>">
-        <div class="flex items-start justify-between gap-4">
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="px-2 py-0.5 text-[10px] font-medium rounded-full bg-<?= $typeColor ?>-100 text-<?= $typeColor ?>-700"><?= ucfirst($m['sender_type']) ?></span>
-              <span class="text-sm font-medium"><?= $senderLabel ?></span>
-              <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-              <span class="text-sm text-gray-500"><?= $recipLabel ?></span>
-              <?php if ($m['job_id']): ?><span class="text-xs text-gray-400">Job #<?= $m['job_id'] ?></span><?php endif; ?>
-            </div>
-            <p class="text-sm text-gray-700 line-clamp-2"><?= e($m['message']) ?></p>
-            <?php if ($m['translated_message']): ?>
-            <p class="text-xs text-brand mt-1 italic">KI: <?= e($m['translated_message']) ?></p>
-            <?php endif; ?>
+
+      <!-- New chat selector -->
+      <div x-show="newChat" x-cloak class="p-3 border-b bg-blue-50">
+        <select id="newChatSelect" onchange="if(this.value)location='/admin/messages.php?chat='+this.value" class="w-full px-3 py-2 border rounded-lg text-sm">
+          <option value="">Kontakt wählen...</option>
+          <optgroup label="Kunden">
+            <?php foreach ($customers as $c): ?><option value="customer_<?= $c['customer_id'] ?>"><?= e($c['name']) ?></option><?php endforeach; ?>
+          </optgroup>
+          <optgroup label="Partner">
+            <?php foreach ($employees as $emp): ?><option value="employee_<?= $emp['emp_id'] ?>"><?= e($emp['name'].' '.($emp['surname']??'')) ?></option><?php endforeach; ?>
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- Conversation list -->
+      <?php foreach ($conversations as $conv): ?>
+      <a href="?chat=<?= $conv['conv_key'] ?>" class="conv-item block <?= $activeChat === $conv['conv_key'] ? 'active' : '' ?>">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-<?= $conv['icon'] ?>-100 text-<?= $conv['icon'] ?>-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
+            <?= strtoupper(mb_substr($conv['name'],0,1)) ?>
           </div>
-          <div class="text-right flex-shrink-0">
-            <div class="text-xs text-gray-400"><?= date('d.m. H:i', strtotime($m['created_at'])) ?></div>
-            <div class="text-[10px] text-gray-300 mt-0.5"><?= e($m['channel']) ?></div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium truncate"><?= e($conv['name']) ?></span>
+              <span class="text-[10px] text-gray-400"><?= date('d.m H:i', strtotime($conv['last_msg_time'])) ?></span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-gray-500 truncate"><?= e($conv['last_sender'] . $conv['preview']) ?></span>
+              <?php if ($conv['unread'] > 0): ?>
+              <span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-brand text-white"><?= $conv['unread'] ?></span>
+              <?php endif; ?>
+            </div>
           </div>
         </div>
-      </div>
+      </a>
       <?php endforeach; ?>
-      <?php if (empty($messages)): ?>
-      <div class="px-5 py-12 text-center text-gray-400">Keine Nachrichten.</div>
+      <?php if (empty($conversations)): ?>
+      <div class="p-8 text-center text-gray-400 text-sm">Keine Chats</div>
+      <?php endif; ?>
+    </div>
+
+    <!-- Main chat area -->
+    <div class="chat-main">
+      <?php if ($activeChat && $chatName): ?>
+      <!-- Chat header -->
+      <div class="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-<?= $chatType==='customer'?'blue':'purple' ?>-100 text-<?= $chatType==='customer'?'blue':'purple' ?>-700 flex items-center justify-center text-sm font-bold">
+            <?= strtoupper(mb_substr($chatName,0,1)) ?>
+          </div>
+          <div>
+            <div class="font-semibold text-sm"><?= e($chatName) ?></div>
+            <div class="text-[10px] text-gray-400"><?= $chatType === 'customer' ? 'Kunde' : 'Partner' ?> #<?= $chatId ?> &middot; <?= count($chatMessages) ?> Nachrichten</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-400">Admin sieht alles</span>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="chat-messages" id="chatScroll">
+        <?php $lastDate = ''; foreach ($chatMessages as $m):
+          $msgDate = date('d.m.Y', strtotime($m['created_at']));
+          $isOut = $m['sender_type'] === 'admin';
+          $isSystem = $m['sender_type'] === 'system' || $m['sender_type'] === 'ai';
+        ?>
+          <?php if ($msgDate !== $lastDate): $lastDate = $msgDate; ?>
+          <div class="text-center my-4"><span class="px-3 py-1 bg-white rounded-full text-xs text-gray-500 shadow-sm"><?= $msgDate ?></span></div>
+          <?php endif; ?>
+
+          <div class="flex mb-2 <?= $isOut ? 'justify-end' : ($isSystem ? 'justify-center' : 'justify-start') ?>">
+            <div class="bubble <?= $isSystem ? 'bubble-system' : ($isOut ? 'bubble-out' : 'bubble-in') ?>">
+              <?php if (!$isOut && !$isSystem): ?>
+              <div class="text-xs font-medium <?= $m['sender_type']==='customer' ? 'text-blue-600' : 'text-purple-600' ?> mb-1">
+                <?= e($m['sender_name'] ?: ($m['sender_type'] === 'customer' ? $chatName : $chatName)) ?>
+                <span class="text-gray-400 font-normal ml-1"><?= ucfirst($m['sender_type']) ?></span>
+              </div>
+              <?php endif; ?>
+              <div><?= nl2br(e($m['message'])) ?></div>
+              <?php if ($m['translated_message']): ?>
+              <div class="text-xs text-brand italic mt-1 pt-1 border-t border-gray-200/50">KI: <?= nl2br(e($m['translated_message'])) ?></div>
+              <?php endif; ?>
+              <div class="flex items-center justify-end gap-2 mt-1">
+                <span class="text-[10px] text-gray-400"><?= date('H:i', strtotime($m['created_at'])) ?></span>
+                <?php if ($isOut && $m['read_at']): ?><span class="text-[10px] text-blue-500">&#10003;&#10003;</span><?php elseif ($isOut): ?><span class="text-[10px] text-gray-400">&#10003;</span><?php endif; ?>
+                <!-- Admin delete (silent) -->
+                <form method="POST" class="inline" onsubmit="return confirm('Nachricht löschen?')">
+                  <input type="hidden" name="action" value="delete_msg"/>
+                  <input type="hidden" name="msg_id" value="<?= $m['msg_id'] ?>"/>
+                  <button class="text-[10px] text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100" title="Löschen">&times;</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        <?php endforeach; ?>
+        <?php if (empty($chatMessages)): ?>
+        <div class="text-center text-gray-400 text-sm mt-8">Noch keine Nachrichten. Schreibe die erste!</div>
+        <?php endif; ?>
+      </div>
+
+      <!-- Input -->
+      <div class="chat-input">
+        <form method="POST" class="flex gap-2">
+          <input type="hidden" name="action" value="send"/>
+          <input type="hidden" name="recipient_type" value="<?= e($chatType) ?>"/>
+          <input type="hidden" name="recipient_id" value="<?= $chatId ?>"/>
+          <input type="text" name="message" required autofocus placeholder="Nachricht eingeben..." class="flex-1 px-4 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-brand/20 focus:border-brand outline-none"/>
+          <button type="submit" class="px-5 py-2.5 bg-brand text-white rounded-xl font-medium text-sm hover:bg-brand/90 transition">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </button>
+        </form>
+      </div>
+
+      <?php else: ?>
+      <!-- No chat selected -->
+      <div class="flex-1 flex items-center justify-center bg-gray-50">
+        <div class="text-center">
+          <div class="w-20 h-20 rounded-full bg-brand/10 flex items-center justify-center mx-auto mb-4">
+            <svg class="w-10 h-10 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold text-gray-700"><?= SITE ?> Chat</h3>
+          <p class="text-sm text-gray-400 mt-1">Wähle einen Chat oder starte eine neue Konversation</p>
+          <p class="text-xs text-gray-300 mt-3">Kunden sehen "<?= SITE ?> Team" als Absender</p>
+        </div>
+      </div>
       <?php endif; ?>
     </div>
   </div>
-
-  <!-- Compose Modal -->
-  <template x-if="composeOpen">
-    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"><div class="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl m-4">
-      <h3 class="text-lg font-semibold mb-4">Neue Nachricht</h3>
-      <form method="POST" class="space-y-4">
-        <input type="hidden" name="action" value="send"/>
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-600 mb-1">An (Typ)</label>
-            <select name="recipient_type" x-model="recipientType" class="w-full px-3 py-2.5 border rounded-xl">
-              <option value="customer">Kunde</option>
-              <option value="employee">Partner</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-600 mb-1">Empfänger</label>
-            <select name="recipient_id" x-model="recipientId" required class="w-full px-3 py-2.5 border rounded-xl">
-              <template x-if="recipientType==='customer'">
-                <template x-for="c in <?= htmlspecialchars(json_encode(array_map(fn($c)=>['id'=>$c['customer_id'],'name'=>$c['name']], $customers))) ?>">
-                  <option :value="c.id" x-text="c.name"></option>
-                </template>
-              </template>
-              <template x-if="recipientType==='employee'">
-                <template x-for="e in <?= htmlspecialchars(json_encode(array_map(fn($e)=>['id'=>$e['emp_id'],'name'=>$e['name'].' '.($e['surname']??'')], $employees))) ?>">
-                  <option :value="e.id" x-text="e.name"></option>
-                </template>
-              </template>
-            </select>
-          </div>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-600 mb-1">Job (optional)</label>
-          <input type="number" name="job_id" placeholder="Job-ID" class="w-full px-3 py-2.5 border rounded-xl"/>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-600 mb-1">Nachricht</label>
-          <textarea name="message" required rows="4" placeholder="Nachricht eingeben..." class="w-full px-3 py-2.5 border rounded-xl"></textarea>
-          <p class="text-xs text-gray-400 mt-1">Die KI übersetzt und formatiert die Nachricht automatisch für den Empfänger.</p>
-        </div>
-        <div class="flex gap-3">
-          <button type="button" @click="composeOpen=false" class="flex-1 px-4 py-2.5 border rounded-xl">Abbrechen</button>
-          <button type="submit" class="flex-1 px-4 py-2.5 bg-brand text-white rounded-xl font-medium">Senden</button>
-        </div>
-      </form>
-    </div></div>
-  </template>
 </div>
 
 <?php
 $script = <<<JS
-function filterRows(q){q=q.toLowerCase();document.querySelectorAll('#msg-list > div').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(q)?'':'none'})}
+// Scroll to bottom on load
+const chatScroll = document.getElementById('chatScroll');
+if (chatScroll) chatScroll.scrollTop = chatScroll.scrollHeight;
+
+// Show delete button on hover
+document.querySelectorAll('.bubble').forEach(b => {
+    b.classList.add('group');
+    const del = b.querySelector('form button');
+    if (del) { del.style.opacity = '0'; b.addEventListener('mouseenter', () => del.style.opacity = '1'); b.addEventListener('mouseleave', () => del.style.opacity = '0'); }
+});
 JS;
 include __DIR__ . '/../includes/footer.php'; ?>
