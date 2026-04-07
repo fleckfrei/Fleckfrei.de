@@ -7,6 +7,7 @@ $user = me();
 
 // Handle Start/Stop/Cancel
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrf()) { header('Location: /employee/'); exit; }
     $act = $_POST['action'] ?? '';
     $jid = $_POST['j_id'] ?? 0;
     if ($act === 'start_job') {

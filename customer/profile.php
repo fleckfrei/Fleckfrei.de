@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'delete_
     header('Location: /login.php?deactivated=1'); exit;
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'update_profile') {
+    if (!verifyCsrf()) { header('Location: /customer/profile.php'); exit; }
     q("UPDATE customer SET name=?,surname=?,phone=?,notes=? WHERE customer_id=?",
       [$_POST['name'],$_POST['surname']??'',$_POST['phone']??'',$_POST['notes']??'',$cid]);
     if (!empty($_POST['new_password'])) {
@@ -24,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'update_
 }
 
 $c = one("SELECT * FROM customer WHERE customer_id=?", [$cid]);
-$addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=?", [$cid]);
+try { $addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=?", [$cid]); } catch (Exception $e) { $addresses = []; }
 
 include __DIR__ . '/../includes/layout.php';
 ?>

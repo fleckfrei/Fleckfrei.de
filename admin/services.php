@@ -4,6 +4,7 @@ requireAdmin();
 $title = 'Services'; $page = 'services';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrf()) { header('Location: /admin/services.php'); exit; }
     $act = $_POST['action'] ?? '';
     if ($act === 'add_service') {
         q("INSERT INTO services (title,customer_id_fk,street,number,postal_code,city,country,price,tax_percentage,total_price,unit,coin,status,box_code,client_code,deposit_code,access_phone,wifi_name,wifi_password,qm,room,is_cleaning) VALUES (?,?,?,?,?,?,?,?,19,?,?,'€',1,?,?,?,?,?,?,?,?,?)",

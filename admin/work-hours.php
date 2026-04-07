@@ -39,7 +39,7 @@ include __DIR__ . '/../includes/layout.php';
   <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
     <div><label class="block text-xs font-medium text-gray-500 mb-1">Von</label><input type="date" name="start_date" value="<?= e($startDate) ?>" class="w-full px-3 py-2 border rounded-lg text-sm"/></div>
     <div><label class="block text-xs font-medium text-gray-500 mb-1">Bis</label><input type="date" name="end_date" value="<?= e($endDate) ?>" class="w-full px-3 py-2 border rounded-lg text-sm"/></div>
-    <div><label class="block text-xs font-medium text-gray-500 mb-1">Mitarbeiter</label>
+    <div><label class="block text-xs font-medium text-gray-500 mb-1">Partner</label>
       <select name="emp" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="">Alle</option>
         <?php foreach ($employees as $emp): ?><option value="<?= $emp['emp_id'] ?>" <?= $empFilter==$emp['emp_id']?'selected':'' ?>><?= e($emp['name'].' '.$emp['surname']) ?></option><?php endforeach; ?>
       </select>
@@ -75,7 +75,7 @@ include __DIR__ . '/../includes/layout.php';
     <table class="w-full text-sm">
       <thead class="bg-gray-50"><tr>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Datum</th>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">Mitarbeiter</th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600">Partner</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Kunde</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Service</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Start</th>

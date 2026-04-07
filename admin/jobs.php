@@ -5,6 +5,7 @@ $title = 'Jobs Kalender'; $page = 'jobs';
 
 // Handle POST actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrf()) { header('Location: /admin/jobs.php'); exit; }
     $act = $_POST['action'] ?? '';
     if ($act === 'edit_job') {
         $fields = ['j_date','j_time','j_hours','emp_id_fk','customer_id_fk','s_id_fk','address','code_door','no_people','job_for','platform','emp_message','job_status','optional_products','job_note'];
@@ -77,7 +78,7 @@ include __DIR__ . '/../includes/layout.php';
       <p class="font-medium"><?= e($j['cname']) ?> <span class="text-xs text-gray-400">(<?= e($j['ctype']) ?>)</span></p>
       <p class="text-sm text-gray-500"><?= e($j['cemail']) ?></p>
       <p class="text-sm text-gray-500"><?= e($j['cphone']) ?></p>
-      <h4 class="text-xs font-semibold text-gray-400 uppercase mt-4 mb-2">Mitarbeiter</h4>
+      <h4 class="text-xs font-semibold text-gray-400 uppercase mt-4 mb-2">Partner</h4>
       <?php if ($j['emp_id_fk']): ?>
         <p class="font-medium"><?= e($j['ename'].' '.$j['esurname']) ?></p>
         <p class="text-sm text-gray-500"><?= e($j['ephone']) ?> — <?= money($j['tariff']) ?>/h</p>
@@ -131,7 +132,7 @@ include __DIR__ . '/../includes/layout.php';
       <div><label class="block text-sm font-medium text-gray-600 mb-1">Datum</label><input type="date" name="j_date" value="<?= e($j['j_date']) ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>
       <div><label class="block text-sm font-medium text-gray-600 mb-1">Uhrzeit</label><input type="time" name="j_time" value="<?= e(substr($j['j_time'],0,5)) ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>
       <div><label class="block text-sm font-medium text-gray-600 mb-1">Stunden</label><input type="number" name="j_hours" value="<?= $j['j_hours'] ?>" step="0.5" class="w-full px-3 py-2.5 border rounded-xl"/></div>
-      <div><label class="block text-sm font-medium text-gray-600 mb-1">Mitarbeiter</label>
+      <div><label class="block text-sm font-medium text-gray-600 mb-1">Partner</label>
         <select name="emp_id_fk" class="w-full px-3 py-2.5 border rounded-xl"><option value="">Nicht zugewiesen</option><?php foreach ($employees as $emp): ?><option value="<?= $emp['emp_id'] ?>" <?= $emp['emp_id']==$j['emp_id_fk']?'selected':'' ?>><?= e($emp['name'].' '.$emp['surname']) ?></option><?php endforeach; ?></select></div>
       <div class="col-span-2"><label class="block text-sm font-medium text-gray-600 mb-1">Adresse</label><input type="text" name="address" value="<?= e($j['address']) ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>
       <div><label class="block text-sm font-medium text-gray-600 mb-1">Türcode</label><input type="text" name="code_door" value="<?= e($j['code_door']) ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>
@@ -142,7 +143,7 @@ include __DIR__ . '/../includes/layout.php';
         <select name="platform" class="w-full px-3 py-2.5 border rounded-xl"><?php foreach (['admin','website','whatsapp','airbnb','botsailor'] as $p): ?><option value="<?= $p ?>" <?= $p===$j['platform']?'selected':'' ?>><?= ucfirst($p) ?></option><?php endforeach; ?></select></div>
       <div><label class="block text-sm font-medium text-gray-600 mb-1">Wiederholung</label>
         <select name="job_for" class="w-full px-3 py-2.5 border rounded-xl"><option value="">Einmalig</option><?php foreach (['daily'=>'Täglich','weekly'=>'Wöchentlich','weekly2'=>'Alle 2 Wo','weekly3'=>'Alle 3 Wo','weekly4'=>'Monatlich'] as $k=>$v): ?><option value="<?= $k ?>" <?= $k===$j['job_for']?'selected':'' ?>><?= $v ?></option><?php endforeach; ?></select></div>
-      <div class="col-span-2"><label class="block text-sm font-medium text-gray-600 mb-1">Nachricht an Mitarbeiter</label><textarea name="emp_message" rows="2" class="w-full px-3 py-2.5 border rounded-xl"><?= e($j['emp_message']) ?></textarea></div>
+      <div class="col-span-2"><label class="block text-sm font-medium text-gray-600 mb-1">Nachricht an Partner</label><textarea name="emp_message" rows="2" class="w-full px-3 py-2.5 border rounded-xl"><?= e($j['emp_message']) ?></textarea></div>
       <div class="col-span-2"><label class="block text-sm font-medium text-gray-600 mb-1">Notizen</label><textarea name="job_note" rows="2" class="w-full px-3 py-2.5 border rounded-xl"><?= e($j['job_note']) ?></textarea></div>
       <div class="col-span-2 flex gap-3 mt-2">
         <button type="button" onclick="document.getElementById('editJobModal').classList.add('hidden')" class="flex-1 px-4 py-2.5 border rounded-xl text-gray-600">Abbrechen</button>
@@ -160,7 +161,7 @@ include __DIR__ . '/../includes/layout.php';
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
       <div class="flex flex-wrap gap-2">
         <select id="empFilter" class="px-3 py-2 border rounded-lg text-sm">
-          <option value="">Alle Mitarbeiter</option>
+          <option value="">Alle Partner</option>
           <?php foreach ($employees as $emp): ?><option value="<?= $emp['emp_id'] ?>"><?= e($emp['name'].' '.$emp['surname']) ?></option><?php endforeach; ?>
         </select>
         <select id="statusFilter" class="px-3 py-2 border rounded-lg text-sm">
@@ -238,7 +239,7 @@ include __DIR__ . '/../includes/layout.php';
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Mitarbeiter</label>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Partner</label>
           <select id="qe_employee" class="w-full px-3 py-2 border rounded-lg text-sm">
             <option value="">— kein MA —</option>
             <?php foreach ($employees as $emp): ?><option value="<?= $emp['emp_id'] ?>"><?= e($emp['name'].' '.$emp['surname']) ?></option><?php endforeach; ?>
@@ -359,7 +360,7 @@ $custJson = json_encode(array_map(fn($c) => ['id'=>$c['customer_id'],'name'=>$c[
       <div><label class="block text-xs font-medium text-gray-500 mb-1">Uhrzeit</label><input type="time" name="j_time" id="newJobTime" required value="09:00" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">Stunden</label><input type="number" name="j_hours" id="newJobHours" required value="3" step="0.5" min="1" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
       <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1">Mitarbeiter</label>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Partner</label>
         <select name="emp_id_fk" class="w-full px-3 py-2 border rounded-xl text-sm">
           <option value="">Später zuweisen</option>
           <?php foreach ($employees as $emp): ?><option value="<?= $emp['emp_id'] ?>"><?= e($emp['name'].' '.$emp['surname']) ?></option><?php endforeach; ?>
@@ -388,7 +389,7 @@ $custJson = json_encode(array_map(fn($c) => ['id'=>$c['customer_id'],'name'=>$c[
           <option value="whatsapp">WhatsApp</option><option value="airbnb">Airbnb</option>
         </select>
       </div>
-      <div class="col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Nachricht an Mitarbeiter</label><textarea name="emp_message" rows="2" class="w-full px-3 py-2 border rounded-xl text-sm"></textarea></div>
+      <div class="col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Nachricht an Partner</label><textarea name="emp_message" rows="2" class="w-full px-3 py-2 border rounded-xl text-sm"></textarea></div>
       <div class="col-span-2 flex gap-3 mt-1">
         <button type="button" onclick="document.getElementById('addJobModal').classList.add('hidden')" class="flex-1 px-4 py-2.5 border rounded-xl text-gray-600 text-sm">Abbrechen</button>
         <button type="submit" id="addJobBtn" class="flex-1 px-4 py-2.5 bg-brand text-white rounded-xl font-medium text-sm">Job erstellen</button>

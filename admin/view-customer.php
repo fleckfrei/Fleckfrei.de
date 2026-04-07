@@ -7,6 +7,7 @@ if (!$cid) { header('Location: /admin/customers.php'); exit; }
 
 // Handle save
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrf()) { header('Location: ' . $_SERVER['REQUEST_URI']); exit; }
     $act = $_POST['action'] ?? '';
     if ($act === 'save') {
         // Build permissions JSON from checkboxes
@@ -44,7 +45,7 @@ $title = $c['name']; $page = 'customers';
 $tab = $_GET['tab'] ?? 'info';
 
 // Customer data
-$addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=?", [$cid]);
+try { $addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=?", [$cid]); } catch (Exception $e) { $addresses = []; }
 $jobs = all("SELECT j.*, s.title as stitle, e.name as ename, e.surname as esurname FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id WHERE j.customer_id_fk=? AND j.status=1 ORDER BY j.j_date DESC LIMIT 100", [$cid]);
 $invoices = all("SELECT inv_id, customer_id_fk, invoice_number, issue_date, total_price, remaining_price, invoice_paid FROM invoices WHERE customer_id_fk=? ORDER BY issue_date DESC", [$cid]);
 $services = all("SELECT * FROM services WHERE customer_id_fk=? AND status=1", [$cid]);
@@ -159,7 +160,7 @@ include __DIR__ . '/../includes/layout.php';
           'Jobs' => [
             'jobs' => ['Jobs sehen', 'Liste eigener Jobs'],
             'jobs_status' => ['— Status', 'Status-Badge sehen'],
-            'jobs_ma' => ['— Mitarbeiter', 'Wer kommt'],
+            'jobs_ma' => ['— Partner', 'Wer kommt'],
             'jobs_adresse' => ['— Adresse', 'Adresse sehen'],
             'jobs_zeit' => ['— Start/Ende', 'Echte Zeiten sehen'],
             'cancel' => ['— Stornieren', 'Jobs selbst absagen'],
@@ -175,7 +176,7 @@ include __DIR__ . '/../includes/layout.php';
             'workhours' => ['Arbeitsstunden sehen', 'Stunden-Übersicht'],
             'wh_datum' => ['— Datum', 'Wann gearbeitet'],
             'wh_service' => ['— Service', 'Welcher Service'],
-            'wh_mitarbeiter' => ['— Mitarbeiter', 'Wer gearbeitet hat'],
+            'wh_mitarbeiter' => ['— Partner', 'Wer gearbeitet hat'],
             'wh_stunden' => ['— Stunden', 'Wie lange'],
             'wh_start_ende' => ['— Start/Ende', 'Echte Start- & Endzeit'],
             'wh_umsatz' => ['— Preis/Umsatz', 'Kosten pro Job'],
@@ -247,7 +248,7 @@ include __DIR__ . '/../includes/layout.php';
         <th class="px-4 py-3 text-left font-medium text-gray-600">Datum</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Zeit</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Service</th>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">Mitarbeiter</th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600">Partner</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Std</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Status</th>
       </tr></thead>
@@ -341,7 +342,7 @@ foreach ($wh as $w) {
       <thead class="bg-gray-50"><tr>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Datum</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Service</th>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">Mitarbeiter</th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600">Partner</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Std (real)</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Std (Kunde)</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">€/h</th>

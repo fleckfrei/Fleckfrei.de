@@ -21,10 +21,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'imperso
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrf()) { header('Location: ' . $_SERVER['REQUEST_URI']); exit; }
     $act = $_POST['action'] ?? '';
     if ($act === 'add_customer') {
-        q("INSERT INTO customer (name,surname,email,phone,customer_type,password,status,email_permissions) VALUES (?,?,?,?,?,'0000',1,'all')",
-          [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['customer_type']??'Private']);
+        $tempPass = bin2hex(random_bytes(4));
+        $hashedPass = password_hash($tempPass, PASSWORD_BCRYPT, ['cost' => 12]);
+        q("INSERT INTO customer (name,surname,email,phone,customer_type,password,status,email_permissions) VALUES (?,?,?,?,?,?,1,'all')",
+          [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['customer_type']??'Private',$hashedPass]);
         global $db; $cid = $db->lastInsertId();
         if ($_POST['email']) q("INSERT INTO users (email,type) VALUES (?,'customer')", [$_POST['email']]);
         header("Location: /admin/customers.php?added=$cid"); exit;
@@ -120,10 +123,10 @@ include __DIR__ . '/../includes/layout.php';
           <div class="flex gap-1">
             <a href="/admin/view-customer.php?id=<?= $row['customer_id'] ?>" class="px-2 py-1 text-xs bg-brand text-white rounded-lg">Öffnen</a>
             <?php if ($tab === 'archive'): ?>
-              <form method="POST" class="inline"><input type="hidden" name="action" value="reactivate_customer"/><input type="hidden" name="customer_id" value="<?= $row['customer_id'] ?>"/><button class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg font-medium">Aktivieren</button></form>
+              <form method="POST" class="inline"><input type="hidden" name="action" value="reactivate_customer"/><input type="hidden" name="customer_id" value="<?= $row['customer_id'] ?>"/><?= csrfField() ?><button class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg font-medium">Aktivieren</button></form>
             <?php else: ?>
               <form method="POST" class="inline"><input type="hidden" name="action" value="impersonate"/><input type="hidden" name="customer_id" value="<?= $row['customer_id'] ?>"/><input type="hidden" name="_csrf" value="<?= csrfToken() ?>"/><button class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg">Login</button></form>
-              <form method="POST" class="inline" onsubmit="return confirm('Kunde deaktivieren?')"><input type="hidden" name="action" value="delete_customer"/><input type="hidden" name="customer_id" value="<?= $row['customer_id'] ?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Archiv</button></form>
+              <form method="POST" class="inline" onsubmit="return confirm('Kunde deaktivieren?')"><input type="hidden" name="action" value="delete_customer"/><input type="hidden" name="customer_id" value="<?= $row['customer_id'] ?>"/><?= csrfField() ?><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Archiv</button></form>
             <?php endif; ?>
           </div>
         </td>
@@ -139,6 +142,7 @@ include __DIR__ . '/../includes/layout.php';
       <div class="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl m-4">
         <h3 class="text-lg font-semibold mb-4" x-text="c.customer_id ? 'Kunde bearbeiten' : 'Neuer Kunde'"></h3>
         <form method="POST" class="space-y-4">
+          <?= csrfField() ?>
           <input type="hidden" name="action" :value="c.customer_id ? 'edit_customer' : 'add_customer'"/>
           <input type="hidden" name="customer_id" :value="c.customer_id"/>
           <div class="grid grid-cols-2 gap-4">

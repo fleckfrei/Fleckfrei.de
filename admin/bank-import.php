@@ -8,6 +8,7 @@ $matched = 0;
 $unmatched = 0;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrf()) { header('Location: /admin/bank-import.php'); exit; }
     $act = $_POST['action'] ?? '';
 
     // Process CSV upload
@@ -118,8 +119,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Check bank connection status (before layout)
+$obAccountFile = __DIR__ . '/../includes/openbanking_account.txt';
+$obAccountIds = [];
+if (file_exists($obAccountFile)) {
+    $obAccountIds = array_filter(array_map('trim', explode("\n", file_get_contents($obAccountFile))));
+    $obAccountIds = array_filter($obAccountIds, fn($a) => $a && $a !== 'Array');
+}
+$obAccountId = $obAccountIds[0] ?? OPENBANKING_ACCOUNT_ID;
+$obConnected = !empty($obAccountId) && $obAccountId !== 'Array';
+
 include __DIR__ . '/../includes/layout.php';
 ?>
+
+<?php if (!empty($_GET['connected'])): ?>
+<div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">N26 erfolgreich verbunden!</div>
+<?php endif; ?>
 
 <?php if (!empty($_GET['applied'])): ?>
 <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4"><?= (int)$_GET['applied'] ?> Zahlungen verbucht!</div>
@@ -132,33 +147,24 @@ include __DIR__ . '/../includes/layout.php';
   <!-- Auto Bank (Open Banking) -->
   <div class="bg-white rounded-xl border p-6">
     <div class="flex items-start gap-4">
-      <div class="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
-        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      <div class="w-12 h-12 rounded-xl <?= $obConnected ? 'bg-green-50' : 'bg-brand/10' ?> flex items-center justify-center flex-shrink-0">
+        <svg class="w-6 h-6 <?= $obConnected ? 'text-green-600' : 'text-brand' ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
       </div>
       <div class="flex-1">
         <div class="flex items-center gap-2 mb-1">
           <h2 class="text-lg font-semibold">Automatischer Bank-Import</h2>
-          <?php if (FEATURE_AUTO_BANK && OPENBANKING_ACCOUNT_ID): ?>
+          <?php if ($obConnected): ?>
           <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700">Verbunden</span>
           <?php else: ?>
-          <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-500">Nicht konfiguriert</span>
+          <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-500">Nicht verbunden</span>
           <?php endif; ?>
         </div>
         <p class="text-sm text-gray-500 mb-4">Verbinde dein N26 Konto direkt. Zahlungen werden automatisch gematcht — täglich um 9 Uhr, ohne manuellen Aufwand.</p>
 
-        <?php
-        $obAccountFile = __DIR__ . '/../includes/openbanking_account.txt';
-        $obAccountIds = [];
-        if (file_exists($obAccountFile)) {
-            $obAccountIds = array_filter(array_map('trim', explode("\n", file_get_contents($obAccountFile))));
-            $obAccountIds = array_filter($obAccountIds, fn($a) => $a && $a !== 'Array');
-        }
-        $obAccountId = $obAccountIds[0] ?? OPENBANKING_ACCOUNT_ID;
-        $obConnected = !empty($obAccountId) && $obAccountId !== 'Array';
-        ?>
+        <?php // $obConnected already set above ?>
         <?php if ($obConnected): ?>
         <div class="flex gap-3 mb-3">
-          <button onclick="runAutoSync()" id="syncBtn" class="px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium text-sm">Jetzt synchronisieren</button>
+          <button onclick="runAutoSync()" id="syncBtn" class="px-4 py-2.5 bg-brand text-white rounded-xl font-medium text-sm">Jetzt synchronisieren</button>
           <span id="syncStatus" class="text-sm text-gray-400 self-center"></span>
         </div>
         <p class="text-xs text-gray-400">Account: <?= e($obAccountId) ?> | Automatisch täglich 9 Uhr</p>

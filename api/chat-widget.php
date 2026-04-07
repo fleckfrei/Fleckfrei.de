@@ -95,7 +95,7 @@ try {
                 ->execute([$name . ' [' . $chatId . ']', $msg]);
 
             // n8n webhook for KI auto-reply
-            @file_get_contents('https://n8n.la-renting.com/webhook/fleckfrei-v2-message', false, stream_context_create([
+            @file_get_contents(N8N_WEBHOOK_MESSAGE, false, stream_context_create([
                 'http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n", 'timeout'=>3,
                     'content'=>json_encode([
                         'event' => 'widget_message',

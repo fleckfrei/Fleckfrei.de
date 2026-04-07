@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'imperso
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrf()) { header('Location: ' . $_SERVER['REQUEST_URI']); exit; }
     $act = $_POST['action'] ?? '';
     if ($act === 'add_employee') {
         $pwd = $_POST['password'] ?? '';
@@ -117,12 +118,12 @@ include __DIR__ . '/../includes/layout.php';
       <td class="px-4 py-3">
         <div class="flex gap-1">
           <?php if ($tab === 'archive'): ?>
-            <form method="POST" class="inline"><input type="hidden" name="action" value="reactivate_employee"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><button class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg font-medium">Aktivieren</button></form>
+            <form method="POST" class="inline"><input type="hidden" name="action" value="reactivate_employee"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><?= csrfField() ?><button class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg font-medium">Aktivieren</button></form>
           <?php else: ?>
             <a href="/admin/view-employee.php?id=<?= $e2['emp_id'] ?>" class="px-2 py-1 text-xs bg-brand text-white rounded-lg">Öffnen</a>
             <button @click='emp=<?= json_encode(["emp_id"=>$e2["emp_id"],"name"=>$e2["name"],"surname"=>$e2["surname"],"email"=>$e2["email"],"phone"=>$e2["phone"],"tariff"=>$e2["tariff"],"location"=>$e2["location"]??"","nationality"=>$e2["nationality"]??"","status"=>$e2["status"],"notes"=>$e2["notes"]??""],JSON_HEX_APOS) ?>; editOpen=true' class="px-2 py-1 text-xs bg-brand/10 text-brand rounded-lg">Edit</button>
             <form method="POST" class="inline"><input type="hidden" name="action" value="impersonate"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><input type="hidden" name="_csrf" value="<?= csrfToken() ?>"/><button class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg">Login</button></form>
-            <form method="POST" class="inline" onsubmit="return confirm('Partner archivieren?')"><input type="hidden" name="action" value="delete_employee"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Archiv</button></form>
+            <form method="POST" class="inline" onsubmit="return confirm('Partner archivieren?')"><input type="hidden" name="action" value="delete_employee"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><?= csrfField() ?><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Archiv</button></form>
           <?php endif; ?>
         </div>
       </td>
@@ -135,6 +136,7 @@ include __DIR__ . '/../includes/layout.php';
       <div class="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl m-4">
         <h3 class="text-lg font-semibold mb-4" x-text="emp.emp_id ? 'Partner bearbeiten' : 'Neuer Partner'"></h3>
         <form method="POST" class="space-y-4">
+          <?= csrfField() ?>
           <input type="hidden" name="action" :value="emp.emp_id ? 'edit_employee' : 'add_employee'"/>
           <input type="hidden" name="emp_id" :value="emp.emp_id"/>
           <div class="grid grid-cols-2 gap-4">
@@ -153,7 +155,7 @@ include __DIR__ . '/../includes/layout.php';
           <div x-show="emp.emp_id"><label class="block text-sm font-medium text-gray-600 mb-1">Status</label>
             <select name="status" class="w-full px-3 py-2.5 border rounded-xl"><option value="1" :selected="emp.status=='1'">Aktiv</option><option value="0" :selected="emp.status=='0'">Inaktiv</option></select></div>
           <div><label class="block text-sm font-medium text-gray-600 mb-1">Notizen</label><textarea name="notes" x-text="emp.notes" rows="2" class="w-full px-3 py-2.5 border rounded-xl"></textarea></div>
-          <div x-show="!emp.emp_id"><label class="block text-sm font-medium text-gray-600 mb-1">Passwort</label><input name="password" value="0000" class="w-full px-3 py-2.5 border rounded-xl"/></div>
+          <div x-show="!emp.emp_id"><label class="block text-sm font-medium text-gray-600 mb-1">Passwort</label><input name="password" value="<?= bin2hex(random_bytes(4)) ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>
           <div class="flex gap-3"><button type="button" @click="editOpen=false" class="flex-1 px-4 py-2.5 border rounded-xl">Abbrechen</button><button type="submit" class="flex-1 px-4 py-2.5 bg-brand text-white rounded-xl font-medium">Speichern</button></div>
         </form>
       </div>

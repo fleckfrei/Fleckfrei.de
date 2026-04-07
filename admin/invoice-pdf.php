@@ -16,29 +16,47 @@ $inv = one("SELECT i.*, c.name as cname, c.surname as csurname, c.email as cemai
     FROM invoices i LEFT JOIN customer c ON i.customer_id_fk=c.customer_id WHERE i.inv_id=?", [$invId]);
 if (!$inv) { header('Location: /admin/invoices.php'); exit; }
 
-// Get customer address
-$addr = one("SELECT * FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC LIMIT 1", [$inv['customer_id_fk']]);
+// Get customer address (table may not exist in local DB)
+try {
+    $addr = one("SELECT * FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC LIMIT 1", [$inv['customer_id_fk']]);
+} catch (Exception $e) { $addr = null; }
 
 // Get linked jobs (line items)
 $jobs = all("SELECT j.*, s.title as stitle, s.total_price as sprice, e.name as ename
     FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
     WHERE j.invoice_id=? ORDER BY j.j_date", [$invId]);
 
-// Get payments
-$payments = all("SELECT * FROM invoice_payments WHERE invoice_id_fk=? ORDER BY payment_date", [$invId]);
+// Get payments (table may not exist in local DB)
+try {
+    $payments = all("SELECT * FROM invoice_payments WHERE invoice_id_fk=? ORDER BY payment_date", [$invId]);
+} catch (Exception $e) {
+    // Create table if missing
+    try {
+        q("CREATE TABLE IF NOT EXISTS invoice_payments (
+            ip_id INT AUTO_INCREMENT PRIMARY KEY,
+            invoice_id_fk INT NOT NULL,
+            amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+            payment_date DATE DEFAULT NULL,
+            payment_method VARCHAR(50) DEFAULT '',
+            note TEXT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+    } catch (Exception $e2) {}
+    $payments = [];
+}
 
 // Calculate line items
 $lines = [];
 $subtotal = 0;
 foreach ($jobs as $j) {
-    $hrs = max(MIN_HOURS, $j['total_hours'] ?: $j['j_hours']);
-    $price = $j['sprice'] ?: 0;
+    $hrs = max(MIN_HOURS, ($j['total_hours'] ?: $j['j_hours']) ?: 0);
+    $price = ($j['sprice'] ?? 0) ?: 0;
     $lineTotal = round($hrs * $price, 2);
     $subtotal += $lineTotal;
     $lines[] = [
         'date' => $j['j_date'],
-        'service' => $j['stitle'] ?: 'Reinigung',
-        'address' => $j['address'],
+        'service' => $j['stitle'] ?: 'Service',
+        'address' => $j['address'] ?? '',
         'hours' => $hrs,
         'rate' => $price,
         'total' => $lineTotal,
@@ -47,23 +65,26 @@ foreach ($jobs as $j) {
 
 // If no linked jobs, use invoice totals directly
 if (empty($lines)) {
-    $subtotal = (float)($inv['price'] ?: $inv['total_price'] / (1 + TAX_RATE));
+    $subtotal = (float)(($inv['price'] ?? 0) ?: ($inv['total_price'] ?? 0) / (1 + TAX_RATE));
 }
 
 $tax = round($subtotal * TAX_RATE, 2);
 $total = round($subtotal + $tax, 2);
 
 // Use actual invoice total if it differs (legacy invoices)
-if (abs($total - (float)$inv['total_price']) > 0.1 && (float)$inv['total_price'] > 0) {
+if (abs($total - (float)($inv['total_price'] ?? 0)) > 0.1 && (float)($inv['total_price'] ?? 0) > 0) {
     $total = (float)$inv['total_price'];
     $tax = round($total - $total / (1 + TAX_RATE), 2);
     $subtotal = $total - $tax;
 }
 
-$paidAmount = $total - (float)$inv['remaining_price'];
+$paidAmount = $total - (float)($inv['remaining_price'] ?? 0);
 
 // Settings for company details
-$settings = one("SELECT * FROM settings LIMIT 1");
+try {
+    $settings = one("SELECT * FROM settings LIMIT 1");
+} catch (Exception $e) { $settings = []; }
+if (!$settings) $settings = [];
 ?>
 <!DOCTYPE html>
 <html lang="de">

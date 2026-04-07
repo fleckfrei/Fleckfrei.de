@@ -175,15 +175,10 @@ function autoApplyMatches($matched) {
         $newRemaining = max(0, $inv['remaining_price'] - $amount);
         $paid = $newRemaining <= 0 ? 'yes' : 'no';
         q("UPDATE invoices SET remaining_price=?, invoice_paid=? WHERE inv_id=?", [$newRemaining, $paid, (int)$inv['inv_id']]);
-        // invoice_payments table (compatible with both DB schemas)
         try {
-            q("INSERT INTO invoice_payments (inv_id_fk, issue_date, price, remarks) VALUES (?,?,?,?)",
-                [(int)$inv['inv_id'], $m['tx']['date'] ?: date('Y-m-d'), $amount, 'Bank Auto: ' . $m['type']]);
-        } catch (Exception $e) {
-            // Try alternative column names
-            try { q("INSERT INTO invoice_payments (invoice_id_fk, amount, payment_date, payment_method, note) VALUES (?,?,?,?,?)",
-                [(int)$inv['inv_id'], $amount, $m['tx']['date'] ?: date('Y-m-d'), 'Bank (Auto)', 'Auto: ' . $m['type']]); } catch (Exception $e2) {}
-        }
+            q("INSERT INTO invoice_payments (invoice_id_fk, amount, payment_date, payment_method, note) VALUES (?,?,?,?,?)",
+                [(int)$inv['inv_id'], $amount, $m['tx']['date'] ?: date('Y-m-d'), 'Überweisung', 'Bank Auto: ' . $m['type']]);
+        } catch (Exception $e) {}
         audit('auto_payment', 'invoice', (int)$inv['inv_id'], "Bank Auto: {$amount} EUR, {$m['type']}");
         $applied++;
     }

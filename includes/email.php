@@ -69,7 +69,7 @@ function notifyBookingConfirmation($jobId) {
     $date = date('d.m.Y', strtotime($job['j_date']));
     $time = substr($job['j_time'], 0, 5);
     $hours = $job['j_hours'];
-    $service = $job['stitle'] ?: 'Reinigung';
+    $service = $job['stitle'] ?: 'Service';
     $partner = $job['ename'] ?: 'wird zugewiesen';
     $address = $job['address'] ?: '';
 
@@ -100,7 +100,7 @@ function notifyJobStarted($jobId) {
 
     $content = "<p><strong>{$partner}</strong> hat den Job gestartet.</p>
     <table style='width:100%;border-collapse:collapse;margin:20px 0'>
-      <tr><td style='padding:8px 0;color:#6b7280;width:120px'>Service:</td><td style='padding:8px 0;font-weight:600'>" . ($job['stitle'] ?: 'Reinigung') . "</td></tr>
+      <tr><td style='padding:8px 0;color:#6b7280;width:120px'>Service:</td><td style='padding:8px 0;font-weight:600'>" . ($job['stitle'] ?: 'Service') . "</td></tr>
       <tr><td style='padding:8px 0;color:#6b7280'>Gestartet:</td><td style='padding:8px 0;font-weight:600'>$date um $time Uhr</td></tr>
     </table>";
 
@@ -119,7 +119,7 @@ function notifyJobCompleted($jobId) {
 
     $content = "<p>Ihr Job wurde erfolgreich abgeschlossen!</p>
     <table style='width:100%;border-collapse:collapse;margin:20px 0'>
-      <tr><td style='padding:8px 0;color:#6b7280;width:120px'>Service:</td><td style='padding:8px 0;font-weight:600'>" . ($job['stitle'] ?: 'Reinigung') . "</td></tr>
+      <tr><td style='padding:8px 0;color:#6b7280;width:120px'>Service:</td><td style='padding:8px 0;font-weight:600'>" . ($job['stitle'] ?: 'Service') . "</td></tr>
       <tr><td style='padding:8px 0;color:#6b7280'>Datum:</td><td style='padding:8px 0;font-weight:600'>$date</td></tr>
       <tr><td style='padding:8px 0;color:#6b7280'>Dauer:</td><td style='padding:8px 0;font-weight:600'>{$hours}h</td></tr>
     </table>
@@ -160,7 +160,7 @@ function notifyJobReminder($jobId) {
 
     $content = "<p>Erinnerung: Morgen steht ein Termin an!</p>
     <table style='width:100%;border-collapse:collapse;margin:20px 0'>
-      <tr><td style='padding:8px 0;color:#6b7280;width:120px'>Service:</td><td style='padding:8px 0;font-weight:600'>" . ($job['stitle'] ?: 'Reinigung') . "</td></tr>
+      <tr><td style='padding:8px 0;color:#6b7280;width:120px'>Service:</td><td style='padding:8px 0;font-weight:600'>" . ($job['stitle'] ?: 'Service') . "</td></tr>
       <tr><td style='padding:8px 0;color:#6b7280'>Wann:</td><td style='padding:8px 0;font-weight:600'>$date um $time Uhr</td></tr>
       <tr><td style='padding:8px 0;color:#6b7280'>Partner:</td><td style='padding:8px 0'>" . ($job['ename'] ?: 'wird zugewiesen') . "</td></tr>
     </table>

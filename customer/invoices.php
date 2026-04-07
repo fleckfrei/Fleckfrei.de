@@ -14,7 +14,7 @@ include __DIR__ . '/../includes/layout.php';
 <?php if ($totalUnpaid > 0): ?>
 <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 flex items-center justify-between">
   <span class="text-red-800 font-medium">Offener Betrag: <?= money($totalUnpaid) ?></span>
-  <a href="https://wa.me/4915757010977?text=Hallo%20Fleckfrei,%20ich%20möchte%20meine%20Rechnung%20bezahlen." target="_blank" class="px-4 py-2 bg-green-500 text-white rounded-xl text-sm font-medium">Per WhatsApp bezahlen</a>
+  <a href="https://wa.me/<?= CONTACT_WA ?>?text=Hallo%20<?= urlencode(SITE) ?>,%20ich%20möchte%20meine%20Rechnung%20bezahlen." target="_blank" class="px-4 py-2 bg-green-500 text-white rounded-xl text-sm font-medium">Per WhatsApp bezahlen</a>
 </div>
 <?php endif; ?>
 

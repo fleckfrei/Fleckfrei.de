@@ -6,6 +6,7 @@ $eid = (int)($_GET['id'] ?? 0);
 if (!$eid) { header('Location: /admin/employees.php'); exit; }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrf()) { header('Location: ' . $_SERVER['REQUEST_URI']); exit; }
     $act = $_POST['action'] ?? '';
     if ($act === 'save') {
         $pw = !empty($_POST['password']) ? $_POST['password'] : null;

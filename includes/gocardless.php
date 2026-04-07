@@ -9,12 +9,12 @@ class GoCardless {
     private $token = null;
 
     public function __construct() {
-        if (!GOCARDLESS_SECRET_ID || !GOCARDLESS_SECRET_KEY) return;
+        if (!defined('GOCARDLESS_SECRET_ID') || !GOCARDLESS_SECRET_ID || !GOCARDLESS_SECRET_KEY) return;
         $this->authenticate();
     }
 
     public function isConfigured() {
-        return !empty(GOCARDLESS_SECRET_ID) && !empty(GOCARDLESS_SECRET_KEY);
+        return defined('GOCARDLESS_SECRET_ID') && !empty(GOCARDLESS_SECRET_ID) && !empty(GOCARDLESS_SECRET_KEY);
     }
 
     private function authenticate() {

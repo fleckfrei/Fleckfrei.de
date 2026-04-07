@@ -110,8 +110,8 @@ include __DIR__ . '/../includes/layout.php';
 <div class="bg-white rounded-xl border p-5">
   <h3 class="font-semibold mb-3">Kontakt</h3>
   <div class="flex gap-3">
-    <a href="https://wa.me/4915757010977" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-xl text-sm font-medium hover:bg-green-600 transition">WhatsApp</a>
-    <a href="mailto:info@fleckfrei.de" class="flex items-center gap-2 px-4 py-2 border rounded-xl text-sm font-medium hover:bg-gray-50 transition">E-Mail</a>
+    <a href="https://wa.me/<?= CONTACT_WA ?>" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-xl text-sm font-medium hover:bg-green-600 transition">WhatsApp</a>
+    <a href="mailto:<?= CONTACT_EMAIL ?>" class="flex items-center gap-2 px-4 py-2 border rounded-xl text-sm font-medium hover:bg-gray-50 transition">E-Mail</a>
   </div>
 </div>
 

@@ -264,7 +264,7 @@ try {
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename=arbeitsstunden-'.$month.'.csv');
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Datum','Zeit','Kunde','Service','Mitarbeiter','Std (real)','Std (Kunde)','€/h','Umsatz'], ';');
+            fputcsv($out, ['Datum','Zeit','Kunde','Service','Partner','Std (real)','Std (Kunde)','€/h','Umsatz'], ';');
             foreach ($rows as $r) {
                 $realH = $r['total_hours'] ?: $r['j_hours'];
                 $custH = max(2, $realH);

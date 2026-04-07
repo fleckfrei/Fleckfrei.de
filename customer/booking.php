@@ -7,7 +7,7 @@ $cid = me()['id'];
 $user = me();
 
 $customer = one("SELECT * FROM customer WHERE customer_id=?", [$cid]);
-$addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC", [$cid]);
+try { $addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC", [$cid]); } catch (Exception $e) { $addresses = []; }
 $services = all("SELECT s_id, title, total_price FROM services WHERE customer_id_fk=? AND status=1 ORDER BY title", [$cid]);
 // Fallback: show general services if customer has none
 if (empty($services)) {

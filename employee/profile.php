@@ -6,6 +6,7 @@ $user = me();
 $eid = $user['id'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'update_profile') {
+    if (!verifyCsrf()) { header('Location: /employee/profile.php'); exit; }
     q("UPDATE employee SET phone=?, iban=? WHERE emp_id=?",
       [$_POST['phone']??'', $_POST['iban']??'', $eid]);
     if (!empty($_POST['new_password'])) {

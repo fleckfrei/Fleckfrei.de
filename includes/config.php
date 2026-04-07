@@ -46,6 +46,7 @@ define('API_KEY', '***REDACTED***');
 define('N8N_WEBHOOK_BOOKING', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-booking');
 define('N8N_WEBHOOK_STATUS', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-job-status');
 define('N8N_WEBHOOK_NOTIFY', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-notify');
+define('N8N_WEBHOOK_MESSAGE', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-message');
 
 // ============================================================
 // FEATURES — An/Aus schalten pro Installation
@@ -156,3 +157,5 @@ function webhookNotify($event, $data) {
         'http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n", 'content'=>json_encode($data), 'timeout'=>3]
     ]));
 }
+
+require_once __DIR__ . '/schema.php';

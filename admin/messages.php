@@ -5,12 +5,14 @@ $title = 'Chat'; $page = 'messages';
 
 // Delete message (admin only, silent)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'delete_msg') {
+    if (!verifyCsrf()) { header('Location: ' . $_SERVER['REQUEST_URI']); exit; }
     qLocal("DELETE FROM messages WHERE msg_id=?", [(int)$_POST['msg_id']]);
     header("Location: " . $_SERVER['REQUEST_URI']); exit;
 }
 
 // Send message
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'send') {
+    if (!verifyCsrf()) { header('Location: /admin/messages.php'); exit; }
     $recipType = $_POST['recipient_type'];
     $recipId = (int)$_POST['recipient_id'];
     $msg = trim($_POST['message'] ?? '');

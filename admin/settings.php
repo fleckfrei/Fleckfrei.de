@@ -4,6 +4,7 @@ requireAdmin();
 $title = 'Einstellungen'; $page = 'settings';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'update_settings') {
+    if (!verifyCsrf()) { header('Location: /admin/settings.php'); exit; }
     $fields = ['first_name','last_name','company','phone','email','website','invoice_prefix','invoice_number','bank','bic','iban','USt_IdNr','business_number','fiscal_number','invoice_text','street','number','postal_code','city','country','note_for_email','email_booking','email_job_start','email_job_complete','email_invoice','email_reminder'];
     $checkboxes = ['email_booking','email_job_start','email_job_complete','email_invoice','email_reminder'];
     $sets = []; $params = [];

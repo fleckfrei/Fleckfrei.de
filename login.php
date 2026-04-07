@@ -21,9 +21,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = one("SELECT * FROM users WHERE email = ? LIMIT 1", [$email]);
     if ($user) {
         $t = $user['type'];
+        $allowedTables = ['admin'=>'admin','customer'=>'customer','employee'=>'employee'];
         $idMap = ['admin'=>'admin_id','customer'=>'customer_id','employee'=>'emp_id'];
         $id = $idMap[$t] ?? null;
-        if ($id) {
+        if ($id && isset($allowedTables[$t])) {
             $row = one("SELECT * FROM `$t` WHERE email = ? AND status = 1 LIMIT 1", [$email]);
             if ($row) {
                 $authenticated = false;
@@ -64,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="de">
 <head>
   <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Login — Fleckfrei</title>
+  <title>Login — <?= SITE ?></title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config={theme:{extend:{colors:{brand:'#2E7D6B'}}}}</script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
@@ -74,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="w-full max-w-md">
     <div class="text-center mb-8">
       <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand text-white text-2xl font-bold mb-4">F</div>
-      <h1 class="text-3xl font-bold text-gray-900">Fleckfrei</h1>
+      <h1 class="text-3xl font-bold text-gray-900"><?= SITE ?></h1>
       <p class="text-gray-500 mt-1">Admin Portal</p>
     </div>
     <div class="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">

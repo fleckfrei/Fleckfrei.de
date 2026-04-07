@@ -163,7 +163,7 @@ include __DIR__ . '/../includes/layout.php';
     <div class="flex items-start justify-between">
       <div>
         <div class="text-3xl font-bold text-gray-900"><?= $s['employees'] ?></div>
-        <div class="text-sm font-medium text-gray-500 mt-1">Mitarbeiter</div>
+        <div class="text-sm font-medium text-gray-500 mt-1">Partner</div>
       </div>
       <div class="w-10 h-10 rounded-lg bg-violet-50 flex items-center justify-center">
         <svg class="w-5 h-5 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
@@ -207,7 +207,7 @@ include __DIR__ . '/../includes/layout.php';
 <?php if ($unassigned > 0): ?>
 <div class="bg-yellow-50 border border-yellow-300 rounded-xl p-4 mb-6 flex items-center gap-3">
   <svg class="w-6 h-6 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-  <span class="text-yellow-800 font-medium"><?= $unassigned ?> Jobs ohne Mitarbeiter zugewiesen!</span>
+  <span class="text-yellow-800 font-medium"><?= $unassigned ?> Jobs ohne Partner zugewiesen!</span>
   <a href="/admin/jobs.php?filter=unassigned" class="ml-auto text-sm font-medium text-brand hover:underline">Anzeigen &rarr;</a>
 </div>
 <?php endif; ?>
@@ -232,7 +232,7 @@ include __DIR__ . '/../includes/layout.php';
           <th class="px-3 py-3 text-left font-medium text-gray-600">Zeit</th>
           <th class="px-3 py-3 text-left font-medium text-gray-600">Service</th>
           <th class="px-3 py-3 text-left font-medium text-gray-600">Kunde</th>
-          <th class="px-3 py-3 text-left font-medium text-gray-600">Mitarbeiter</th>
+          <th class="px-3 py-3 text-left font-medium text-gray-600">Partner</th>
           <th class="px-3 py-3 text-left font-medium text-gray-600">Std</th>
           <th class="px-3 py-3 text-left font-medium text-gray-600">Status</th>
           <th class="px-3 py-3 text-left font-medium text-gray-600">Aktionen</th>
@@ -410,11 +410,11 @@ include __DIR__ . '/../includes/layout.php';
 <!-- Assign Modal -->
 <div id="assignModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden">
   <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-    <h3 class="text-lg font-semibold mb-4">Mitarbeiter zuweisen</h3>
+    <h3 class="text-lg font-semibold mb-4">Partner zuweisen</h3>
     <form id="assignForm" onsubmit="submitAssign(event)">
       <input type="hidden" name="j_id" id="assign_jid"/>
       <select name="emp_id" id="assign_emp" class="w-full px-4 py-3 border rounded-xl mb-4" required>
-        <option value="">Mitarbeiter wählen...</option>
+        <option value="">Partner wählen...</option>
         <?php foreach (all("SELECT emp_id, name, surname FROM employee WHERE status=1 ORDER BY name") as $emp): ?>
         <option value="<?= $emp['emp_id'] ?>"><?= e($emp['name'].' '.$emp['surname']) ?></option>
         <?php endforeach; ?>
@@ -513,7 +513,7 @@ function showJobDetail(j) {
     html += r('Tatsächlich', j.real_hours ? (j.real_hours < 2 ? j.real_hours + 'h → <strong>2h (Min.)</strong>' : j.real_hours + 'h') : '-');
     html += r('Kunden-Stunden', j.customer_hours + 'h', 'text-brand');
     html += r('Kunde', j.customer + ' (' + j.type + ')');
-    html += r('Mitarbeiter', j.employee);
+    html += r('Partner', j.employee);
     html += r('Status', j.status, j.status==='CANCELLED'?'text-red-600':j.status==='COMPLETED'?'text-green-600':'');
     html += r('Adresse', j.address);
     html += r('Türcode', j.code);
