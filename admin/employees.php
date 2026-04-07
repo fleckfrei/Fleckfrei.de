@@ -3,9 +3,10 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdmin();
 $title = 'Partner'; $page = 'employees';
 
-// Impersonate employee
-if (!empty($_GET['impersonate'])) {
-    $emp = one("SELECT * FROM employee WHERE emp_id=?", [(int)$_GET['impersonate']]);
+// Impersonate employee (POST + CSRF only)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'impersonate' && !empty($_POST['emp_id'])) {
+    if (!verifyCsrf()) { header('Location: /admin/employees.php?error=csrf'); exit; }
+    $emp = one("SELECT * FROM employee WHERE emp_id=?", [(int)$_POST['emp_id']]);
     if ($emp) {
         $_SESSION['admin_uid'] = $_SESSION['uid'];
         $_SESSION['admin_uname'] = $_SESSION['uname'];
@@ -14,6 +15,7 @@ if (!empty($_GET['impersonate'])) {
         $_SESSION['uname'] = $emp['name'];
         $_SESSION['uemail'] = $emp['email'];
         $_SESSION['utype'] = 'employee';
+        audit('impersonate', 'employee', $emp['emp_id'], 'Admin logged in as employee');
         header("Location: /employee/"); exit;
     }
 }
@@ -21,8 +23,10 @@ if (!empty($_GET['impersonate'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = $_POST['action'] ?? '';
     if ($act === 'add_employee') {
+        $pwd = $_POST['password'] ?? '';
+        $hashedPwd = $pwd ? password_hash($pwd, PASSWORD_BCRYPT, ['cost' => 12]) : password_hash(bin2hex(random_bytes(4)), PASSWORD_BCRYPT, ['cost' => 12]);
         q("INSERT INTO employee (name,surname,email,phone,password,status,tariff,location,nationality,notes,email_permissions) VALUES (?,?,?,?,?,1,?,?,?,?,'all')",
-          [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['password']??'0000',$_POST['tariff']??0,$_POST['location']??'',$_POST['nationality']??'',$_POST['notes']??'']);
+          [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$hashedPwd,$_POST['tariff']??0,$_POST['location']??'',$_POST['nationality']??'',$_POST['notes']??'']);
         global $db; q("INSERT INTO users (email,type) VALUES (?,'employee')", [$_POST['email']]);
         audit('create', 'employee', $db->lastInsertId(), 'Neuer Partner: '.$_POST['name']);
         header("Location: /admin/employees.php?added=1"); exit;

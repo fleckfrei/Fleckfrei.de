@@ -568,6 +568,25 @@ try {
             return $results;
         })(),
 
+        // Security: Bulk hash all plaintext passwords
+        $action === 'security/hash-passwords' && $method === 'POST' => (function() {
+            $results = ['customer' => 0, 'employee' => 0];
+            // Hash customer passwords
+            $customers = all("SELECT customer_id, password FROM customer WHERE password != '' AND password IS NOT NULL AND password NOT LIKE '\$2y\$%'");
+            foreach ($customers as $c) {
+                q("UPDATE customer SET password=? WHERE customer_id=?", [password_hash($c['password'], PASSWORD_BCRYPT, ['cost' => 12]), $c['customer_id']]);
+                $results['customer']++;
+            }
+            // Hash employee passwords
+            $employees = all("SELECT emp_id, password FROM employee WHERE password != '' AND password IS NOT NULL AND password NOT LIKE '\$2y\$%'");
+            foreach ($employees as $e) {
+                q("UPDATE employee SET password=? WHERE emp_id=?", [password_hash($e['password'], PASSWORD_BCRYPT, ['cost' => 12]), $e['emp_id']]);
+                $results['employee']++;
+            }
+            audit('security', 'system', 0, "Bulk password hash: {$results['customer']} customers, {$results['employee']} employees");
+            return $results;
+        })(),
+
         // Email: send single notification (generic, called by n8n)
         $action === 'email/send' && $method === 'POST' => (function() use ($body) {
             if (empty($body['to']) || empty($body['subject']) || empty($body['body'])) throw new Exception('Need to, subject, body');

@@ -3,6 +3,19 @@ session_start();
 require_once __DIR__ . '/includes/config.php';
 $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Rate limiting: max 5 attempts per 15 min per IP
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $lockFile = sys_get_temp_dir() . '/fleckfrei_login_' . md5($ip);
+    $attempts = 0;
+    if (file_exists($lockFile)) {
+        $data = json_decode(file_get_contents($lockFile), true);
+        if ($data && time() - ($data['time'] ?? 0) < 900) {
+            $attempts = $data['count'] ?? 0;
+        }
+    }
+    if ($attempts >= 5) {
+        $err = 'Zu viele Anmeldeversuche. Bitte warte 15 Minuten.';
+    }
     $email = trim($_POST['email'] ?? '');
     $pass = trim($_POST['password'] ?? '');
     $user = one("SELECT * FROM users WHERE email = ? LIMIT 1", [$email]);
@@ -30,6 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 if ($authenticated) {
+                    @unlink($lockFile); // Reset rate limit on success
+                    session_regenerate_id(true); // Prevent session fixation
                     $_SESSION['uid'] = $row[$id];
                     $_SESSION['uemail'] = $email;
                     $_SESSION['uname'] = $row['name'];
@@ -40,6 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+    // Track failed attempt
+    file_put_contents($lockFile, json_encode(['count' => $attempts + 1, 'time' => time()]));
     $err = 'Falsche E-Mail oder Passwort.';
 }
 ?>

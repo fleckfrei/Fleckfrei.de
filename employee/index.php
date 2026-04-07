@@ -36,10 +36,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
             foreach ($_FILES['photos']['tmp_name'] as $i => $tmp) {
                 if ($_FILES['photos']['error'][$i] !== UPLOAD_ERR_OK) continue;
-                $ext = strtolower(pathinfo($_FILES['photos']['name'][$i], PATHINFO_EXTENSION));
-                if (!in_array($ext, ['jpg','jpeg','png','webp','heic'])) continue;
-                if ($_FILES['photos']['size'][$i] > 10 * 1024 * 1024) continue; // 10MB max
-                $fname = date('His') . '_' . ($i+1) . '.' . $ext;
+                if ($_FILES['photos']['size'][$i] > 10 * 1024 * 1024) continue;
+                // MIME type check
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $mime = $finfo->file($tmp);
+                $allowedMimes = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp','image/heic'=>'heic'];
+                if (!isset($allowedMimes[$mime])) continue;
+                // Verify it's a real image
+                if ($mime !== 'image/heic' && @getimagesize($tmp) === false) continue;
+                $ext = $allowedMimes[$mime];
+                $fname = bin2hex(random_bytes(8)) . '.' . $ext;
                 if (move_uploaded_file($tmp, $uploadDir . $fname)) {
                     $photos[] = $fname;
                 }

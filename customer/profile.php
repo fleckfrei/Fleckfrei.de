@@ -5,6 +5,15 @@ if (!customerCan('profile')) { header('Location: /customer/'); exit; }
 $title = 'Mein Profil'; $page = 'profile';
 $cid = me()['id'];
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'delete_account') {
+    if (!verifyCsrf()) { header('Location: /customer/profile.php?error=csrf'); exit; }
+    // Deactivate account (data retained for legal/business purposes)
+    q("UPDATE customer SET status=0 WHERE customer_id=?", [$cid]);
+    audit('deactivate', 'customer', $cid, 'Kunde hat Konto deaktiviert');
+    telegramNotify("Kunde #$cid hat sein Konto deaktiviert. Daten bleiben erhalten.");
+    session_destroy();
+    header('Location: /login.php?deactivated=1'); exit;
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'update_profile') {
     q("UPDATE customer SET name=?,surname=?,phone=?,notes=? WHERE customer_id=?",
       [$_POST['name'],$_POST['surname']??'',$_POST['phone']??'',$_POST['notes']??'',$cid]);
@@ -58,13 +67,34 @@ include __DIR__ . '/../includes/layout.php';
       <?php endif; ?>
     </div>
 
-    <div class="bg-brand/5 rounded-xl border border-brand/20 p-5">
-      <h3 class="font-semibold text-brand mb-3">Hilfe benötigt?</h3>
+    <div class="bg-brand/5 rounded-xl border border-brand/20 p-5 mb-6">
+      <h3 class="font-semibold text-brand mb-3">Hilfe & Kontakt</h3>
       <div class="space-y-2">
-        <a href="https://wa.me/4915757010977" target="_blank" class="flex items-center gap-2 text-sm text-green-700 hover:underline">💬 WhatsApp kontaktieren</a>
-        <a href="https://t.me/fleckfrei_bot" target="_blank" class="flex items-center gap-2 text-sm text-blue-700 hover:underline">📱 Telegram Bot</a>
-        <a href="mailto:info@fleckfrei.de" class="flex items-center gap-2 text-sm text-gray-700 hover:underline">📧 info@fleckfrei.de</a>
+        <a href="https://wa.me/<?= CONTACT_WA ?>" target="_blank" class="flex items-center gap-2 text-sm text-green-700 hover:underline">WhatsApp kontaktieren</a>
+        <a href="mailto:<?= CONTACT_EMAIL ?>" class="flex items-center gap-2 text-sm text-gray-700 hover:underline"><?= CONTACT_EMAIL ?></a>
       </div>
+    </div>
+
+    <!-- GDPR -->
+    <div class="bg-white rounded-xl border p-5 mb-6">
+      <h3 class="font-semibold mb-3">Datenschutz (DSGVO)</h3>
+      <div class="text-sm text-gray-500 space-y-2">
+        <p>Wir speichern Ihre Kontaktdaten (Name, E-Mail, Telefon), Adressen und Job-Verlauf zur Vertragserfüllung gemäß Art. 6 Abs. 1b DSGVO.</p>
+        <p>GPS-Daten werden nur bei Job-Start/Stop erfasst zur Qualitätssicherung.</p>
+        <p>Sie haben das Recht auf Auskunft, Berichtigung und Löschung Ihrer Daten (Art. 15-17 DSGVO).</p>
+        <p>Verantwortlich: <?= SITE ?>, <?= CONTACT_EMAIL ?></p>
+      </div>
+    </div>
+
+    <!-- Account deaktivieren -->
+    <div class="bg-red-50 rounded-xl border border-red-200 p-5">
+      <h3 class="font-semibold text-red-700 mb-2">Konto deaktivieren</h3>
+      <p class="text-sm text-red-600 mb-3">Ihr Konto wird deaktiviert. Sie können es jederzeit durch Kontakt mit uns reaktivieren.</p>
+      <form method="POST" onsubmit="return confirm('Konto wirklich deaktivieren?')">
+        <input type="hidden" name="action" value="delete_account"/>
+        <?= csrfField() ?>
+        <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-medium">Konto deaktivieren</button>
+      </form>
     </div>
   </div>
 </div>

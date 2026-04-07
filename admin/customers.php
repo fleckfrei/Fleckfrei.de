@@ -3,20 +3,19 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdmin();
 $title = 'Kunden'; $page = 'customers';
 
-// Handle POST
-// Impersonate: Admin logs in as customer
-if (!empty($_GET['impersonate'])) {
-    $cust = one("SELECT * FROM customer WHERE customer_id=?", [(int)$_GET['impersonate']]);
+// Impersonate: Admin logs in as customer (POST + CSRF only)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'impersonate' && !empty($_POST['customer_id'])) {
+    if (!verifyCsrf()) { header('Location: /admin/customers.php?error=csrf'); exit; }
+    $cust = one("SELECT * FROM customer WHERE customer_id=?", [(int)$_POST['customer_id']]);
     if ($cust) {
-        // Save admin session to return later
         $_SESSION['admin_uid'] = $_SESSION['uid'];
         $_SESSION['admin_uname'] = $_SESSION['uname'];
         $_SESSION['admin_uemail'] = $_SESSION['uemail'];
-        // Switch to customer
         $_SESSION['uid'] = $cust['customer_id'];
         $_SESSION['uname'] = $cust['name'];
         $_SESSION['uemail'] = $cust['email'];
         $_SESSION['utype'] = 'customer';
+        audit('impersonate', 'customer', $cust['customer_id'], 'Admin logged in as customer');
         header("Location: /customer/"); exit;
     }
 }
