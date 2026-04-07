@@ -572,30 +572,39 @@ try {
             return ['sent' => $ok];
         })(),
 
-        // Sync: bulk update job statuses from external system (la-renting)
+        // Sync: FULL sync from La-Renting — all fields, every minute
         $action === 'sync/jobs' && $method === 'POST' => (function() use ($body) {
             if (empty($body['jobs']) || !is_array($body['jobs'])) throw new Exception('Need jobs array');
-            $updated = 0;
-            $skipped = 0;
+            $updated = 0; $skipped = 0;
+            $syncFields = ['job_status','j_date','j_time','j_hours','total_hours','start_time','end_time',
+                'start_location','end_location','is_start_location','is_end_location',
+                'emp_id_fk','customer_id_fk','s_id_fk','cancel_date','cancelled_role','cancelled_by',
+                'job_note','job_for','address','code_door','platform','emp_message','optional_products',
+                'no_people','guest_name','guest_phone','guest_email','guest_checkout_date','guest_checkout_time',
+                'check_in_date','check_in_time','invoice_id','recurring_group','status'];
+
             foreach ($body['jobs'] as $j) {
-                if (empty($j['j_id']) || empty($j['job_status'])) { $skipped++; continue; }
-                // Only update if status actually changed
-                $current = one("SELECT job_status, start_time, end_time, total_hours FROM jobs WHERE j_id=?", [$j['j_id']]);
+                if (empty($j['j_id'])) { $skipped++; continue; }
+                $current = one("SELECT job_status, start_time, end_time, total_hours, emp_id_fk, status FROM jobs WHERE j_id=?", [$j['j_id']]);
                 if (!$current) { $skipped++; continue; }
-                if ($current['job_status'] === $j['job_status'] && ($current['start_time'] ?? '') === ($j['start_time'] ?? '')) { $skipped++; continue; }
 
-                $sets = ['job_status=?'];
-                $params = [$j['job_status']];
+                // Check if anything changed (quick check on key fields)
+                $changed = $current['job_status'] !== ($j['job_status']??'')
+                    || ($current['start_time']??'') !== ($j['start_time']??'')
+                    || ($current['end_time']??'') !== ($j['end_time']??'')
+                    || ($current['total_hours']??'') != ($j['total_hours']??'')
+                    || ($current['emp_id_fk']??'') != ($j['emp_id_fk']??'')
+                    || ($current['status']??'') != ($j['status']??'');
+                if (!$changed) { $skipped++; continue; }
 
-                if (!empty($j['start_time'])) { $sets[] = 'start_time=?'; $params[] = $j['start_time']; }
-                if (!empty($j['end_time'])) { $sets[] = 'end_time=?'; $params[] = $j['end_time']; }
-                if (!empty($j['total_hours'])) { $sets[] = 'total_hours=?'; $params[] = $j['total_hours']; }
-                if (!empty($j['cancel_date'])) { $sets[] = 'cancel_date=?'; $params[] = $j['cancel_date']; }
-                if (!empty($j['start_location'])) { $sets[] = 'start_location=?'; $params[] = $j['start_location']; }
-                if (!empty($j['end_location'])) { $sets[] = 'end_location=?'; $params[] = $j['end_location']; }
-                if (!empty($j['job_note'])) { $sets[] = 'job_note=?'; $params[] = $j['job_note']; }
-                if (isset($j['emp_id_fk'])) { $sets[] = 'emp_id_fk=?'; $params[] = $j['emp_id_fk']; }
-
+                $sets = []; $params = [];
+                foreach ($syncFields as $f) {
+                    if (array_key_exists($f, $j)) {
+                        $sets[] = "$f=?";
+                        $params[] = $j[$f];
+                    }
+                }
+                if (empty($sets)) { $skipped++; continue; }
                 $params[] = $j['j_id'];
                 q("UPDATE jobs SET " . implode(',', $sets) . " WHERE j_id=?", $params);
                 $updated++;

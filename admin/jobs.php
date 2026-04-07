@@ -562,7 +562,9 @@ function openQuickEdit(j) {
         document.getElementById('qe_total_hours').textContent = totalH || '—';
         if (j.start_location) {
             document.getElementById('qe_location_info').classList.remove('hidden');
-            document.getElementById('qe_start_loc').textContent = j.start_location;
+            const coords = j.start_location;
+            const mapLink = coords.includes(',') ? '<a href="https://www.google.com/maps?q=' + coords + '" target="_blank" class="text-brand underline">Karte öffnen</a>' : coords;
+            document.getElementById('qe_start_loc').innerHTML = coords + ' ' + mapLink;
         } else {
             document.getElementById('qe_location_info').classList.add('hidden');
         }
