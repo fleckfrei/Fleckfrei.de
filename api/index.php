@@ -572,6 +572,48 @@ try {
             return ['sent' => $ok];
         })(),
 
+        // Distance calculation (GPS coords → GPS coords via OSRM free API)
+        $action === 'distance' && $method === 'GET' => (function() {
+            $origin = $_GET['origin'] ?? ''; // lat,lng
+            $dest = $_GET['destination'] ?? ''; // address or lat,lng
+            if (!$origin || !$dest) throw new Exception('Need origin + destination');
+
+            // If destination is address, geocode it first via Nominatim
+            if (!preg_match('/^[\d.-]+,[\d.-]+$/', $dest)) {
+                $geoUrl = "https://nominatim.openstreetmap.org/search?q=" . urlencode($dest) . "&format=json&limit=1";
+                $ctx = stream_context_create(['http' => ['header' => "User-Agent: Fleckfrei/1.0\r\n", 'timeout' => 5]]);
+                $geoResp = @file_get_contents($geoUrl, false, $ctx);
+                if ($geoResp) {
+                    $geo = json_decode($geoResp, true);
+                    if (!empty($geo[0])) $dest = $geo[0]['lat'] . ',' . $geo[0]['lon'];
+                    else throw new Exception('Address not found');
+                }
+            }
+
+            // OSRM routing (free, no API key needed)
+            $oParts = explode(',', $origin);
+            $dParts = explode(',', $dest);
+            if (count($oParts) !== 2 || count($dParts) !== 2) throw new Exception('Invalid coordinates');
+            $url = "https://router.project-osrm.org/route/v1/driving/{$oParts[1]},{$oParts[0]};{$dParts[1]},{$dParts[0]}?overview=false";
+            $resp = @file_get_contents($url);
+            if (!$resp) throw new Exception('Routing API error');
+            $data = json_decode($resp, true);
+            if (($data['code'] ?? '') !== 'Ok' || empty($data['routes'])) throw new Exception('No route found');
+            $route = $data['routes'][0];
+            $meters = (int)$route['distance'];
+            $seconds = (int)$route['duration'];
+            $km = round($meters / 1000, 1);
+            $mins = round($seconds / 60);
+            return [
+                'distance' => $km < 1 ? ($meters . ' m') : ($km . ' km'),
+                'distance_meters' => $meters,
+                'duration' => $mins < 60 ? ($mins . ' Min.') : (floor($mins/60) . 'h ' . ($mins%60) . 'min'),
+                'duration_seconds' => $seconds,
+                'origin' => $origin,
+                'destination' => $dest
+            ];
+        })(),
+
         // Sync: FULL sync from La-Renting — all fields, every minute
         $action === 'sync/jobs' && $method === 'POST' => (function() use ($body) {
             if (empty($body['jobs']) || !is_array($body['jobs'])) throw new Exception('Need jobs array');

@@ -277,7 +277,7 @@ include __DIR__ . '/../includes/layout.php';
         <label class="block text-xs font-medium text-gray-500 mb-1">Notizen</label>
         <textarea id="qe_note" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea>
       </div>
-      <!-- Start/Stop Info + Admin Controls -->
+      <!-- Start/Stop Info + GPS + Route -->
       <div id="qe_timing" class="bg-gray-50 rounded-lg p-3 hidden">
         <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Arbeitszeit</div>
         <div class="grid grid-cols-3 gap-2 text-sm">
@@ -285,7 +285,24 @@ include __DIR__ . '/../includes/layout.php';
           <div><span class="text-gray-400">Ende:</span> <strong id="qe_end_time" class="font-mono">—</strong></div>
           <div><span class="text-gray-400">Dauer:</span> <strong id="qe_total_hours" class="text-brand">—</strong></div>
         </div>
-        <div id="qe_location_info" class="text-xs text-gray-400 mt-1 hidden">GPS: <span id="qe_start_loc"></span></div>
+        <div id="qe_location_info" class="text-xs mt-2 hidden">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-gray-400">GPS Start:</span>
+            <span id="qe_start_loc" class="font-mono"></span>
+          </div>
+          <div id="qe_route_info" class="bg-white rounded-lg p-2 border hidden">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-xs text-gray-400">Entfernung zum Job:</span>
+                <span id="qe_route_distance" class="font-medium text-sm ml-1"></span>
+                <span class="text-gray-300 mx-1">|</span>
+                <span id="qe_route_duration" class="text-xs text-gray-500"></span>
+              </div>
+              <a id="qe_route_link" href="#" target="_blank" class="text-xs text-brand font-medium hover:underline">Route</a>
+            </div>
+            <div id="qe_route_warning" class="text-xs text-red-600 font-medium mt-1 hidden"></div>
+          </div>
+        </div>
       </div>
       <!-- Admin Start/Stop Buttons -->
       <div class="flex gap-2" id="qe_admin_controls">
@@ -485,8 +502,16 @@ document.getElementById('empFilter').onchange = () => cal.refetchEvents();
 document.getElementById('statusFilter').onchange = () => cal.refetchEvents();
 document.getElementById('typeFilter').onchange = () => cal.refetchEvents();
 
-// Auto-refresh every 30s for live status updates (partner start/stop)
-setInterval(() => { cal.refetchEvents(); }, 30000);
+// Real-time: refresh every 5s for live status updates
+setInterval(() => { cal.refetchEvents(); }, 5000);
+// Also refresh day panel
+setInterval(() => {
+    const activeDay = document.getElementById('dayPanelDate')?.textContent;
+    if (activeDay) {
+        const parts = activeDay.split('.');
+        if (parts.length === 3) loadDayPanel(parts[2]+'-'+parts[1]+'-'+parts[0]);
+    }
+}, 5000);
 
 // Day Panel — shows all jobs for clicked date
 function loadDayPanel(dateStr) {
@@ -563,8 +588,34 @@ function openQuickEdit(j) {
         if (j.start_location) {
             document.getElementById('qe_location_info').classList.remove('hidden');
             const coords = j.start_location;
-            const mapLink = coords.includes(',') ? '<a href="https://www.google.com/maps?q=' + coords + '" target="_blank" class="text-brand underline">Karte öffnen</a>' : coords;
+            const mapLink = coords.includes(',') ? '<a href="https://www.google.com/maps?q=' + coords + '" target="_blank" class="text-brand underline">Karte</a>' : '';
             document.getElementById('qe_start_loc').innerHTML = coords + ' ' + mapLink;
+
+            // Calculate route: GPS start → job address
+            const jobAddr = j.address || '';
+            if (coords.includes(',') && jobAddr) {
+                const routeDiv = document.getElementById('qe_route_info');
+                routeDiv.classList.remove('hidden');
+                document.getElementById('qe_route_link').href = 'https://www.google.com/maps/dir/' + coords + '/' + encodeURIComponent(jobAddr);
+
+                // Use Distance Matrix API via our proxy
+                fetch('/api/index.php?action=distance&origin=' + encodeURIComponent(coords) + '&destination=' + encodeURIComponent(jobAddr) + '&key=<?= API_KEY ?>')
+                    .then(r => r.json()).then(d => {
+                        if (d.success && d.data.distance) {
+                            document.getElementById('qe_route_distance').textContent = d.data.distance;
+                            document.getElementById('qe_route_duration').textContent = d.data.duration;
+                            // Warn if >2km from job address (possible fraud)
+                            const meters = d.data.distance_meters || 0;
+                            const warn = document.getElementById('qe_route_warning');
+                            if (meters > 2000) {
+                                warn.classList.remove('hidden');
+                                warn.textContent = '⚠ Partner war ' + d.data.distance + ' vom Job entfernt!';
+                            } else {
+                                warn.classList.add('hidden');
+                            }
+                        }
+                    }).catch(() => {});
+            }
         } else {
             document.getElementById('qe_location_info').classList.add('hidden');
         }
