@@ -291,14 +291,10 @@ include __DIR__ . '/../includes/layout.php';
             <span id="qe_start_loc" class="font-mono"></span>
           </div>
           <div id="qe_route_info" class="bg-white rounded-lg p-2 border hidden">
-            <div class="flex items-center justify-between">
-              <div>
-                <span class="text-xs text-gray-400">Entfernung zum Job:</span>
-                <span id="qe_route_distance" class="font-medium text-sm ml-1"></span>
-                <span class="text-gray-300 mx-1">|</span>
-                <span id="qe_route_duration" class="text-xs text-gray-500"></span>
-              </div>
-              <a id="qe_route_link" href="#" target="_blank" class="text-xs text-brand font-medium hover:underline">Route</a>
+            <div id="qe_route_modes" class="space-y-1"></div>
+            <div class="flex items-center justify-between mt-2 pt-2 border-t">
+              <div id="qe_route_best" class="text-xs text-brand font-medium"></div>
+              <a id="qe_route_link" href="#" target="_blank" class="text-xs text-brand font-medium hover:underline">Google Maps</a>
             </div>
             <div id="qe_route_warning" class="text-xs text-red-600 font-medium mt-1 hidden"></div>
           </div>
@@ -601,19 +597,27 @@ function openQuickEdit(j) {
                 // Use Distance Matrix API via our proxy
                 fetch('/api/index.php?action=distance&origin=' + encodeURIComponent(coords) + '&destination=' + encodeURIComponent(jobAddr) + '&key=<?= API_KEY ?>')
                     .then(r => r.json()).then(d => {
-                        if (d.success && d.data.distance) {
-                            document.getElementById('qe_route_distance').textContent = d.data.distance;
-                            document.getElementById('qe_route_duration').textContent = d.data.duration;
-                            // Warn if >2km from job address (possible fraud)
-                            const meters = d.data.distance_meters || 0;
-                            const warn = document.getElementById('qe_route_warning');
-                            if (meters > 2000) {
-                                warn.classList.remove('hidden');
-                                warn.textContent = '⚠ Partner war ' + d.data.distance + ' vom Job entfernt!';
-                            } else {
-                                warn.classList.add('hidden');
-                            }
+                        if (!d.success || !d.data.modes) return;
+                        const modes = d.data.modes;
+                        const modesDiv = document.getElementById('qe_route_modes');
+                        modesDiv.innerHTML = '';
+                        for (const [key, m] of Object.entries(modes)) {
+                            const costStr = m.cost > 0 ? (' — <strong>' + m.cost.toFixed(2) + ' €</strong>' + (m.cost_full > m.cost ? ' <span class="text-gray-400">(' + m.cost_full.toFixed(2) + ' € voll)</span>' : '')) : ' — <span class="text-green-600">kostenlos</span>';
+                            modesDiv.innerHTML += '<div class="flex items-center justify-between text-xs py-0.5">' +
+                                '<span>' + m.icon + ' ' + m.mode + '</span>' +
+                                '<span>' + m.duration + ' · ' + m.distance + costStr + '</span></div>';
                         }
+                        if (d.data.best) {
+                            document.getElementById('qe_route_best').textContent = '✨ Empfehlung: ' + d.data.best.icon + ' ' + d.data.best.mode + ' (' + d.data.best.duration + ', ' + d.data.best.cost.toFixed(2) + ' €)';
+                        }
+                        if (d.data.maps_url) document.getElementById('qe_route_link').href = d.data.maps_url;
+                        // Fraud warning
+                        const warn = document.getElementById('qe_route_warning');
+                        if (d.data.fraud_warning) {
+                            warn.classList.remove('hidden');
+                            const dist = modes.car?.distance || '?';
+                            warn.textContent = '⚠ ACHTUNG: Partner war ' + dist + ' vom Job entfernt beim Start!';
+                        } else { warn.classList.add('hidden'); }
                     }).catch(() => {});
             }
         } else {

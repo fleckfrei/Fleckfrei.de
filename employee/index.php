@@ -202,7 +202,14 @@ include __DIR__ . '/../includes/layout.php';
 <?php endif; ?>
 
 <?php
-$script = <<<'JS'
+$empIdJs = $user['id'];
+$apiKeyJs = API_KEY;
+$hasRunningJob = false;
+$runningJobId = null;
+foreach ($todayJobs as $tj) {
+    if ($tj['job_status'] === 'RUNNING') { $hasRunningJob = true; $runningJobId = $tj['j_id']; break; }
+}
+$script = <<<JS
 function getLocationAndSubmit(form, type) {
     const jid = form.querySelector('[name="j_id"]').value;
     const locField = form.querySelector('[name="location"]');
@@ -229,6 +236,37 @@ function getLocationAndSubmit(form, type) {
     );
     return false;
 }
+
+// Live GPS Tracking — sends position every 30s while job is RUNNING
+(function() {
+    const empId = $empIdJs;
+    const runningJobId = $runningJobId;
+    if (!runningJobId || !navigator.geolocation) return;
+
+    function sendGPS() {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                fetch('/api/index.php?action=gps/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': '$apiKeyJs' },
+                    body: JSON.stringify({
+                        emp_id: empId,
+                        j_id: runningJobId,
+                        lat: pos.coords.latitude,
+                        lng: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy
+                    })
+                }).catch(() => {});
+            },
+            () => {}, // silently ignore GPS errors during tracking
+            { enableHighAccuracy: true, timeout: 15000 }
+        );
+    }
+
+    // Send immediately + every 30s
+    sendGPS();
+    setInterval(sendGPS, 30000);
+})();
 JS;
 include __DIR__ . '/../includes/footer.php';
 ?>

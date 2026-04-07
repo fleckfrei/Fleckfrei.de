@@ -572,17 +572,16 @@ try {
             return ['sent' => $ok];
         })(),
 
-        // Distance calculation (GPS coords → GPS coords via OSRM free API)
+        // Distance calculation — ALL transport modes + cost comparison
         $action === 'distance' && $method === 'GET' => (function() {
-            $origin = $_GET['origin'] ?? ''; // lat,lng
-            $dest = $_GET['destination'] ?? ''; // address or lat,lng
+            $origin = $_GET['origin'] ?? '';
+            $dest = $_GET['destination'] ?? '';
             if (!$origin || !$dest) throw new Exception('Need origin + destination');
 
-            // If destination is address, geocode it first via Nominatim
+            // Geocode address if needed
             if (!preg_match('/^[\d.-]+,[\d.-]+$/', $dest)) {
-                $geoUrl = "https://nominatim.openstreetmap.org/search?q=" . urlencode($dest) . "&format=json&limit=1";
                 $ctx = stream_context_create(['http' => ['header' => "User-Agent: Fleckfrei/1.0\r\n", 'timeout' => 5]]);
-                $geoResp = @file_get_contents($geoUrl, false, $ctx);
+                $geoResp = @file_get_contents("https://nominatim.openstreetmap.org/search?q=" . urlencode($dest) . "&format=json&limit=1", false, $ctx);
                 if ($geoResp) {
                     $geo = json_decode($geoResp, true);
                     if (!empty($geo[0])) $dest = $geo[0]['lat'] . ',' . $geo[0]['lon'];
@@ -590,28 +589,155 @@ try {
                 }
             }
 
-            // OSRM routing (free, no API key needed)
             $oParts = explode(',', $origin);
             $dParts = explode(',', $dest);
             if (count($oParts) !== 2 || count($dParts) !== 2) throw new Exception('Invalid coordinates');
+
+            $fmtDist = function($m) { return $m < 1000 ? ($m . ' m') : (round($m/1000, 1) . ' km'); };
+            $fmtTime = function($s) { $m = round($s/60); return $m < 60 ? ($m . ' Min.') : (floor($m/60) . 'h ' . ($m%60) . 'min'); };
+            $modes = [];
+
+            // 1. Car (OSRM)
             $url = "https://router.project-osrm.org/route/v1/driving/{$oParts[1]},{$oParts[0]};{$dParts[1]},{$dParts[0]}?overview=false";
             $resp = @file_get_contents($url);
-            if (!$resp) throw new Exception('Routing API error');
-            $data = json_decode($resp, true);
-            if (($data['code'] ?? '') !== 'Ok' || empty($data['routes'])) throw new Exception('No route found');
-            $route = $data['routes'][0];
-            $meters = (int)$route['distance'];
-            $seconds = (int)$route['duration'];
-            $km = round($meters / 1000, 1);
-            $mins = round($seconds / 60);
-            return [
-                'distance' => $km < 1 ? ($meters . ' m') : ($km . ' km'),
-                'distance_meters' => $meters,
-                'duration' => $mins < 60 ? ($mins . ' Min.') : (floor($mins/60) . 'h ' . ($mins%60) . 'min'),
-                'duration_seconds' => $seconds,
-                'origin' => $origin,
-                'destination' => $dest
+            if ($resp) {
+                $data = json_decode($resp, true);
+                if (($data['code']??'') === 'Ok' && !empty($data['routes'])) {
+                    $r = $data['routes'][0];
+                    $km = $r['distance'] / 1000;
+                    // Cost: 0.30€/km (Benzin+Verschleiß) or 0.52€/km (ADAC Vollkosten)
+                    $modes['car'] = [
+                        'mode' => 'Auto', 'icon' => '🚗',
+                        'distance' => $fmtDist($r['distance']), 'distance_meters' => (int)$r['distance'],
+                        'duration' => $fmtTime($r['duration']), 'duration_seconds' => (int)$r['duration'],
+                        'cost' => round($km * 0.30, 2), 'cost_full' => round($km * 0.52, 2)
+                    ];
+                }
+            }
+
+            // 2. Bicycle (OSRM)
+            $url = "https://router.project-osrm.org/route/v1/bike/{$oParts[1]},{$oParts[0]};{$dParts[1]},{$dParts[0]}?overview=false";
+            $resp = @file_get_contents($url);
+            if ($resp) {
+                $data = json_decode($resp, true);
+                if (($data['code']??'') === 'Ok' && !empty($data['routes'])) {
+                    $r = $data['routes'][0];
+                    $modes['bike'] = [
+                        'mode' => 'Fahrrad', 'icon' => '🚲',
+                        'distance' => $fmtDist($r['distance']), 'distance_meters' => (int)$r['distance'],
+                        'duration' => $fmtTime($r['duration']), 'duration_seconds' => (int)$r['duration'],
+                        'cost' => 0, 'cost_full' => 0
+                    ];
+                }
+            }
+
+            // 3. Walking (OSRM)
+            $url = "https://router.project-osrm.org/route/v1/foot/{$oParts[1]},{$oParts[0]};{$dParts[1]},{$dParts[0]}?overview=false";
+            $resp = @file_get_contents($url);
+            if ($resp) {
+                $data = json_decode($resp, true);
+                if (($data['code']??'') === 'Ok' && !empty($data['routes'])) {
+                    $r = $data['routes'][0];
+                    $modes['walk'] = [
+                        'mode' => 'Zu Fuß', 'icon' => '🚶',
+                        'distance' => $fmtDist($r['distance']), 'distance_meters' => (int)$r['distance'],
+                        'duration' => $fmtTime($r['duration']), 'duration_seconds' => (int)$r['duration'],
+                        'cost' => 0, 'cost_full' => 0
+                    ];
+                }
+            }
+
+            // 4. BVG/ÖPNV estimate (Berlin: 2.40€ Kurzstrecke, 3.50€ Einzelfahrt)
+            $carDist = $modes['car']['distance_meters'] ?? 0;
+            $bvgPrice = $carDist <= 3000 ? 2.40 : 3.50;
+            $transitMins = round(($carDist / 1000) * 4.5); // ~4.5 min/km average with transfers
+            $modes['transit'] = [
+                'mode' => 'BVG (Bus/U-Bahn)', 'icon' => '🚌',
+                'distance' => $modes['car']['distance'] ?? '-',
+                'distance_meters' => $carDist,
+                'duration' => $transitMins . ' Min.', 'duration_seconds' => $transitMins * 60,
+                'cost' => $bvgPrice, 'cost_full' => $bvgPrice
             ];
+
+            // 5. Bolt/Taxi estimate (Berlin: 1.65€ Grundgebühr + 1.28€/km + 0.30€/min)
+            $boltKm = ($carDist / 1000);
+            $boltMins = ($modes['car']['duration_seconds'] ?? 300) / 60;
+            $boltPrice = round(1.65 + ($boltKm * 1.28) + ($boltMins * 0.30), 2);
+            $modes['bolt'] = [
+                'mode' => 'Bolt/Taxi', 'icon' => '🚕',
+                'distance' => $modes['car']['distance'] ?? '-',
+                'distance_meters' => $carDist,
+                'duration' => $modes['car']['duration'] ?? '-',
+                'duration_seconds' => $modes['car']['duration_seconds'] ?? 0,
+                'cost' => $boltPrice, 'cost_full' => $boltPrice
+            ];
+
+            // Best option (cheapest that's < 30 min)
+            $viable = array_filter($modes, fn($m) => ($m['duration_seconds'] ?? 9999) < 1800);
+            if (empty($viable)) $viable = $modes;
+            usort($viable, fn($a, $b) => $a['cost'] <=> $b['cost']);
+            $best = $viable[0] ?? null;
+
+            return [
+                'modes' => $modes,
+                'best' => $best,
+                'distance_meters' => $carDist,
+                'fraud_warning' => $carDist > 2000,
+                'origin' => $origin,
+                'destination' => $dest,
+                'maps_url' => "https://www.google.com/maps/dir/{$origin}/{$dParts[0]},{$dParts[1]}"
+            ];
+        })(),
+
+        // GPS: Partner sends live position (called from Employee Portal every 30s during RUNNING job)
+        $action === 'gps/update' && $method === 'POST' => (function() use ($body) {
+            if (empty($body['emp_id']) || empty($body['lat']) || empty($body['lng'])) throw new Exception('Need emp_id, lat, lng');
+            $location = $body['lat'] . ',' . $body['lng'];
+            // Store in local DB (fast, no remote latency)
+            global $dbLocal;
+            try {
+                $dbLocal->exec("CREATE TABLE IF NOT EXISTS gps_tracking (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    emp_id INT NOT NULL,
+                    j_id INT DEFAULT NULL,
+                    lat DECIMAL(10,7) NOT NULL,
+                    lng DECIMAL(10,7) NOT NULL,
+                    accuracy FLOAT DEFAULT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_emp (emp_id),
+                    INDEX idx_time (created_at)
+                ) ENGINE=InnoDB");
+            } catch (Exception $e) {}
+            $stmt = $dbLocal->prepare("INSERT INTO gps_tracking (emp_id, j_id, lat, lng, accuracy) VALUES (?,?,?,?,?)");
+            $stmt->execute([$body['emp_id'], $body['j_id']??null, $body['lat'], $body['lng'], $body['accuracy']??null]);
+            return ['tracked' => true, 'location' => $location];
+        })(),
+
+        // GPS: Get latest positions of all active partners
+        $action === 'gps/live' && $method === 'GET' => (function() {
+            global $dbLocal;
+            try {
+                $positions = $dbLocal->query("SELECT g.emp_id, g.j_id, g.lat, g.lng, g.accuracy, g.created_at,
+                    e.name as emp_name, e.surname as emp_surname
+                    FROM gps_tracking g
+                    JOIN (SELECT emp_id, MAX(id) as max_id FROM gps_tracking WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR) GROUP BY emp_id) latest ON g.id = latest.max_id
+                    LEFT JOIN employee e ON g.emp_id = e.emp_id
+                    ORDER BY g.created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+                // Note: employee table might be on remote DB, this query uses local
+                // Fallback: get names from remote DB
+                global $db;
+                foreach ($positions as &$p) {
+                    if (empty($p['emp_name'])) {
+                        $emp = $db->prepare("SELECT name, surname FROM employee WHERE emp_id=?");
+                        $emp->execute([$p['emp_id']]);
+                        $e = $emp->fetch(PDO::FETCH_ASSOC);
+                        if ($e) { $p['emp_name'] = $e['name']; $p['emp_surname'] = $e['surname']; }
+                    }
+                }
+                return $positions;
+            } catch (Exception $e) {
+                return [];
+            }
         })(),
 
         // Sync: FULL sync from La-Renting — all fields, every minute
