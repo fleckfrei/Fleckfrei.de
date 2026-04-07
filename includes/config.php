@@ -23,12 +23,18 @@ define('LOCALE', 'de');                            // Sprache
 define('TIMEZONE', 'Europe/Berlin');
 
 // ============================================================
-// DATABASE — Pro Installation eigene DB
+// DATABASE — Direkt La-Renting DB (Master) + lokale DB (Fleckfrei-spezifisch)
 // ============================================================
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'i10205616_zlzy1');
-define('DB_USER', 'i10205616_zlzy1');
+// Master DB (La-Renting auf Hostinger) — Jobs, Kunden, Partner, Services, Rechnungen
+define('DB_HOST', '31.97.198.95');              // Hostinger Remote MySQL
+define('DB_NAME', 'u860899303_la_renting');
+define('DB_USER', 'u860899303_root');
 define('DB_PASS', '***REDACTED***');
+// Lokale DB (GoDaddy) — Messages, Audit, Settings, Fleckfrei-only Tabellen
+define('DB_LOCAL_HOST', 'localhost');
+define('DB_LOCAL_NAME', 'i10205616_zlzy1');
+define('DB_LOCAL_USER', 'i10205616_zlzy1');
+define('DB_LOCAL_PASS', '***REDACTED***');
 define('API_KEY', '***REDACTED***');
 
 // ============================================================
@@ -51,15 +57,42 @@ define('FEATURE_INVOICE_AUTO', true); // Auto-Rechnungserstellung
 // ============================================================
 // SYSTEM — Nicht ändern
 // ============================================================
-$db = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-]);
+// Master DB — try remote Hostinger first, fallback to local GoDaddy clone
+try {
+    $db = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_TIMEOUT => 3
+    ]);
+    define('DB_MODE', 'remote'); // Direct La-Renting DB — real-time!
+} catch (Exception $e) {
+    // Fallback to local GoDaddy DB (synced copy)
+    $db = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+    ]);
+    define('DB_MODE', 'local'); // Fallback — synced every 1 min
+}
+
+// Local DB for Fleckfrei-specific tables (messages, audit, settings)
+try {
+    $dbLocal = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+    ]);
+} catch (Exception $e) {
+    $dbLocal = $db; // If local fails, use master for everything
+}
 
 function q($sql, $p=[]) { global $db; $s=$db->prepare($sql); $s->execute($p); return $s; }
 function all($sql, $p=[]) { return q($sql,$p)->fetchAll(); }
 function one($sql, $p=[]) { return q($sql,$p)->fetch(); }
 function val($sql, $p=[]) { return q($sql,$p)->fetchColumn(); }
+// Local DB queries (messages, audit, settings)
+function qLocal($sql, $p=[]) { global $dbLocal; $s=$dbLocal->prepare($sql); $s->execute($p); return $s; }
+function allLocal($sql, $p=[]) { return qLocal($sql,$p)->fetchAll(); }
+function oneLocal($sql, $p=[]) { return qLocal($sql,$p)->fetch(); }
+function valLocal($sql, $p=[]) { return qLocal($sql,$p)->fetchColumn(); }
 function e($s) { return htmlspecialchars($s??'', ENT_QUOTES, 'UTF-8'); }
 function money($n) {
     $formatted = number_format((float)($n??0), 2, ',', '.');
@@ -70,7 +103,7 @@ function audit($action, $entity, $entityId, $details='') {
     try {
         $user = $_SESSION['uname'] ?? 'API';
         $ip = $_SERVER['REMOTE_ADDR'] ?? '';
-        q("INSERT INTO audit_log (user_name,action,entity,entity_id,details,ip) VALUES (?,?,?,?,?,?)",
+        qLocal("INSERT INTO audit_log (user_name,action,entity,entity_id,details,ip) VALUES (?,?,?,?,?,?)",
           [$user, $action, $entity, $entityId, $details, $ip]);
     } catch (Exception $e) {}
 }
