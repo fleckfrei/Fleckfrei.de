@@ -24,11 +24,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: /admin/invoices.php?payment=1"); exit;
     }
     if ($act === 'delete_invoice') {
-        // Unlink jobs from this invoice
-        q("UPDATE jobs SET invoice_id=NULL WHERE invoice_id=?", [$_POST['inv_id']]);
-        q("DELETE FROM invoices WHERE inv_id=?", [$_POST['inv_id']]);
-        audit('delete', 'invoice', $_POST['inv_id'], 'Rechnung gelöscht');
-        header("Location: /admin/invoices.php"); exit;
+        $delId = (int)$_POST['inv_id'];
+        $delInv = one("SELECT invoice_number FROM invoices WHERE inv_id=?", [$delId]);
+        // Unlink jobs (local + remote)
+        q("UPDATE jobs SET invoice_id=NULL WHERE invoice_id=?", [$delId]);
+        try { qRemote("UPDATE jobs SET invoice_id=NULL WHERE invoice_id=?", [$delId]); } catch (Exception $e) {}
+        // Delete invoice (local + remote)
+        q("DELETE FROM invoices WHERE inv_id=?", [$delId]);
+        try { qRemote("DELETE FROM invoices WHERE inv_id=?", [$delId]); } catch (Exception $e) {}
+        audit('delete', 'invoice', $delId, 'Rechnung ' . ($delInv['invoice_number'] ?? '') . ' gelöscht (lokal + remote)');
+        telegramNotify("Rechnung " . ($delInv['invoice_number'] ?? $delId) . " gelöscht");
+        header("Location: /admin/invoices.php?deleted=1"); exit;
     }
 }
 
@@ -60,6 +66,7 @@ include __DIR__ . '/../includes/layout.php';
         <input type="text" placeholder="Suchen..." class="px-3 py-2 border rounded-lg text-sm w-64" oninput="filterRows(this.value)"/>
         <button @click="genOpen=true" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium">Auto-Generieren</button>
         <a href="/admin/bank-import.php" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Bank Import</a>
+        <?php if (FEATURE_STRIPE): ?><a href="https://dashboard.stripe.com" target="_blank" class="px-3 py-2 border border-purple-200 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-50">Stripe ↗</a><?php endif; ?>
         <a href="/api/index.php?action=export/invoices&key=<?= API_KEY ?>" class="px-3 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50">CSV Export</a>
       </div>
     </div>
@@ -85,20 +92,24 @@ include __DIR__ . '/../includes/layout.php';
         <td class="px-4 py-3 text-xs text-gray-500"><?= $inv['start_date'] ? date('d.m',strtotime($inv['start_date'])) : '' ?> — <?= $inv['end_date'] ? date('d.m',strtotime($inv['end_date'])) : '' ?></td>
         <td class="px-4 py-3 font-medium text-xs"><?= money($inv['total_price']) ?></td>
         <td class="px-4 py-3 text-xs"><?= $inv['remaining_price']>0 ? '<span class="text-red-600 font-medium">'.money($inv['remaining_price']).'</span>' : '<span class="text-green-600">0,00 €</span>' ?></td>
-        <!-- Status Dropdown -->
+        <!-- Status -->
         <td class="px-3 py-2">
-          <select onchange="updateInvStatus(<?= $inv['inv_id'] ?>,this.value,this)" class="px-2 py-1 text-xs font-medium border rounded-lg cursor-pointer <?= $inv['invoice_paid']==='yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200' ?>">
-            <option value="no" <?= $inv['invoice_paid']!=='yes'?'selected':'' ?>>Offen</option>
-            <option value="yes" <?= $inv['invoice_paid']==='yes'?'selected':'' ?>>Bezahlt</option>
-          </select>
+          <?php if ($inv['invoice_paid']==='yes'): ?>
+            <span class="px-2 py-1 text-xs font-medium rounded-lg bg-green-50 text-green-700 border border-green-200">Bezahlt ✓</span>
+          <?php else: ?>
+            <select onchange="updateInvStatus(<?= $inv['inv_id'] ?>,this.value,this)" class="px-2 py-1 text-xs font-medium border rounded-lg cursor-pointer bg-red-50 text-red-700 border-red-200">
+              <option value="no" selected>Offen</option>
+              <option value="yes">Bezahlt</option>
+            </select>
+          <?php endif; ?>
         </td>
         <td class="px-4 py-3"><div class="flex gap-1">
-          <a href="/admin/invoice-pdf.php?id=<?=$inv['inv_id']?>" target="_blank" class="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200" title="PDF anzeigen">PDF</a>
+          <a href="/admin/invoice-pdf.php?id=<?=$inv['inv_id']?>" target="_blank" class="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">PDF</a>
           <?php if ($inv['invoice_paid']!=='yes'): ?>
             <button @click="payInv={inv_id:<?=$inv['inv_id']?>,remaining:<?=$inv['remaining_price']?>}; payOpen=true" class="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg">Zahlung</button>
-            <?php if (FEATURE_STRIPE): ?><button onclick="stripeLink(<?=$inv['inv_id']?>)" class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg" title="Stripe Zahlungslink erstellen">Stripe</button><?php endif; ?>
+            <?php if (FEATURE_STRIPE && $inv['remaining_price'] > 0): ?><button onclick="stripeLink(<?=$inv['inv_id']?>)" class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg">Stripe</button><?php endif; ?>
+            <form method="POST" class="inline" onsubmit="return confirm('Rechnung #<?= e($inv['invoice_number']) ?> wirklich löschen? Kann nicht rückgängig gemacht werden!')"><?= csrfField() ?><input type="hidden" name="action" value="delete_invoice"/><input type="hidden" name="inv_id" value="<?=$inv['inv_id']?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Del</button></form>
           <?php endif; ?>
-          <form method="POST" class="inline" onsubmit="return confirm('Rechnung löschen?')"><?= csrfField() ?><input type="hidden" name="action" value="delete_invoice"/><input type="hidden" name="inv_id" value="<?=$inv['inv_id']?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Del</button></form>
         </div></td>
       </tr>
       <?php endforeach; ?></tbody></table>

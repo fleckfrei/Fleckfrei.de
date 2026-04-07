@@ -174,6 +174,10 @@ if (!$settings) $settings = [];
     .badge-green { background: #dcfce7; color: #166534; }
     .badge-red { background: #fef2f2; color: #991b1b; }
 
+    /* Paid Stamp */
+    .paid-stamp { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-25deg); border: 6px solid #16a34a; color: #16a34a; padding: 12px 40px; font-size: 48px; font-weight: 800; text-transform: uppercase; letter-spacing: 8px; opacity: 0.15; pointer-events: none; border-radius: 12px; white-space: nowrap; z-index: 10; }
+    .paid-stamp .stamp-date { display: block; font-size: 14px; letter-spacing: 2px; font-weight: 600; text-align: center; margin-top: 4px; }
+
     /* Footer */
     .inv-footer { border-top: 1px solid #e5e7eb; padding-top: 10px; text-align: center; color: #9ca3af; font-size: 10px; }
     .inv-footer a { color: <?= BRAND ?>; text-decoration: none; }
@@ -208,7 +212,15 @@ if (!$settings) $settings = [];
   <button onclick="window.print()" class="btn-print btn-primary">Drucken / PDF speichern</button>
 </div>
 
-<div class="invoice-page">
+<div class="invoice-page" style="position:relative">
+  <?php if ($inv['invoice_paid'] === 'yes'): ?>
+  <div class="paid-stamp">Bezahlt<span class="stamp-date"><?php
+    // Find payment date
+    $payDate = '';
+    if (!empty($payments)) { $payDate = end($payments)['payment_date'] ?? ''; }
+    echo $payDate ? date('d.m.Y', strtotime($payDate)) : date('d.m.Y');
+  ?></span></div>
+  <?php endif; ?>
   <!-- Header -->
   <div class="inv-header">
     <div class="inv-logo">

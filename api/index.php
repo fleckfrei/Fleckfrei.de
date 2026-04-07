@@ -9,6 +9,32 @@ require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/email.php';
 require_once __DIR__ . '/../includes/openbanking.php';
 
+// Stripe webhook — no auth needed (before auth check)
+$action = $_GET['action'] ?? '';
+if ($action === 'stripe/webhook' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $payload = file_get_contents('php://input');
+    $event = json_decode($payload, true);
+    if ($event && ($event['type'] ?? '') === 'checkout.session.completed') {
+        $session = $event['data']['object'] ?? [];
+        $invId = (int)($session['metadata']['inv_id'] ?? 0);
+        if ($invId) {
+            $amount = ($session['amount_total'] ?? 0) / 100;
+            $inv = one("SELECT * FROM invoices WHERE inv_id=?", [$invId]);
+            if ($inv) {
+                $newRemaining = max(0, $inv['remaining_price'] - $amount);
+                $paid = $newRemaining <= 0 ? 'yes' : 'no';
+                q("UPDATE invoices SET remaining_price=?, invoice_paid=? WHERE inv_id=?", [$newRemaining, $paid, $invId]);
+                try { q("INSERT INTO invoice_payments (invoice_id_fk, amount, payment_date, payment_method, note) VALUES (?,?,?,?,?)",
+                    [$invId, $amount, date('Y-m-d'), 'Stripe', 'Online: ' . ($session['payment_intent'] ?? '')]); } catch (Exception $e) {}
+                audit('stripe_paid', 'invoice', $invId, "Stripe: $amount EUR");
+                telegramNotify("Zahlung eingegangen! Rechnung #{$inv['invoice_number']}: " . money($amount) . " via Stripe");
+            }
+        }
+    }
+    echo json_encode(['success' => true]);
+    exit;
+}
+
 // Auth: session OR API key
 session_start();
 $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? $_GET['key'] ?? '';
