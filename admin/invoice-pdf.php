@@ -21,10 +21,40 @@ try {
     $addr = one("SELECT * FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC LIMIT 1", [$inv['customer_id_fk']]);
 } catch (Exception $e) { $addr = null; }
 
-// Get linked jobs (line items)
+// Get linked jobs (line items) — try local DB first, then remote
 $jobs = all("SELECT j.*, s.title as stitle, s.total_price as sprice, e.name as ename
     FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
     WHERE j.invoice_id=? ORDER BY j.j_date", [$invId]);
+
+// If no jobs found by invoice_id, try matching by customer + date range
+if (empty($jobs) && $inv['customer_id_fk'] && $inv['start_date'] && $inv['end_date']) {
+    $jobs = all("SELECT j.*, s.title as stitle, s.total_price as sprice, e.name as ename
+        FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
+        WHERE j.customer_id_fk=? AND j.j_date BETWEEN ? AND ? AND j.job_status='COMPLETED' AND j.status=1
+        ORDER BY j.j_date", [$inv['customer_id_fk'], $inv['start_date'], $inv['end_date']]);
+}
+
+// If still no jobs locally, try remote DB (Hostinger — has all La-Renting data)
+if (empty($jobs) && isset($dbRemote) && $dbRemote !== $db) {
+    try {
+        $stmt = $dbRemote->prepare("SELECT j.*, s.title as stitle, s.total_price as sprice, e.name as ename
+            FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
+            WHERE j.invoice_id=? ORDER BY j.j_date");
+        $stmt->execute([$invId]);
+        $jobs = $stmt->fetchAll();
+    } catch (Exception $e) {}
+    // Also try by customer + date range on remote
+    if (empty($jobs) && $inv['customer_id_fk'] && $inv['start_date']) {
+        try {
+            $stmt = $dbRemote->prepare("SELECT j.*, s.title as stitle, s.total_price as sprice, e.name as ename
+                FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
+                WHERE j.customer_id_fk=? AND j.j_date BETWEEN ? AND ? AND j.job_status='COMPLETED' AND j.status=1
+                ORDER BY j.j_date");
+            $stmt->execute([$inv['customer_id_fk'], $inv['start_date'], $inv['end_date']]);
+            $jobs = $stmt->fetchAll();
+        } catch (Exception $e) {}
+    }
+}
 
 // Get payments (table may not exist in local DB)
 try {
@@ -95,57 +125,57 @@ if (!$settings) $settings = [];
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', system-ui, sans-serif; color: #1f2937; font-size: 14px; line-height: 1.5; background: #f3f4f6; }
-    .invoice-page { max-width: 800px; margin: 20px auto; background: white; padding: 60px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    body { font-family: 'Inter', system-ui, sans-serif; color: #1f2937; font-size: 12px; line-height: 1.4; background: #f3f4f6; }
+    .invoice-page { max-width: 800px; margin: 20px auto; background: white; padding: 40px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .brand-color { color: <?= BRAND ?>; }
     .brand-bg { background: <?= BRAND ?>; }
 
     /* Header */
-    .inv-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 50px; }
-    .inv-logo { display: flex; align-items: center; gap: 12px; }
-    .inv-logo-icon { width: 48px; height: 48px; border-radius: 12px; background: <?= BRAND ?>; color: white; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; }
-    .inv-logo-text { font-size: 24px; font-weight: 700; }
+    .inv-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+    .inv-logo { display: flex; align-items: center; gap: 10px; }
+    .inv-logo-icon { width: 36px; height: 36px; border-radius: 8px; background: <?= BRAND ?>; color: white; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; }
+    .inv-logo-text { font-size: 20px; font-weight: 700; }
     .inv-number { text-align: right; }
-    .inv-number h2 { font-size: 28px; font-weight: 300; color: #6b7280; text-transform: uppercase; letter-spacing: 2px; }
-    .inv-number .num { font-size: 18px; font-weight: 600; margin-top: 4px; }
+    .inv-number h2 { font-size: 20px; font-weight: 300; color: #6b7280; text-transform: uppercase; letter-spacing: 2px; }
+    .inv-number .num { font-size: 14px; font-weight: 600; margin-top: 2px; }
 
     /* Addresses */
-    .inv-addresses { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 40px; }
-    .inv-addr label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; margin-bottom: 8px; display: block; }
-    .inv-addr .name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .inv-addresses { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; font-size: 11px; }
+    .inv-addr label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; margin-bottom: 4px; display: block; }
+    .inv-addr .name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 
     /* Meta */
-    .inv-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px; padding: 16px 0; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
-    .inv-meta-item label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; display: block; }
-    .inv-meta-item .val { font-size: 14px; font-weight: 600; margin-top: 2px; }
+    .inv-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; padding: 8px 0; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+    .inv-meta-item label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; display: block; }
+    .inv-meta-item .val { font-size: 12px; font-weight: 600; margin-top: 1px; }
 
     /* Table */
-    .inv-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-    .inv-table th { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; text-align: left; padding: 12px 16px; border-bottom: 2px solid #e5e7eb; }
+    .inv-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    .inv-table th { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; text-align: left; padding: 6px 8px; border-bottom: 2px solid #e5e7eb; }
     .inv-table th:last-child, .inv-table td:last-child { text-align: right; }
-    .inv-table td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; }
+    .inv-table td { padding: 5px 8px; border-bottom: 1px solid #f3f4f6; font-size: 11px; }
     .inv-table tr:last-child td { border-bottom: none; }
 
     /* Totals */
-    .inv-totals { display: flex; justify-content: flex-end; margin-bottom: 40px; }
-    .inv-totals table { width: 280px; }
-    .inv-totals td { padding: 6px 0; }
+    .inv-totals { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+    .inv-totals table { width: 220px; }
+    .inv-totals td { padding: 3px 0; font-size: 12px; }
     .inv-totals .label { color: #6b7280; }
     .inv-totals .amount { text-align: right; font-weight: 500; }
-    .inv-totals .total-row td { border-top: 2px solid <?= BRAND ?>; padding-top: 10px; font-size: 18px; font-weight: 700; }
+    .inv-totals .total-row td { border-top: 2px solid <?= BRAND ?>; padding-top: 6px; font-size: 15px; font-weight: 700; }
     .inv-totals .total-row .amount { color: <?= BRAND ?>; }
 
     /* Payments */
-    .inv-payments { background: #f9fafb; border-radius: 12px; padding: 20px; margin-bottom: 30px; }
-    .inv-payments h4 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin-bottom: 12px; }
+    .inv-payments { background: #f9fafb; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .inv-payments h4 { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin-bottom: 8px; }
 
     /* Status badge */
-    .badge-paid { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .badge-paid { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
     .badge-green { background: #dcfce7; color: #166534; }
     .badge-red { background: #fef2f2; color: #991b1b; }
 
     /* Footer */
-    .inv-footer { border-top: 1px solid #e5e7eb; padding-top: 20px; text-align: center; color: #9ca3af; font-size: 12px; }
+    .inv-footer { border-top: 1px solid #e5e7eb; padding-top: 10px; text-align: center; color: #9ca3af; font-size: 10px; }
     .inv-footer a { color: <?= BRAND ?>; text-decoration: none; }
 
     /* Print controls */
@@ -157,9 +187,17 @@ if (!$settings) $settings = [];
     .btn-secondary:hover { background: #f9fafb; }
 
     @media print {
-      body { background: white; }
-      .invoice-page { box-shadow: none; margin: 0; padding: 40px; }
+      body { background: white; font-size: 11px; }
+      .invoice-page { box-shadow: none; margin: 0; padding: 20px 30px; }
       .print-controls { display: none; }
+      .inv-header { margin-bottom: 12px; }
+      .inv-addresses { margin-bottom: 10px; gap: 16px; }
+      .inv-meta { margin-bottom: 10px; padding: 6px 0; }
+      .inv-table td { padding: 4px 6px; font-size: 10px; }
+      .inv-table th { padding: 4px 6px; font-size: 8px; }
+      .inv-totals { margin-bottom: 10px; }
+      .inv-footer { padding-top: 8px; font-size: 9px; }
+      .inv-payments { padding: 8px; margin-bottom: 8px; }
     }
   </style>
 </head>
@@ -233,28 +271,32 @@ if (!$settings) $settings = [];
   <?php if (!empty($lines)): ?>
   <table class="inv-table">
     <thead><tr>
-      <th>Datum</th>
+      <th>Nr.</th>
       <th>Service</th>
-      <th>Adresse</th>
-      <th>Stunden</th>
-      <th>€/h</th>
-      <th>Betrag</th>
+      <th>Datum</th>
+      <th>Einheit</th>
+      <th>Menge</th>
+      <th>Netto</th>
+      <th>Zwischensumme</th>
+      <th>MwSt. 19%</th>
     </tr></thead>
     <tbody>
-    <?php foreach ($lines as $l): ?>
+    <?php $rowNum = 1; foreach ($lines as $l): $lineTax = round($l['total'] * TAX_RATE, 2); ?>
     <tr>
-      <td><?= date('d.m.Y', strtotime($l['date'])) ?></td>
+      <td><?= $rowNum++ ?></td>
       <td><?= e($l['service']) ?></td>
-      <td style="font-size:12px;color:#6b7280"><?= e($l['address']) ?></td>
-      <td><?= number_format($l['hours'], 1) ?></td>
+      <td><?= date('d.m.Y', strtotime($l['date'])) ?></td>
+      <td>Stunde</td>
+      <td><?= number_format($l['hours'], 2, ',', '.') ?></td>
       <td><?= money($l['rate']) ?></td>
       <td style="font-weight:500"><?= money($l['total']) ?></td>
+      <td><?= money($lineTax) ?> (19%)</td>
     </tr>
     <?php endforeach; ?>
     </tbody>
   </table>
   <?php else: ?>
-  <div style="padding:20px 0;color:#6b7280;text-align:center;margin-bottom:30px">Keine verknüpften Jobs (Legacy-Rechnung)</div>
+  <div style="padding:20px 0;color:#6b7280;text-align:center;margin-bottom:30px">Keine verknüpften Jobs</div>
   <?php endif; ?>
 
   <!-- Totals -->

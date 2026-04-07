@@ -59,6 +59,16 @@ define('OPENBANKING_PEM_PATH', __DIR__ . '/openbanking.pem');
 define('OPENBANKING_ACCOUNT_ID', '');   // N26 Account ID (set after bank linking)
 define('FEATURE_AUTO_BANK', true);
 
+// ============================================================
+// STRIPE — Online Payment (Karte + SEPA)
+// ============================================================
+// Stripe keys loaded from secrets file (not in git)
+$_stripeSecrets = __DIR__ . '/stripe-keys.php';
+if (file_exists($_stripeSecrets)) { require_once $_stripeSecrets; }
+if (!defined('STRIPE_PK')) define('STRIPE_PK', '');
+if (!defined('STRIPE_SK')) define('STRIPE_SK', '');
+define('FEATURE_STRIPE', !empty(STRIPE_SK));
+
 define('FEATURE_OSINT', true);        // OSINT Scanner Seite
 define('FEATURE_RECURRING', true);    // Wiederkehrende Jobs
 define('FEATURE_AUDIT', true);        // Audit-Log

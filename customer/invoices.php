@@ -27,13 +27,21 @@ include __DIR__ . '/../includes/layout.php';
         <div class="font-mono font-medium"><?= e($inv['invoice_number']) ?></div>
         <div class="text-sm text-gray-500"><?= date('d.m.Y', strtotime($inv['issue_date'])) ?> — <?= e($inv['start_date']) ?> bis <?= e($inv['end_date']) ?></div>
       </div>
-      <div class="text-right">
-        <div class="font-medium"><?= money($inv['total_price']) ?></div>
-        <?php if ($inv['invoice_paid']==='yes'): ?>
-          <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">Bezahlt</span>
-        <?php else: ?>
-          <span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700">Offen: <?= money($inv['remaining_price']) ?></span>
+      <div class="flex items-center gap-3">
+        <?php if ($inv['invoice_paid']!=='yes' && FEATURE_STRIPE): ?>
+          <button onclick="stripePayInv(<?= $inv['inv_id'] ?>)" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-semibold hover:opacity-90 transition">Jetzt bezahlen</button>
         <?php endif; ?>
+        <?php if (customerCan('inv_pdf')): ?>
+          <a href="/admin/invoice-pdf.php?id=<?= $inv['inv_id'] ?>" target="_blank" class="px-3 py-2 border rounded-lg text-xs hover:bg-gray-50">PDF</a>
+        <?php endif; ?>
+        <div class="text-right">
+          <div class="font-medium"><?= money($inv['total_price']) ?></div>
+          <?php if ($inv['invoice_paid']==='yes'): ?>
+            <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">Bezahlt</span>
+          <?php else: ?>
+            <span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700">Offen: <?= money($inv['remaining_price']) ?></span>
+          <?php endif; ?>
+        </div>
       </div>
     </div>
     <?php endforeach; ?>
@@ -42,4 +50,33 @@ include __DIR__ . '/../includes/layout.php';
     <?php endif; ?>
   </div>
 </div>
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+<?php
+$apiKey = API_KEY;
+$script = <<<JS
+function stripePayInv(invId) {
+    const btn = event.target;
+    btn.textContent = 'Wird geladen...';
+    btn.disabled = true;
+    fetch('/api/index.php?action=stripe/checkout', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-API-Key': '$apiKey'},
+        body: JSON.stringify({inv_id: invId})
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success && d.data.checkout_url) {
+            window.location.href = d.data.checkout_url;
+        } else {
+            alert(d.error || 'Fehler beim Erstellen der Zahlung');
+            btn.textContent = 'Jetzt bezahlen';
+            btn.disabled = false;
+        }
+    })
+    .catch(() => {
+        alert('Netzwerk-Fehler');
+        btn.textContent = 'Jetzt bezahlen';
+        btn.disabled = false;
+    });
+}
+JS;
+include __DIR__ . '/../includes/footer.php'; ?>

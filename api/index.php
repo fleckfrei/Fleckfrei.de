@@ -662,6 +662,67 @@ try {
             return $ob->getBanks('DE');
         })(),
 
+        // Stripe: Create Checkout Session for invoice payment
+        $action === 'stripe/checkout' && $method === 'POST' => (function() use ($body) {
+            if (!FEATURE_STRIPE) throw new Exception('Stripe not enabled');
+            $invId = (int)($body['inv_id'] ?? 0);
+            if (!$invId) throw new Exception('Missing inv_id');
+            $inv = one("SELECT i.*, c.name as cname, c.email as cemail FROM invoices i LEFT JOIN customer c ON i.customer_id_fk=c.customer_id WHERE i.inv_id=?", [$invId]);
+            if (!$inv) throw new Exception('Invoice not found');
+            if ($inv['invoice_paid'] === 'yes') throw new Exception('Already paid');
+            $amount = (int)round(($inv['remaining_price'] ?: $inv['total_price']) * 100); // cents
+            if ($amount <= 0) throw new Exception('Invalid amount');
+
+            $ch = curl_init('https://api.stripe.com/v1/checkout/sessions');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_USERPWD => STRIPE_SK . ':',
+                CURLOPT_POSTFIELDS => http_build_query([
+                    'payment_method_types[]' => 'card',
+                    'line_items[0][price_data][currency]' => 'eur',
+                    'line_items[0][price_data][product_data][name]' => 'Rechnung ' . $inv['invoice_number'],
+                    'line_items[0][price_data][product_data][description]' => SITE . ' — ' . ($inv['cname'] ?? ''),
+                    'line_items[0][price_data][unit_amount]' => $amount,
+                    'line_items[0][quantity]' => 1,
+                    'mode' => 'payment',
+                    'customer_email' => $inv['cemail'] ?? '',
+                    'metadata[inv_id]' => $invId,
+                    'metadata[invoice_number]' => $inv['invoice_number'],
+                    'success_url' => 'https://app.' . SITE_DOMAIN . '/customer/invoices.php?paid=1',
+                    'cancel_url' => 'https://app.' . SITE_DOMAIN . '/customer/invoices.php?cancelled=1',
+                ]),
+            ]);
+            $resp = json_decode(curl_exec($ch), true);
+            curl_close($ch);
+            if (!empty($resp['error'])) throw new Exception($resp['error']['message'] ?? 'Stripe error');
+            audit('stripe_checkout', 'invoice', $invId, 'Checkout: ' . money($amount / 100));
+            return ['checkout_url' => $resp['url'], 'session_id' => $resp['id']];
+        })(),
+
+        // Stripe: Webhook (payment completed)
+        $action === 'stripe/webhook' && $method === 'POST' => (function() {
+            $payload = file_get_contents('php://input');
+            $event = json_decode($payload, true);
+            if (!$event || ($event['type'] ?? '') !== 'checkout.session.completed') return ['ignored' => true];
+            $session = $event['data']['object'] ?? [];
+            $invId = (int)($session['metadata']['inv_id'] ?? 0);
+            if (!$invId) return ['no_invoice' => true];
+            $amount = ($session['amount_total'] ?? 0) / 100;
+            // Mark invoice as paid
+            $inv = one("SELECT * FROM invoices WHERE inv_id=?", [$invId]);
+            if ($inv) {
+                $newRemaining = max(0, $inv['remaining_price'] - $amount);
+                $paid = $newRemaining <= 0 ? 'yes' : 'no';
+                q("UPDATE invoices SET remaining_price=?, invoice_paid=? WHERE inv_id=?", [$newRemaining, $paid, $invId]);
+                try { q("INSERT INTO invoice_payments (invoice_id_fk, amount, payment_date, payment_method, note) VALUES (?,?,?,?,?)",
+                    [$invId, $amount, date('Y-m-d'), 'Stripe', 'Online: ' . ($session['payment_intent'] ?? '')]); } catch (Exception $e) {}
+                audit('stripe_paid', 'invoice', $invId, "Stripe: $amount EUR");
+                telegramNotify("Zahlung eingegangen! Rechnung #{$inv['invoice_number']}: " . money($amount) . " via Stripe");
+            }
+            return ['processed' => true, 'inv_id' => $invId, 'amount' => $amount];
+        })(),
+
         // Bank Export: CSV download of bank transactions
         $action === 'bank/export' && $method === 'GET' => (function() {
             $month = $_GET['month'] ?? date('Y-m');

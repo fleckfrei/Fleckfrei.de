@@ -96,6 +96,7 @@ include __DIR__ . '/../includes/layout.php';
           <a href="/admin/invoice-pdf.php?id=<?=$inv['inv_id']?>" target="_blank" class="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200" title="PDF anzeigen">PDF</a>
           <?php if ($inv['invoice_paid']!=='yes'): ?>
             <button @click="payInv={inv_id:<?=$inv['inv_id']?>,remaining:<?=$inv['remaining_price']?>}; payOpen=true" class="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-lg">Zahlung</button>
+            <?php if (FEATURE_STRIPE): ?><button onclick="stripeLink(<?=$inv['inv_id']?>)" class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg" title="Stripe Zahlungslink erstellen">Stripe</button><?php endif; ?>
           <?php endif; ?>
           <form method="POST" class="inline" onsubmit="return confirm('Rechnung löschen?')"><?= csrfField() ?><input type="hidden" name="action" value="delete_invoice"/><input type="hidden" name="inv_id" value="<?=$inv['inv_id']?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Del</button></form>
         </div></td>
@@ -156,6 +157,15 @@ function updateInvStatus(id,val,el){
         else{el.className='px-2 py-1 text-xs font-medium border rounded-lg cursor-pointer bg-red-50 text-red-700 border-red-200';}
         const row=document.getElementById('inv-row-'+id);row.style.transition='background 0.3s';row.style.background='#dcfce7';setTimeout(()=>{row.style.background='';},800);
     }else alert(d.error||'Fehler');});
+}
+function stripeLink(invId){
+    const btn=event.target;btn.textContent='...';
+    fetch('/api/index.php?action=stripe/checkout',{method:'POST',headers:{'Content-Type':'application/json','X-API-Key':'$apiKey'},body:JSON.stringify({inv_id:invId})})
+    .then(r=>r.json()).then(d=>{
+        if(d.success&&d.data.checkout_url){
+            navigator.clipboard.writeText(d.data.checkout_url).then(()=>{btn.textContent='Kopiert!';setTimeout(()=>{btn.textContent='Stripe';},2000);}).catch(()=>{window.open(d.data.checkout_url,'_blank');btn.textContent='Stripe';});
+        }else{alert(d.error||'Fehler');btn.textContent='Stripe';}
+    }).catch(()=>{alert('Fehler');btn.textContent='Stripe';});
 }
 JS;
 include __DIR__.'/../includes/footer.php'; ?>

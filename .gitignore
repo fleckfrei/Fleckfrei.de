@@ -3,3 +3,4 @@ uploads/
 *.tar.gz
 backup-*
 .DS_Store
+includes/stripe-keys.php
