@@ -7,12 +7,23 @@ $start = $month . '-01';
 $end = date('Y-m-t', strtotime($start));
 $monthLabel = date('F Y', strtotime($start));
 
-$payments = all("SELECT ip.*, i.invoice_number, c.name as cname
-    FROM invoice_payments ip
-    LEFT JOIN invoices i ON ip.invoice_id_fk=i.inv_id
-    LEFT JOIN customer c ON i.customer_id_fk=c.customer_id
-    WHERE ip.payment_date BETWEEN ? AND ?
-    ORDER BY ip.payment_date", [$start, $end]);
+try {
+    $payments = all("SELECT ip.*, i.invoice_number, c.name as cname
+        FROM invoice_payments ip
+        LEFT JOIN invoices i ON ip.invoice_id_fk=i.inv_id
+        LEFT JOIN customer c ON i.customer_id_fk=c.customer_id
+        WHERE ip.payment_date BETWEEN ? AND ?
+        ORDER BY ip.payment_date", [$start, $end]);
+} catch (Exception $e) {
+    try {
+        $payments = all("SELECT ip.*, i.invoice_number, c.name as cname
+            FROM invoice_payments ip
+            LEFT JOIN invoices i ON ip.invoice_id_fk=i.inv_id
+            LEFT JOIN customer c ON i.customer_id_fk=c.customer_id
+            WHERE ip.created_at BETWEEN ? AND ?
+            ORDER BY ip.created_at", [$start, ' 23:59:59']);
+    } catch (Exception $e2) { $payments = []; }
+}
 
 $total = array_sum(array_column($payments, 'amount'));
 $count = count($payments);
