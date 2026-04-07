@@ -49,32 +49,31 @@
             <div><h3>Fleckfrei</h3><span>Online — Antwort in Minuten</span></div>
             <button id="ff-close" onclick="ffToggle()">&times;</button>
         </div>
-        <div id="ff-identify">
-            <p style="font-size:15px;color:#374151;margin:0 0 12px;font-weight:600">Wie können wir Ihnen helfen?</p>
-            <p style="font-size:12px;color:#9ca3af;margin:0 0 12px">Bitte füllen Sie die Felder aus, damit wir Sie kontaktieren können.</p>
-            <input type="text" id="ff-name" placeholder="Ihr Name *" required />
-            <input type="email" id="ff-email" placeholder="E-Mail *" required />
-            <input type="tel" id="ff-phone" placeholder="Telefon / Handy *" />
-            <div style="margin:8px 0;font-size:12px;color:#6b7280">
-                <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;cursor:pointer">
-                    <input type="checkbox" id="ff-gdpr" style="margin-top:2px;accent-color:${BRAND}" required />
-                    <span>Ich stimme der <a href="/datenschutz.html" target="_blank" style="color:${BRAND};text-decoration:underline">Datenschutzerklärung</a> zu. *</span>
+        <div id="ff-identify" style="padding:20px">
+            <div style="text-align:center;margin-bottom:16px">
+                <div style="width:48px;height:48px;border-radius:50%;background:${BRAND};color:white;display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;margin-bottom:8px">F</div>
+                <p style="font-size:15px;color:#1f2937;margin:0;font-weight:600">Willkommen bei Fleckfrei</p>
+                <p style="font-size:12px;color:#9ca3af;margin:4px 0 0">Wir antworten in wenigen Minuten</p>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+                <input type="text" id="ff-name" placeholder="Name *" style="padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;font-size:13px;outline:none;width:100%;box-sizing:border-box" />
+                <div style="display:flex;gap:6px">
+                    <input type="email" id="ff-email" placeholder="E-Mail *" style="flex:1;padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;font-size:13px;outline:none;min-width:0" />
+                    <input type="tel" id="ff-phone" placeholder="Telefon *" style="flex:1;padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;font-size:13px;outline:none;min-width:0" />
+                </div>
+            </div>
+            <div style="margin:10px 0;display:flex;flex-direction:column;gap:4px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11px;color:#6b7280">
+                    <input type="checkbox" id="ff-gdpr" style="accent-color:${BRAND};width:14px;height:14px" />
+                    <a href="https://fleckfrei.de/datenschutz.html" target="_blank" style="color:${BRAND}">Datenschutzerklärung</a> akzeptiert *
                 </label>
-                <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;cursor:pointer">
-                    <input type="checkbox" id="ff-newsletter" style="margin-top:2px;accent-color:${BRAND}" />
-                    <span>Newsletter & Angebote per E-Mail</span>
-                </label>
-                <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;cursor:pointer">
-                    <input type="checkbox" id="ff-wa" style="margin-top:2px;accent-color:#25D366" />
-                    <span>WhatsApp Benachrichtigungen</span>
-                </label>
-                <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
-                    <input type="checkbox" id="ff-tg" style="margin-top:2px;accent-color:#0088cc" />
-                    <span>Telegram Updates</span>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11px;color:#6b7280">
+                    <input type="checkbox" id="ff-marketing" style="accent-color:${BRAND};width:14px;height:14px" checked />
+                    E-Mail, WhatsApp & Telegram Kontakt erlaubt
                 </label>
             </div>
-            <button onclick="ffIdentify()">Chat starten</button>
-            <p id="ff-error" style="color:#ef4444;font-size:12px;margin:8px 0 0;display:none"></p>
+            <button onclick="ffIdentify()" style="width:100%;padding:11px;background:${BRAND};color:white;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer">Chat starten</button>
+            <p id="ff-error" style="color:#ef4444;font-size:11px;margin:6px 0 0;display:none;text-align:center"></p>
         </div>
         <div id="ff-msgs" style="display:none"></div>
         <div id="ff-input-area" style="display:none">
@@ -116,9 +115,10 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 name, email, phone,
-                newsletter: document.getElementById('ff-newsletter').checked,
-                whatsapp: document.getElementById('ff-wa').checked,
-                telegram: document.getElementById('ff-tg').checked,
+                marketing: document.getElementById('ff-marketing').checked,
+                newsletter: document.getElementById('ff-marketing').checked,
+                whatsapp: document.getElementById('ff-marketing').checked,
+                telegram: document.getElementById('ff-marketing').checked,
                 gdpr_consent: true,
                 consent_time: new Date().toISOString()
             })
