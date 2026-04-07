@@ -83,6 +83,25 @@ $topCustomers = all("SELECT c.name, c.customer_type,
 $unreadMsgs = 0;
 try { $unreadMsgs = valLocal("SELECT COUNT(*) FROM messages WHERE recipient_type='admin' AND read_at IS NULL") ?: 0; } catch (Exception $e) {}
 
+// 6-Monats-Trend
+$trendData = [];
+for ($i = 5; $i >= 0; $i--) {
+    $tm = date('Y-m', strtotime("-$i months"));
+    $tmLabel = $monthNames[(int)date('n', strtotime($tm . '-01'))-1];
+    $tmStats = one("SELECT
+        COUNT(*) as jobs,
+        SUM(CASE WHEN job_status='COMPLETED' THEN 1 ELSE 0 END) as done,
+        COALESCE(SUM(CASE WHEN job_status='COMPLETED' THEN GREATEST(COALESCE(total_hours,j_hours),2) ELSE 0 END),0) as hours
+        FROM jobs WHERE j_date LIKE ? AND status=1", ["$tm%"]);
+    $tmRev = val("SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE invoice_paid='yes' AND issue_date LIKE ?", ["$tm%"]);
+    $trendData[] = ['month' => $tmLabel, 'jobs' => (int)($tmStats['done'] ?? 0), 'hours' => round($tmStats['hours'] ?? 0, 1), 'revenue' => round($tmRev ?? 0, 2)];
+}
+// Prognose (Durchschnitt der letzten 3 Monate)
+$last3Jobs = array_sum(array_column(array_slice($trendData, -3), 'jobs'));
+$last3Rev = array_sum(array_column(array_slice($trendData, -3), 'revenue'));
+$progJobs = round($last3Jobs / 3);
+$progRevenue = round($last3Rev / 3, 2);
+
 include __DIR__ . '/../includes/layout.php';
 ?>
 
@@ -199,6 +218,32 @@ include __DIR__ . '/../includes/layout.php';
       </div>
       <div class="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
         <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 6-Monats-Trend + Prognose -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+  <div class="lg:col-span-2 bg-white rounded-xl border p-5">
+    <h3 class="font-semibold text-gray-900 mb-1">6-Monats-Trend</h3>
+    <p class="text-xs text-gray-400 mb-3">Jobs & Umsatz der letzten 6 Monate</p>
+    <canvas id="trendChart" height="120"></canvas>
+  </div>
+  <div class="bg-white rounded-xl border p-5">
+    <h3 class="font-semibold text-gray-900 mb-3">Prognose nächster Monat</h3>
+    <div class="space-y-4">
+      <div><div class="text-xs text-gray-400 mb-1">Erwartete Jobs</div><div class="text-3xl font-bold text-brand"><?= $progJobs ?></div><div class="text-xs text-gray-400">Ø letzte 3 Monate</div></div>
+      <div><div class="text-xs text-gray-400 mb-1">Erwarteter Umsatz</div><div class="text-3xl font-bold text-green-700"><?= money($progRevenue) ?></div><div class="text-xs text-gray-400">Ø letzte 3 Monate</div></div>
+      <div><div class="text-xs text-gray-400 mb-1">Stunden-Trend</div>
+        <div class="flex gap-1 mt-1">
+          <?php foreach ($trendData as $td): $maxH = max(array_column($trendData,'hours')); $pct = $maxH > 0 ? ($td['hours']/$maxH)*100 : 0; ?>
+          <div class="flex-1 text-center">
+            <div class="bg-brand/20 rounded-sm mx-auto" style="height:<?= max(4,$pct*0.4) ?>px;width:100%"></div>
+            <div class="text-[8px] text-gray-400 mt-1"><?= substr($td['month'],0,3) ?></div>
+          </div>
+          <?php endforeach; ?>
+        </div>
       </div>
     </div>
   </div>
@@ -428,6 +473,11 @@ include __DIR__ . '/../includes/layout.php';
 </div>
 
 <?php
+// Trend chart data
+$trendLabels = json_encode(array_column($trendData, 'month'));
+$trendJobs = json_encode(array_column($trendData, 'jobs'));
+$trendRevenue = json_encode(array_column($trendData, 'revenue'));
+
 $chartLabels = json_encode(array_map(fn($d) => date('d.', strtotime($d['j_date'])), $dailyJobs));
 $chartData = json_encode(array_map('intval', array_column($dailyJobs, 'cnt')));
 $chartDone = json_encode(array_map('intval', array_column($dailyJobs, 'done')));
@@ -435,6 +485,45 @@ $chartCancelled = json_encode(array_map('intval', array_column($dailyJobs, 'canc
 $apiKeyJs = API_KEY;
 
 $script = <<<JS
+// 6-Month Trend Chart
+new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+        labels: $trendLabels,
+        datasets: [{
+            label: 'Jobs',
+            data: $trendJobs,
+            borderColor: '#2E7D6B',
+            backgroundColor: 'rgba(46,125,107,0.1)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 4,
+            pointBackgroundColor: '#2E7D6B',
+            yAxisID: 'y'
+        },{
+            label: 'Umsatz (€)',
+            data: $trendRevenue,
+            borderColor: '#16a34a',
+            borderWidth: 2,
+            borderDash: [5,5],
+            tension: 0.3,
+            pointRadius: 3,
+            pointBackgroundColor: '#16a34a',
+            yAxisID: 'y1'
+        }]
+    },
+    options: {
+        responsive: true,
+        interaction: { intersect: false, mode: 'index' },
+        scales: {
+            y: { position: 'left', title: { display: true, text: 'Jobs' }, grid: { display: false } },
+            y1: { position: 'right', title: { display: true, text: '€' }, grid: { drawOnChartArea: false } }
+        },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } } }
+    }
+});
+
 // Month chart — professional
 new Chart(document.getElementById('monthChart'), {
     type: 'bar',

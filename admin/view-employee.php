@@ -35,9 +35,25 @@ $tab = $_GET['tab'] ?? 'info';
 // Stats
 $totalJobs = val("SELECT COUNT(*) FROM jobs WHERE emp_id_fk=? AND status=1", [$eid]);
 $completedJobs = val("SELECT COUNT(*) FROM jobs WHERE emp_id_fk=? AND status=1 AND job_status='COMPLETED'", [$eid]);
+$cancelledJobs = val("SELECT COUNT(*) FROM jobs WHERE emp_id_fk=? AND status=1 AND job_status='CANCELLED'", [$eid]);
 $totalHours = val("SELECT COALESCE(SUM(COALESCE(total_hours,j_hours)),0) FROM jobs WHERE emp_id_fk=? AND status=1 AND job_status='COMPLETED'", [$eid]);
 $totalEarnings = $totalHours * ($emp['tariff'] ?? 0);
 $pendingJobs = val("SELECT COUNT(*) FROM jobs WHERE emp_id_fk=? AND status=1 AND job_status='PENDING' AND j_date>=CURDATE()", [$eid]);
+
+// Intelligence
+$firstJob = one("SELECT j_date FROM jobs WHERE emp_id_fk=? AND status=1 ORDER BY j_date ASC LIMIT 1", [$eid]);
+$lastJob = one("SELECT j_date FROM jobs WHERE emp_id_fk=? AND status=1 ORDER BY j_date DESC LIMIT 1", [$eid]);
+$partnerSince = $firstJob ? $firstJob['j_date'] : null;
+$lastActivity = $lastJob ? $lastJob['j_date'] : null;
+$monthsActive = $partnerSince ? max(1, round((time() - strtotime($partnerSince)) / (30*86400))) : 1;
+$jobsPerMonth = round($totalJobs / $monthsActive, 1);
+$hoursPerMonth = round($totalHours / $monthsActive, 1);
+$earningsPerMonth = round($totalEarnings / $monthsActive, 2);
+$avgJobDuration = $completedJobs > 0 ? round($totalHours / $completedJobs, 1) : 0;
+$cancelRate = $totalJobs > 0 ? round(($cancelledJobs / $totalJobs) * 100) : 0;
+$uniqueCustomers = val("SELECT COUNT(DISTINCT customer_id_fk) FROM jobs WHERE emp_id_fk=? AND status=1", [$eid]);
+$topCustomer = one("SELECT c.name, COUNT(*) as cnt FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id WHERE j.emp_id_fk=? AND j.status=1 GROUP BY j.customer_id_fk ORDER BY cnt DESC LIMIT 1", [$eid]);
+try { $msgCount = valLocal("SELECT COUNT(*) FROM messages WHERE (sender_type='employee' AND sender_id=?) OR (recipient_type='employee' AND recipient_id=?)", [$eid, $eid]); } catch (Exception $e) { $msgCount = 0; }
 
 // Jobs
 $jobs = all("SELECT j.*, c.name as cname, c.customer_type as ctype, s.title as stitle FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.emp_id_fk=? AND j.status=1 ORDER BY j.j_date DESC LIMIT 100", [$eid]);
@@ -73,13 +89,76 @@ include __DIR__ . '/../includes/layout.php';
   </div>
 </div>
 
-<!-- Quick Stats -->
-<div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
-  <div class="bg-white rounded-xl border p-4 text-center card-hover"><div class="text-2xl font-bold text-gray-900"><?= $totalJobs ?></div><div class="text-xs text-gray-400">Jobs gesamt</div></div>
-  <div class="bg-white rounded-xl border p-4 text-center card-hover"><div class="text-2xl font-bold text-green-700"><?= $completedJobs ?></div><div class="text-xs text-gray-400">Erledigt</div></div>
-  <div class="bg-white rounded-xl border p-4 text-center card-hover"><div class="text-2xl font-bold text-amber-600"><?= $pendingJobs ?></div><div class="text-xs text-gray-400">Offen</div></div>
-  <div class="bg-white rounded-xl border p-4 text-center card-hover"><div class="text-2xl font-bold text-brand"><?= round($totalHours,1) ?>h</div><div class="text-xs text-gray-400">Stunden</div></div>
-  <div class="bg-white rounded-xl border p-4 text-center card-hover"><div class="text-2xl font-bold text-red-600"><?= money($totalEarnings) ?></div><div class="text-xs text-gray-400">Verdienst</div></div>
+<!-- KPI Cards -->
+<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
+  <div class="bg-white rounded-xl border p-3 text-center"><div class="text-xl font-bold"><?= $totalJobs ?></div><div class="text-[10px] text-gray-400">Jobs</div></div>
+  <div class="bg-white rounded-xl border p-3 text-center"><div class="text-xl font-bold text-green-700"><?= $completedJobs ?></div><div class="text-[10px] text-gray-400">Erledigt</div></div>
+  <div class="bg-white rounded-xl border p-3 text-center"><div class="text-xl font-bold text-amber-600"><?= $pendingJobs ?></div><div class="text-[10px] text-gray-400">Offen</div></div>
+  <div class="bg-white rounded-xl border p-3 text-center"><div class="text-xl font-bold text-red-500"><?= $cancelledJobs ?></div><div class="text-[10px] text-gray-400">Storniert</div></div>
+  <div class="bg-white rounded-xl border p-3 text-center"><div class="text-xl font-bold text-brand"><?= round($totalHours,1) ?>h</div><div class="text-[10px] text-gray-400">Stunden</div></div>
+  <div class="bg-white rounded-xl border p-3 text-center"><div class="text-xl font-bold text-red-600"><?= money($totalEarnings) ?></div><div class="text-[10px] text-gray-400">Verdienst</div></div>
+  <div class="bg-white rounded-xl border p-3 text-center"><div class="text-xl font-bold"><?= $uniqueCustomers ?></div><div class="text-[10px] text-gray-400">Kunden</div></div>
+  <div class="bg-white rounded-xl border p-3 text-center"><div class="text-xl font-bold"><?= $msgCount ?></div><div class="text-[10px] text-gray-400">Nachr.</div></div>
+</div>
+
+<!-- Partner Intelligence -->
+<div class="bg-white rounded-xl border p-4 mb-4">
+  <h4 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Partner-Intelligence</h4>
+  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
+    <div><div class="text-gray-400 text-xs">Partner seit</div><div class="font-medium"><?= $partnerSince ? date('d.m.Y', strtotime($partnerSince)) : '-' ?></div></div>
+    <div><div class="text-gray-400 text-xs">Letzte Aktivität</div><div class="font-medium"><?= $lastActivity ? date('d.m.Y', strtotime($lastActivity)) : '-' ?></div></div>
+    <div><div class="text-gray-400 text-xs">Jobs / Monat</div><div class="font-medium"><?= $jobsPerMonth ?></div></div>
+    <div><div class="text-gray-400 text-xs">Stunden / Monat</div><div class="font-medium"><?= $hoursPerMonth ?>h</div></div>
+    <div><div class="text-gray-400 text-xs">Verdienst / Monat</div><div class="font-medium"><?= money($earningsPerMonth) ?></div></div>
+    <div><div class="text-gray-400 text-xs">⌀ Job-Dauer</div><div class="font-medium"><?= $avgJobDuration ?>h</div></div>
+    <div><div class="text-gray-400 text-xs">Tarif</div><div class="font-medium"><?= money($emp['tariff'] ?? 0) ?>/h</div></div>
+    <div><div class="text-gray-400 text-xs">Storno-Rate</div><div class="font-medium <?= $cancelRate > 15 ? 'text-red-600' : 'text-green-600' ?>"><?= $cancelRate ?>%</div></div>
+    <?php if ($topCustomer): ?><div><div class="text-gray-400 text-xs">Top Kunde</div><div class="font-medium"><?= e($topCustomer['name']) ?> <span class="text-xs text-gray-400">(<?= $topCustomer['cnt'] ?>x)</span></div></div><?php endif; ?>
+    <div><div class="text-gray-400 text-xs">Zuverlässigkeit</div><div class="font-medium <?= $cancelRate < 10 ? 'text-green-600' : ($cancelRate < 20 ? 'text-yellow-600' : 'text-red-600') ?>"><?= $cancelRate < 10 ? '★★★★★' : ($cancelRate < 20 ? '★★★★☆' : '★★★☆☆') ?></div></div>
+  </div>
+</div>
+
+<?php
+// OSINT
+$empEmail = $emp['email'] ?? '';
+$empDomain = $empEmail ? substr($empEmail, strpos($empEmail, '@') + 1) : '';
+$empName = trim(($emp['name'] ?? '') . ' ' . ($emp['surname'] ?? ''));
+$empPhone = $emp['phone'] ?? '';
+$freeProviders = ['gmail.com','yahoo.com','hotmail.com','outlook.com','gmx.de','web.de','t-online.de','icloud.com','protonmail.com'];
+$empEmailType = in_array(strtolower($empDomain), $freeProviders) ? 'Privat' : 'Geschäftlich';
+$empMxValid = false;
+if ($empDomain) { $mx = []; @getmxrr($empDomain, $mx); $empMxValid = !empty($mx); }
+?>
+<div class="bg-white rounded-xl border p-4 mb-4">
+  <h4 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Digital Footprint</h4>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="bg-gray-50 rounded-lg p-3">
+      <div class="text-xs font-semibold text-gray-500 mb-2">E-Mail</div>
+      <div class="space-y-1 text-sm">
+        <div class="flex justify-between"><span class="text-gray-400">E-Mail:</span><span class="font-mono text-xs"><?= e($empEmail) ?></span></div>
+        <div class="flex justify-between"><span class="text-gray-400">MX:</span><span class="<?= $empMxValid ? 'text-green-600' : 'text-red-600' ?>"><?= $empMxValid ? '✓ Gültig' : '✗ Ungültig' ?></span></div>
+        <div class="flex justify-between"><span class="text-gray-400">Typ:</span><span><?= $empEmailType ?></span></div>
+      </div>
+    </div>
+    <div class="bg-gray-50 rounded-lg p-3">
+      <div class="text-xs font-semibold text-gray-500 mb-2">Suche</div>
+      <div class="flex flex-wrap gap-1.5">
+        <a href="https://www.google.com/search?q=<?= urlencode($empName . ' Berlin') ?>" target="_blank" class="px-2 py-1 text-xs bg-white border rounded-lg hover:bg-gray-100">🔍 Google</a>
+        <a href="https://www.linkedin.com/search/results/all/?keywords=<?= urlencode($empName) ?>" target="_blank" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100">LinkedIn</a>
+        <a href="https://www.xing.com/search/members?keywords=<?= urlencode($empName) ?>" target="_blank" class="px-2 py-1 text-xs bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100">XING</a>
+        <?php if ($empEmail): ?><a href="https://www.google.com/search?q=<?= urlencode('"' . $empEmail . '"') ?>" target="_blank" class="px-2 py-1 text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg hover:bg-yellow-100">📧 Email</a><?php endif; ?>
+        <?php if ($empPhone): ?><a href="https://www.tellows.de/num/<?= preg_replace('/[^0-9]/','',$empPhone) ?>" target="_blank" class="px-2 py-1 text-xs bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100">📞 Tellows</a><?php endif; ?>
+      </div>
+    </div>
+    <div class="bg-gray-50 rounded-lg p-3">
+      <div class="text-xs font-semibold text-gray-500 mb-2">Kontakt</div>
+      <div class="space-y-1 text-sm">
+        <div class="flex justify-between"><span class="text-gray-400">Telefon:</span><span><?= e($empPhone) ?></span></div>
+        <div class="flex justify-between"><span class="text-gray-400">Ort:</span><span><?= e($emp['location'] ?? '-') ?></span></div>
+        <div class="flex justify-between"><span class="text-gray-400">Nationalität:</span><span><?= e($emp['nationality'] ?? '-') ?></span></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Tabs -->
