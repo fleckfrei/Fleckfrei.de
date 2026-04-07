@@ -1,0 +1,5 @@
+.claude-flow/
+uploads/
+*.tar.gz
+backup-*
+.DS_Store
