@@ -55,8 +55,32 @@ $services = all("SELECT * FROM services WHERE customer_id_fk=? AND status=1", [$
 // Stats
 $totalJobs = val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1", [$cid]);
 $completedJobs = val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED'", [$cid]);
+$cancelledJobs = val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='CANCELLED'", [$cid]);
+$pendingJobs = val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='PENDING' AND j_date>=CURDATE()", [$cid]);
 $totalRevenue = val("SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE customer_id_fk=? AND invoice_paid='yes'", [$cid]);
 $openAmount = val("SELECT COALESCE(SUM(remaining_price),0) FROM invoices WHERE customer_id_fk=? AND invoice_paid='no'", [$cid]);
+$totalInvoices = val("SELECT COUNT(*) FROM invoices WHERE customer_id_fk=?", [$cid]);
+$paidInvoices = val("SELECT COUNT(*) FROM invoices WHERE customer_id_fk=? AND invoice_paid='yes'", [$cid]);
+
+// Intelligence: Frequenz, Durchschnitt, Letzte Aktivität
+$avgJobValue = $completedJobs > 0 ? $totalRevenue / $completedJobs : 0;
+$firstJob = one("SELECT j_date FROM jobs WHERE customer_id_fk=? AND status=1 ORDER BY j_date ASC LIMIT 1", [$cid]);
+$lastJob = one("SELECT j_date FROM jobs WHERE customer_id_fk=? AND status=1 ORDER BY j_date DESC LIMIT 1", [$cid]);
+$customerSince = $firstJob ? $firstJob['j_date'] : ($c['created_at'] ?? null);
+$lastActivity = $lastJob ? $lastJob['j_date'] : null;
+$monthsActive = $customerSince ? max(1, round((time() - strtotime($customerSince)) / (30*86400))) : 1;
+$jobsPerMonth = round($totalJobs / $monthsActive, 1);
+$revenuePerMonth = round($totalRevenue / $monthsActive, 2);
+
+// Payment behavior
+$paymentRate = $totalInvoices > 0 ? round(($paidInvoices / $totalInvoices) * 100) : 0;
+$totalHours = val("SELECT COALESCE(SUM(GREATEST(COALESCE(total_hours,j_hours),2)),0) FROM jobs WHERE customer_id_fk=? AND job_status='COMPLETED' AND status=1", [$cid]);
+
+// Top Partner for this customer
+$topPartner = one("SELECT e.name, e.surname, COUNT(*) as cnt FROM jobs j LEFT JOIN employee e ON j.emp_id_fk=e.emp_id WHERE j.customer_id_fk=? AND j.status=1 AND j.emp_id_fk IS NOT NULL GROUP BY j.emp_id_fk ORDER BY cnt DESC LIMIT 1", [$cid]);
+
+// Messages count
+try { $msgCount = valLocal("SELECT COUNT(*) FROM messages WHERE (sender_type='customer' AND sender_id=?) OR (recipient_type='customer' AND recipient_id=?)", [$cid, $cid]); } catch (Exception $e) { $msgCount = 0; }
 
 include __DIR__ . '/../includes/layout.php';
 ?>
@@ -89,23 +113,93 @@ include __DIR__ . '/../includes/layout.php';
   </div>
 </div>
 
-<!-- Quick Stats -->
-<div class="grid grid-cols-4 gap-3 mb-5">
-  <div class="bg-white rounded-xl border p-4 text-center">
-    <div class="text-2xl font-bold text-gray-900"><?= $totalJobs ?></div>
-    <div class="text-xs text-gray-400">Jobs gesamt</div>
+<!-- Intelligence Dashboard -->
+<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
+  <div class="bg-white rounded-xl border p-3 text-center">
+    <div class="text-xl font-bold text-gray-900"><?= $totalJobs ?></div>
+    <div class="text-[10px] text-gray-400">Jobs gesamt</div>
   </div>
-  <div class="bg-white rounded-xl border p-4 text-center">
-    <div class="text-2xl font-bold text-green-700"><?= $completedJobs ?></div>
-    <div class="text-xs text-gray-400">Erledigt</div>
+  <div class="bg-white rounded-xl border p-3 text-center">
+    <div class="text-xl font-bold text-green-700"><?= $completedJobs ?></div>
+    <div class="text-[10px] text-gray-400">Erledigt</div>
   </div>
-  <div class="bg-white rounded-xl border p-4 text-center">
-    <div class="text-2xl font-bold text-brand"><?= money($totalRevenue) ?></div>
-    <div class="text-xs text-gray-400">Umsatz</div>
+  <div class="bg-white rounded-xl border p-3 text-center">
+    <div class="text-xl font-bold text-yellow-600"><?= $pendingJobs ?></div>
+    <div class="text-[10px] text-gray-400">Offen</div>
   </div>
-  <div class="bg-white rounded-xl border p-4 text-center">
-    <div class="text-2xl font-bold <?= $openAmount > 0 ? 'text-red-600' : 'text-gray-400' ?>"><?= money($openAmount) ?></div>
-    <div class="text-xs text-gray-400">Offen</div>
+  <div class="bg-white rounded-xl border p-3 text-center">
+    <div class="text-xl font-bold text-red-500"><?= $cancelledJobs ?></div>
+    <div class="text-[10px] text-gray-400">Storniert</div>
+  </div>
+  <div class="bg-white rounded-xl border p-3 text-center">
+    <div class="text-xl font-bold text-brand"><?= money($totalRevenue) ?></div>
+    <div class="text-[10px] text-gray-400">Umsatz</div>
+  </div>
+  <div class="bg-white rounded-xl border p-3 text-center">
+    <div class="text-xl font-bold <?= $openAmount > 0 ? 'text-red-600' : 'text-gray-400' ?>"><?= money($openAmount) ?></div>
+    <div class="text-[10px] text-gray-400">Offen €</div>
+  </div>
+  <div class="bg-white rounded-xl border p-3 text-center">
+    <div class="text-xl font-bold text-brand"><?= round($totalHours, 1) ?>h</div>
+    <div class="text-[10px] text-gray-400">Stunden</div>
+  </div>
+  <div class="bg-white rounded-xl border p-3 text-center">
+    <div class="text-xl font-bold"><?= $msgCount ?></div>
+    <div class="text-[10px] text-gray-400">Nachrichten</div>
+  </div>
+</div>
+
+<!-- Customer Intelligence -->
+<div class="bg-white rounded-xl border p-4 mb-4">
+  <h4 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Kunden-Intelligence</h4>
+  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-sm">
+    <div>
+      <div class="text-gray-400 text-xs">Kunde seit</div>
+      <div class="font-medium"><?= $customerSince ? date('d.m.Y', strtotime($customerSince)) : '-' ?></div>
+    </div>
+    <div>
+      <div class="text-gray-400 text-xs">Letzte Aktivität</div>
+      <div class="font-medium"><?= $lastActivity ? date('d.m.Y', strtotime($lastActivity)) : '-' ?></div>
+    </div>
+    <div>
+      <div class="text-gray-400 text-xs">Jobs / Monat</div>
+      <div class="font-medium"><?= $jobsPerMonth ?></div>
+    </div>
+    <div>
+      <div class="text-gray-400 text-xs">Umsatz / Monat</div>
+      <div class="font-medium"><?= money($revenuePerMonth) ?></div>
+    </div>
+    <div>
+      <div class="text-gray-400 text-xs">⌀ Job-Wert</div>
+      <div class="font-medium"><?= money($avgJobValue) ?></div>
+    </div>
+    <div>
+      <div class="text-gray-400 text-xs">Zahlungsquote</div>
+      <div class="font-medium <?= $paymentRate >= 80 ? 'text-green-600' : ($paymentRate >= 50 ? 'text-yellow-600' : 'text-red-600') ?>"><?= $paymentRate ?>%</div>
+    </div>
+    <?php if ($topPartner): ?>
+    <div>
+      <div class="text-gray-400 text-xs">Bevorzugter Partner</div>
+      <div class="font-medium"><?= e($topPartner['name'] . ' ' . ($topPartner['surname'] ?? '')) ?> <span class="text-xs text-gray-400">(<?= $topPartner['cnt'] ?>x)</span></div>
+    </div>
+    <?php endif; ?>
+    <div>
+      <div class="text-gray-400 text-xs">Rechnungen</div>
+      <div class="font-medium"><?= $paidInvoices ?>/<?= $totalInvoices ?> bezahlt</div>
+    </div>
+    <div>
+      <div class="text-gray-400 text-xs">Storno-Rate</div>
+      <div class="font-medium <?= $totalJobs > 0 && ($cancelledJobs/$totalJobs) > 0.2 ? 'text-red-600' : 'text-green-600' ?>"><?= $totalJobs > 0 ? round(($cancelledJobs/$totalJobs)*100) : 0 ?>%</div>
+    </div>
+    <?php if ($c['email']): ?>
+    <div>
+      <div class="text-gray-400 text-xs">OSINT</div>
+      <div class="flex gap-1">
+        <a href="https://www.google.com/search?q=<?= urlencode($c['name'] . ' ' . ($c['surname']??'') . ' Berlin') ?>" target="_blank" class="px-1.5 py-0.5 text-[10px] bg-gray-100 rounded hover:bg-gray-200">Google</a>
+        <a href="https://www.linkedin.com/search/results/all/?keywords=<?= urlencode($c['name'] . ' ' . ($c['surname']??'')) ?>" target="_blank" class="px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-700 rounded hover:bg-blue-100">LinkedIn</a>
+      </div>
+    </div>
+    <?php endif; ?>
   </div>
 </div>
 
