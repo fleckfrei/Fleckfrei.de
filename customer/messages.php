@@ -8,7 +8,7 @@ $cid = $user['id'];
 
 // Send message
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'send') {
-    q("INSERT INTO messages (sender_type,sender_id,sender_name,recipient_type,recipient_id,message,job_id,channel) VALUES ('customer',?,?,'admin',0,?,?,?)",
+    qLocal("INSERT INTO messages (sender_type,sender_id,sender_name,recipient_type,recipient_id,message,job_id,channel) VALUES ('customer',?,?,'admin',0,?,?,?)",
       [$cid, $user['name'], $_POST['message'], $_POST['job_id']??null, 'portal']);
 
     // n8n webhook for AI processing
@@ -26,11 +26,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'send') 
 }
 
 // Get messages for this customer
-$messages = all("SELECT * FROM messages WHERE (sender_type='customer' AND sender_id=?) OR (recipient_type='customer' AND recipient_id=?) ORDER BY created_at DESC LIMIT 100",
+$messages = allLocal("SELECT * FROM messages WHERE (sender_type='customer' AND sender_id=?) OR (recipient_type='customer' AND recipient_id=?) ORDER BY created_at DESC LIMIT 100",
     [$cid, $cid]);
 
 // Mark incoming as read
-q("UPDATE messages SET read_at=NOW() WHERE recipient_type='customer' AND recipient_id=? AND read_at IS NULL", [$cid]);
+qLocal("UPDATE messages SET read_at=NOW() WHERE recipient_type='customer' AND recipient_id=? AND read_at IS NULL", [$cid]);
 
 // Get recent jobs for reference
 $recentJobs = all("SELECT j_id, j_date, s.title as stitle FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.customer_id_fk=? AND j.status=1 ORDER BY j.j_date DESC LIMIT 10", [$cid]);
@@ -72,7 +72,7 @@ include __DIR__ . '/../includes/layout.php';
       <div class="flex items-start justify-between gap-4">
         <div class="flex-1">
           <div class="flex items-center gap-2 mb-1">
-            <span class="text-sm font-medium <?= $isMine ? 'text-brand' : 'text-gray-800' ?>"><?= $isMine ? 'Sie' : ($m['sender_name'] ?: SITE) ?></span>
+            <span class="text-sm font-medium <?= $isMine ? 'text-brand' : 'text-gray-800' ?>"><?= $isMine ? 'Sie' : (SITE . ' Team') ?></span>
             <?php if ($m['job_id']): ?><span class="text-xs text-gray-400">Job #<?= $m['job_id'] ?></span><?php endif; ?>
           </div>
           <p class="text-sm text-gray-700"><?= nl2br(e($m['message'])) ?></p>

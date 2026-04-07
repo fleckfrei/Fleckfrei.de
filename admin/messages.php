@@ -7,8 +7,8 @@ $title = 'Nachrichten'; $page = 'messages';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = $_POST['action'] ?? '';
     if ($act === 'send') {
-        q("INSERT INTO messages (sender_type,sender_id,sender_name,recipient_type,recipient_id,message,job_id,channel) VALUES ('admin',?,?,?,?,?,?,?)",
-          [me()['id'], me()['name'], $_POST['recipient_type'], $_POST['recipient_id'], $_POST['message'], $_POST['job_id']??null, 'portal']);
+        qLocal("INSERT INTO messages (sender_type,sender_id,sender_name,recipient_type,recipient_id,message,job_id,channel) VALUES ('admin',?,?,?,?,?,?,?)",
+          [me()['id'], SITE . ' Team', $_POST['recipient_type'], $_POST['recipient_id'], $_POST['message'], $_POST['job_id']??null, 'portal']);
         audit('send', 'message', 0, 'To: '.$_POST['recipient_type'].'#'.$_POST['recipient_id']);
 
         // Trigger n8n webhook for AI translation if sending to customer/employee
@@ -42,28 +42,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $filterType = $_GET['type'] ?? '';
 $filterId = $_GET['id'] ?? '';
 
-$sql = "SELECT m.*,
-    CASE WHEN m.sender_type='customer' THEN (SELECT name FROM customer WHERE customer_id=m.sender_id)
-         WHEN m.sender_type='employee' THEN (SELECT name FROM employee WHERE emp_id=m.sender_id)
-         ELSE m.sender_name END as resolved_sender,
-    CASE WHEN m.recipient_type='customer' THEN (SELECT name FROM customer WHERE customer_id=m.recipient_id)
-         WHEN m.recipient_type='employee' THEN (SELECT name FROM employee WHERE emp_id=m.recipient_id)
-         ELSE 'Admin' END as resolved_recipient
-    FROM messages m";
+// Messages from local DB
+$sql = "SELECT * FROM messages";
 $p = [];
 if ($filterType && $filterId) {
-    $sql .= " WHERE (m.sender_type=? AND m.sender_id=?) OR (m.recipient_type=? AND m.recipient_id=?)";
+    $sql .= " WHERE (sender_type=? AND sender_id=?) OR (recipient_type=? AND recipient_id=?)";
     $p = [$filterType, $filterId, $filterType, $filterId];
 }
-$sql .= " ORDER BY m.created_at DESC LIMIT 200";
-$messages = all($sql, $p);
+$sql .= " ORDER BY created_at DESC LIMIT 200";
+$messages = allLocal($sql, $p);
+
+// Resolve names from master DB
+$nameCache = [];
+foreach ($messages as &$m) {
+    // Resolve sender
+    if ($m['sender_type'] === 'admin') { $m['resolved_sender'] = $m['sender_name'] ?: 'Admin'; }
+    elseif ($m['sender_type'] === 'customer') {
+        $key = 'c'.$m['sender_id'];
+        if (!isset($nameCache[$key])) $nameCache[$key] = val("SELECT name FROM customer WHERE customer_id=?", [$m['sender_id']]) ?: '?';
+        $m['resolved_sender'] = $nameCache[$key];
+    } elseif ($m['sender_type'] === 'employee') {
+        $key = 'e'.$m['sender_id'];
+        if (!isset($nameCache[$key])) $nameCache[$key] = val("SELECT name FROM employee WHERE emp_id=?", [$m['sender_id']]) ?: '?';
+        $m['resolved_sender'] = $nameCache[$key];
+    } else { $m['resolved_sender'] = $m['sender_name'] ?: $m['sender_type']; }
+    // Resolve recipient
+    if ($m['recipient_type'] === 'admin') { $m['resolved_recipient'] = 'Admin'; }
+    elseif ($m['recipient_type'] === 'customer') {
+        $key = 'c'.$m['recipient_id'];
+        if (!isset($nameCache[$key])) $nameCache[$key] = val("SELECT name FROM customer WHERE customer_id=?", [$m['recipient_id']]) ?: '?';
+        $m['resolved_recipient'] = $nameCache[$key];
+    } elseif ($m['recipient_type'] === 'employee') {
+        $key = 'e'.$m['recipient_id'];
+        if (!isset($nameCache[$key])) $nameCache[$key] = val("SELECT name FROM employee WHERE emp_id=?", [$m['recipient_id']]) ?: '?';
+        $m['resolved_recipient'] = $nameCache[$key];
+    } else { $m['resolved_recipient'] = $m['recipient_type']; }
+}
+unset($m);
 
 // Unread count
-$unreadCount = val("SELECT COUNT(*) FROM messages WHERE recipient_type='admin' AND read_at IS NULL");
+$unreadCount = valLocal("SELECT COUNT(*) FROM messages WHERE recipient_type='admin' AND read_at IS NULL");
 
 // Mark messages as read
 if ($unreadCount > 0) {
-    q("UPDATE messages SET read_at=NOW() WHERE recipient_type='admin' AND read_at IS NULL");
+    qLocal("UPDATE messages SET read_at=NOW() WHERE recipient_type='admin' AND read_at IS NULL");
 }
 
 $customers = all("SELECT customer_id, name FROM customer WHERE status=1 ORDER BY name");
@@ -79,7 +101,7 @@ include __DIR__ . '/../includes/layout.php';
   <div class="grid grid-cols-3 gap-4 mb-6">
     <div class="bg-white rounded-xl border p-4"><div class="text-2xl font-bold text-brand"><?= count($messages) ?></div><div class="text-sm text-gray-500">Nachrichten gesamt</div></div>
     <div class="bg-white rounded-xl border p-4"><div class="text-2xl font-bold text-orange-600"><?= $unreadCount ?></div><div class="text-sm text-gray-500">Ungelesen (gerade gelesen)</div></div>
-    <div class="bg-white rounded-xl border p-4"><div class="text-2xl font-bold"><?= val("SELECT COUNT(DISTINCT CONCAT(sender_type,'-',sender_id)) FROM messages") ?></div><div class="text-sm text-gray-500">Aktive Kontakte</div></div>
+    <div class="bg-white rounded-xl border p-4"><div class="text-2xl font-bold"><?= valLocal("SELECT COUNT(DISTINCT CONCAT(sender_type,'-',sender_id)) FROM messages") ?></div><div class="text-sm text-gray-500">Aktive Kontakte</div></div>
   </div>
 
   <!-- Message List -->

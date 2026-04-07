@@ -95,7 +95,7 @@ $user = me(); $page = $page ?? ''; ?>
         $badgePending = val("SELECT COUNT(*) FROM jobs WHERE job_status='PENDING' AND status=1 AND j_date>=CURDATE()") ?: 0;
         $badgeUnpaid = val("SELECT COUNT(*) FROM invoices WHERE invoice_paid='no' AND remaining_price > 0") ?: 0;
         $badgeMsgs = 0;
-        try { $badgeMsgs = val("SELECT COUNT(*) FROM messages WHERE recipient_type='admin' AND read_at IS NULL") ?: 0; } catch (Exception $e) {}
+        try { $badgeMsgs = valLocal("SELECT COUNT(*) FROM messages WHERE recipient_type='admin' AND read_at IS NULL") ?: 0; } catch (Exception $e) {}
         $menu = [
           ['/admin/', 'Dashboard', 'dashboard', $iconHome, ''],
           ['/admin/jobs.php', 'Jobs Kalender', 'jobs', $iconCal, $badgePending > 0 ? $badgePending : ''],
@@ -124,7 +124,7 @@ $user = me(); $page = $page ?? ''; ?>
         if (empty($menu)) $menu[] = ['/customer/', 'Dashboard', 'dashboard', $iconHome, ''];
       } elseif ($user['type'] === 'employee') {
         $badgeEmpMsgs = 0;
-        try { $badgeEmpMsgs = val("SELECT COUNT(*) FROM messages WHERE recipient_type='employee' AND recipient_id=? AND read_at IS NULL", [$user['id']]) ?: 0; } catch (Exception $e) {}
+        try { $badgeEmpMsgs = valLocal("SELECT COUNT(*) FROM messages WHERE recipient_type='employee' AND recipient_id=? AND read_at IS NULL", [$user['id']]) ?: 0; } catch (Exception $e) {}
         $menu = [];
         if (employeeCan('portal_jobs')) $menu[] = ['/employee/', 'Meine Jobs', 'dashboard', $iconHome, ''];
         if (employeeCan('portal_earnings')) $menu[] = ['/employee/earnings.php', 'Verdienst', 'earnings', $iconInv, ''];

@@ -86,14 +86,14 @@ include __DIR__ . '/../includes/layout.php';
       </div>
     </div>
 
-    <!-- Account deaktivieren -->
-    <div class="bg-red-50 rounded-xl border border-red-200 p-5">
-      <h3 class="font-semibold text-red-700 mb-2">Konto deaktivieren</h3>
-      <p class="text-sm text-red-600 mb-3">Ihr Konto wird deaktiviert. Sie können es jederzeit durch Kontakt mit uns reaktivieren.</p>
-      <form method="POST" onsubmit="return confirm('Konto wirklich deaktivieren?')">
+    <!-- Account pausieren -->
+    <div class="bg-gray-100 rounded-xl border p-5">
+      <h3 class="font-semibold text-gray-700 mb-2">Konto pausieren</h3>
+      <p class="text-sm text-gray-500 mb-3">Ihr Konto wird pausiert. Keine Daten werden gelöscht. Sie können es jederzeit reaktivieren — kontaktieren Sie uns einfach per WhatsApp oder E-Mail.</p>
+      <form method="POST" onsubmit="return confirm('Konto wirklich pausieren? Sie können es jederzeit wieder aktivieren.')">
         <input type="hidden" name="action" value="delete_account"/>
         <?= csrfField() ?>
-        <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-medium">Konto deaktivieren</button>
+        <button type="submit" class="px-4 py-2 bg-gray-500 text-white rounded-xl text-sm font-medium">Konto pausieren</button>
       </form>
     </div>
   </div>
