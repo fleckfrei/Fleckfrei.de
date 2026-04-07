@@ -60,43 +60,52 @@ define('FEATURE_INVOICE_AUTO', true); // Auto-Rechnungserstellung
 // ============================================================
 // SYSTEM — Nicht ändern
 // ============================================================
-// Master DB — persistent connection to Hostinger (reduces latency)
+// FAST MODE: Local DB for reads (1ms), Sync from Hostinger every minute
+// This gives us: instant page loads + near-real-time data
+$db = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_PERSISTENT => true
+]);
+define('DB_MODE', 'fast');
+
+// Remote DB for writes that need to go to Hostinger (bookings, status changes)
 try {
-    $db = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
+    $dbRemote = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_PERSISTENT => true,     // Reuse connection across requests
-        PDO::ATTR_TIMEOUT => 3,
-        PDO::ATTR_EMULATE_PREPARES => true // Faster for simple queries
+        PDO::ATTR_PERSISTENT => true,
+        PDO::ATTR_TIMEOUT => 3
     ]);
-    define('DB_MODE', 'remote');
 } catch (Exception $e) {
-    $db = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
-    define('DB_MODE', 'local');
+    $dbRemote = $db; // Fallback: write to local
 }
 
-// Local DB for Fleckfrei-specific tables (messages, audit, settings)
-try {
-    $dbLocal = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
-} catch (Exception $e) {
-    $dbLocal = $db; // If local fails, use master for everything
-}
+// In fast mode, local DB IS the main DB — all reads are local (1ms)
+$dbLocal = $db;
 
 function q($sql, $p=[]) { global $db; $s=$db->prepare($sql); $s->execute($p); return $s; }
 function all($sql, $p=[]) { return q($sql,$p)->fetchAll(); }
 function one($sql, $p=[]) { return q($sql,$p)->fetch(); }
 function val($sql, $p=[]) { return q($sql,$p)->fetchColumn(); }
-// Local DB queries (messages, audit, settings)
+// Local DB queries (messages, audit, settings, gps)
 function qLocal($sql, $p=[]) { global $dbLocal; $s=$dbLocal->prepare($sql); $s->execute($p); return $s; }
 function allLocal($sql, $p=[]) { return qLocal($sql,$p)->fetchAll(); }
 function oneLocal($sql, $p=[]) { return qLocal($sql,$p)->fetch(); }
 function valLocal($sql, $p=[]) { return qLocal($sql,$p)->fetchColumn(); }
+// Remote DB writes (goes to Hostinger master — synced back in 1 min)
+function qRemote($sql, $p=[]) {
+    global $dbRemote;
+    $s = $dbRemote->prepare($sql); $s->execute($p);
+    return $s;
+}
+// Dual-write: local (instant) + remote (Hostinger)
+function qBoth($sql, $p=[]) {
+    global $db, $dbRemote;
+    $s = $db->prepare($sql); $s->execute($p);
+    if ($dbRemote !== $db) { try { $s2 = $dbRemote->prepare($sql); $s2->execute($p); } catch (Exception $e) {} }
+    return $s;
+}
 function e($s) { return htmlspecialchars($s??'', ENT_QUOTES, 'UTF-8'); }
 function money($n) {
     $formatted = number_format((float)($n??0), 2, ',', '.');
