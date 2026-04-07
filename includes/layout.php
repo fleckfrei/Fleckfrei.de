@@ -99,6 +99,7 @@
           ['/admin/invoices.php', 'Rechnungen', 'invoices', $iconInv, $badgeUnpaid > 0 ? $badgeUnpaid : ''],
           ['/admin/messages.php', 'Nachrichten', 'messages', $iconMsg, $badgeMsgs > 0 ? $badgeMsgs : ''],
           ['/admin/work-hours.php', 'Arbeitszeit', 'work-hours', $iconClock, ''],
+          ['/admin/live-map.php', 'Live-Karte', 'live-map', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>', ''],
           ['/admin/audit.php', 'Protokoll', 'audit', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>', ''],
           ['/admin/settings.php', 'Einstellungen', 'settings', $iconCog, ''],
         ];
