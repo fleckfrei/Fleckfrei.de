@@ -277,9 +277,25 @@ include __DIR__ . '/../includes/layout.php';
         <label class="block text-xs font-medium text-gray-500 mb-1">Notizen</label>
         <textarea id="qe_note" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea>
       </div>
+      <!-- Start/Stop Info + Admin Controls -->
+      <div id="qe_timing" class="bg-gray-50 rounded-lg p-3 hidden">
+        <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Arbeitszeit</div>
+        <div class="grid grid-cols-3 gap-2 text-sm">
+          <div><span class="text-gray-400">Start:</span> <strong id="qe_start_time" class="font-mono">—</strong></div>
+          <div><span class="text-gray-400">Ende:</span> <strong id="qe_end_time" class="font-mono">—</strong></div>
+          <div><span class="text-gray-400">Dauer:</span> <strong id="qe_total_hours" class="text-brand">—</strong></div>
+        </div>
+        <div id="qe_location_info" class="text-xs text-gray-400 mt-1 hidden">GPS: <span id="qe_start_loc"></span></div>
+      </div>
+      <!-- Admin Start/Stop Buttons -->
+      <div class="flex gap-2" id="qe_admin_controls">
+        <button onclick="adminStartJob()" id="qeStartBtn" class="flex-1 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hidden">▶ Manuell Starten</button>
+        <button onclick="adminStopJob()" id="qeStopBtn" class="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hidden">⏹ Manuell Stoppen</button>
+        <button onclick="adminPauseJob()" id="qePauseBtn" class="flex-1 px-3 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hidden">⏸ Pausieren</button>
+      </div>
     </div>
     <!-- Quick action buttons -->
-    <div class="px-5 py-3 border-t bg-gray-50 flex gap-2" id="qeActions">
+    <div class="px-5 py-3 border-t bg-gray-50 flex gap-2 flex-wrap" id="qeActions">
       <button onclick="quickAction('CONFIRMED')" id="qeConfirmBtn" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium">Bestätigen</button>
       <button onclick="quickAction('CANCELLED')" class="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium">Stornieren</button>
       <button onclick="quickAction('PENDING')" class="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-medium">Zurücksetzen</button>
@@ -532,6 +548,43 @@ function openQuickEdit(j) {
     document.getElementById('qe_note').value = j.job_note || '';
     document.getElementById('qeFullEdit').href = '/admin/jobs.php?view=' + j.j_id;
     currentJobFor = j.job_for || '';
+
+    // Show timing info
+    const timingDiv = document.getElementById('qe_timing');
+    const startTime = j.start_time ? j.start_time.slice(0,5) : null;
+    const endTime = j.end_time ? j.end_time.slice(0,5) : null;
+    const totalH = j.total_hours ? parseFloat(j.total_hours).toFixed(1) + 'h' : null;
+
+    if (startTime || endTime || totalH) {
+        timingDiv.classList.remove('hidden');
+        document.getElementById('qe_start_time').textContent = startTime || '—';
+        document.getElementById('qe_end_time').textContent = endTime || '—';
+        document.getElementById('qe_total_hours').textContent = totalH || '—';
+        if (j.start_location) {
+            document.getElementById('qe_location_info').classList.remove('hidden');
+            document.getElementById('qe_start_loc').textContent = j.start_location;
+        } else {
+            document.getElementById('qe_location_info').classList.add('hidden');
+        }
+    } else {
+        timingDiv.classList.add('hidden');
+    }
+
+    // Show/hide admin start/stop buttons based on status
+    const startBtn = document.getElementById('qeStartBtn');
+    const stopBtn = document.getElementById('qeStopBtn');
+    const pauseBtn = document.getElementById('qePauseBtn');
+    startBtn.classList.add('hidden');
+    stopBtn.classList.add('hidden');
+    pauseBtn.classList.add('hidden');
+
+    if (j.job_status === 'PENDING' || j.job_status === 'CONFIRMED') {
+        startBtn.classList.remove('hidden');
+    } else if (j.job_status === 'RUNNING' || j.job_status === 'STARTED') {
+        stopBtn.classList.remove('hidden');
+        pauseBtn.classList.remove('hidden');
+    }
+
     document.getElementById('quickEditModal').classList.remove('hidden');
 }
 // Helper to set select value reliably (handles optgroups + type mismatch)
@@ -583,6 +636,51 @@ function quickAction(newStatus) {
             closeQuickEdit();
             cal.refetchEvents();
         } else alert(d.error || 'Fehler');
+    });
+}
+
+// Admin manual Start/Stop/Pause
+function adminStartJob() {
+    if (!currentEditId) return;
+    fetch(API + '?action=jobs/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },
+        body: JSON.stringify({ j_id: currentEditId, status: 'RUNNING' })
+    }).then(r => r.json()).then(d => {
+        if (d.success) { closeQuickEdit(); cal.refetchEvents(); }
+        else alert(d.error || 'Fehler');
+    });
+}
+function adminStopJob() {
+    if (!currentEditId) return;
+    const note = prompt('Notiz zum Job (optional):');
+    fetch(API + '?action=jobs/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },
+        body: JSON.stringify({ j_id: currentEditId, status: 'COMPLETED' })
+    }).then(r => r.json()).then(d => {
+        if (d.success) {
+            if (note) {
+                fetch(API + '?action=jobs/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },
+                    body: JSON.stringify({ j_id: currentEditId, field: 'job_note', value: note })
+                });
+            }
+            closeQuickEdit(); cal.refetchEvents();
+        } else alert(d.error || 'Fehler');
+    });
+}
+function adminPauseJob() {
+    if (!currentEditId) return;
+    // Pause = set back to CONFIRMED (keeps start_time for reference)
+    fetch(API + '?action=jobs/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },
+        body: JSON.stringify({ j_id: currentEditId, status: 'CONFIRMED', old_status: 'RUNNING' })
+    }).then(r => r.json()).then(d => {
+        if (d.success) { closeQuickEdit(); cal.refetchEvents(); }
+        else alert(d.error || 'Fehler');
     });
 }
 

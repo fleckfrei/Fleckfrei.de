@@ -39,6 +39,7 @@ try {
             $end = $_GET['end'] ?? date('Y-m-t');
             $sql = "SELECT j.j_id, j.j_date, j.j_time, j.j_hours, j.job_status, j.job_for,
                     j.customer_id_fk, j.s_id_fk, j.emp_id_fk, j.address, j.platform, j.total_hours, j.code_door, j.job_note,
+                    j.start_time, j.end_time, j.start_location, j.end_location, j.cancel_date,
                     c.name as customer_name, c.customer_type,
                     e.name as emp_name, e.surname as emp_surname,
                     s.title as service_title
