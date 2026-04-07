@@ -168,3 +168,61 @@ function notifyJobReminder($jobId) {
 
     return sendEmail($job['cemail'], SITE . ' — Erinnerung: Termin morgen', emailTemplate('Termin-Erinnerung', $content));
 }
+
+function notifyWelcome($customerId) {
+    $c = one("SELECT * FROM customer WHERE customer_id=?", [$customerId]);
+    if (!$c || !$c['email']) return false;
+
+    $content = "<p>Herzlich willkommen bei " . SITE . ", <strong>" . htmlspecialchars($c['name']) . "</strong>!</p>
+    <p>Wir freuen uns, dass Sie sich für uns entschieden haben. Hier ist, was Sie als nächstes tun können:</p>
+    <ul style='margin:20px 0;padding-left:20px;color:#4b5563'>
+      <li style='margin-bottom:8px'><strong>Profil vervollständigen</strong> — Adresse und Telefonnummer hinterlegen</li>
+      <li style='margin-bottom:8px'><strong>Ersten Termin buchen</strong> — direkt über das Portal</li>
+      <li style='margin-bottom:8px'><strong>Fragen?</strong> Schreiben Sie uns per WhatsApp oder E-Mail</li>
+    </ul>
+    <p style='color:#6b7280'>Wir sind für Sie da!</p>";
+
+    $html = emailTemplate('Willkommen!', $content, 'Termin buchen', 'https://app.' . SITE_DOMAIN . '/customer/booking.php');
+    return sendEmail($c['email'], SITE . ' — Willkommen!', $html);
+}
+
+function notifyReviewRequest($jobId) {
+    $job = one("SELECT j.*, c.name as cname, c.email as cemail, s.title as stitle, e.name as ename
+        FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
+        LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
+        WHERE j.j_id=?", [$jobId]);
+    if (!$job || !$job['cemail']) return false;
+
+    $date = date('d.m.Y', strtotime($job['j_date']));
+    $partner = $job['ename'] ?: 'Unser Partner';
+
+    $content = "<p>Ihr Termin am <strong>$date</strong> wurde abgeschlossen.</p>
+    <p>Waren Sie zufrieden mit dem Service von <strong>{$partner}</strong>?</p>
+    <div style='text-align:center;margin:30px 0'>
+      <span style='font-size:36px'>⭐⭐⭐⭐⭐</span>
+    </div>
+    <p style='color:#6b7280'>Ihre Bewertung hilft uns, unseren Service zu verbessern. Antworten Sie einfach auf diese E-Mail oder schreiben Sie uns per WhatsApp.</p>";
+
+    $html = emailTemplate('Wie war Ihr Termin?', $content, 'Bewertung abgeben', 'https://wa.me/' . CONTACT_WA . '?text=' . urlencode("Bewertung für Job am $date: ★★★★★ Alles top!"));
+    return sendEmail($job['cemail'], SITE . ' — Wie war Ihr Termin?', $html);
+}
+
+function notifyPaymentReminder($invoiceId) {
+    $inv = one("SELECT i.*, c.name as cname, c.email as cemail
+        FROM invoices i LEFT JOIN customer c ON i.customer_id_fk=c.customer_id WHERE i.inv_id=?", [$invoiceId]);
+    if (!$inv || !$inv['cemail'] || $inv['invoice_paid'] === 'yes') return false;
+
+    $total = money($inv['remaining_price']);
+    $invNr = htmlspecialchars($inv['invoice_number']);
+    $date = date('d.m.Y', strtotime($inv['issue_date']));
+
+    $content = "<p>Freundliche Erinnerung: Die Rechnung <strong>$invNr</strong> vom $date ist noch offen.</p>
+    <table style='width:100%;border-collapse:collapse;margin:20px 0'>
+      <tr><td style='padding:8px 0;color:#6b7280;width:140px'>Rechnungsnr.:</td><td style='padding:8px 0;font-weight:600'>$invNr</td></tr>
+      <tr><td style='padding:8px 0;color:#6b7280'>Offener Betrag:</td><td style='padding:8px 0;font-weight:700;font-size:18px;color:" . BRAND . "'>$total</td></tr>
+    </table>
+    <p style='color:#6b7280'>Bitte überweisen Sie den Betrag auf unser Konto oder zahlen Sie online über den Button unten.</p>";
+
+    $html = emailTemplate('Zahlungserinnerung', $content, 'Jetzt bezahlen', 'https://app.' . SITE_DOMAIN . '/customer/invoices.php');
+    return sendEmail($inv['cemail'], SITE . ' — Zahlungserinnerung: ' . $invNr, $html);
+}

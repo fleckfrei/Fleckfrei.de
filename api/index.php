@@ -669,6 +669,26 @@ try {
             throw new Exception($result['message'] ?? 'Auth failed');
         })(),
 
+        // Email: Send specific email templates
+        $action === 'email/send' && $method === 'POST' => (function() use ($body) {
+            $type = $body['type'] ?? '';
+            $id = (int)($body['id'] ?? 0);
+            if (!$id) throw new Exception('Missing id');
+            $result = match($type) {
+                'welcome' => notifyWelcome($id),
+                'review' => notifyReviewRequest($id),
+                'reminder' => notifyJobReminder($id),
+                'payment_reminder' => notifyPaymentReminder($id),
+                'invoice' => notifyInvoiceCreated($id),
+                'booking' => notifyBookingConfirmation($id),
+                'started' => notifyJobStarted($id),
+                'completed' => notifyJobCompleted($id),
+                default => throw new Exception("Unknown type: $type")
+            };
+            audit('email', $type, $id, "Email gesendet: $type");
+            return ['sent' => (bool)$result, 'type' => $type];
+        })(),
+
         // Settings: Update (admin API)
         $action === 'settings/update' && $method === 'POST' => (function() use ($body) {
             $allowed = ['first_name','last_name','company','phone','email','website','invoice_prefix','invoice_number','bank','bic','iban','USt_IdNr','business_number','fiscal_number','invoice_text','street','number','postal_code','city','country','note_for_email'];
