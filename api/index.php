@@ -650,6 +650,36 @@ try {
             return $ob->getBanks('DE');
         })(),
 
+        // Bank Export: CSV download of bank transactions
+        $action === 'bank/export' && $method === 'GET' => (function() {
+            $month = $_GET['month'] ?? date('Y-m');
+            $start = $month . '-01';
+            $end = date('Y-m-t', strtotime($start));
+            $payments = all("SELECT ip.*, i.invoice_number, c.name as cname
+                FROM invoice_payments ip
+                LEFT JOIN invoices i ON ip.invoice_id_fk=i.inv_id
+                LEFT JOIN customer c ON i.customer_id_fk=c.customer_id
+                WHERE ip.payment_date BETWEEN ? AND ?
+                ORDER BY ip.payment_date", [$start, $end]);
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="kontoauszug-' . $month . '.csv"');
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            fputcsv($out, ['Datum', 'Betrag', 'Methode', 'Rechnung', 'Kunde', 'Notiz'], ';');
+            foreach ($payments as $p) {
+                fputcsv($out, [
+                    $p['payment_date'],
+                    number_format($p['amount'], 2, ',', '.'),
+                    $p['payment_method'] ?? '',
+                    $p['invoice_number'] ?? '-',
+                    $p['cname'] ?? '-',
+                    $p['note'] ?? ''
+                ], ';');
+            }
+            fclose($out);
+            exit;
+        })(),
+
         // Security: Bulk hash all plaintext passwords
         $action === 'security/hash-passwords' && $method === 'POST' => (function() {
             $results = ['customer' => 0, 'employee' => 0];

@@ -214,6 +214,17 @@ include __DIR__ . '/../includes/layout.php';
     </div>
   </div>
 
+  <!-- Export -->
+  <div class="bg-white rounded-xl border p-5 mb-6">
+    <h3 class="font-semibold mb-3">Kontoauszug exportieren</h3>
+    <div class="flex items-end gap-3">
+      <div><label class="block text-xs font-medium text-gray-500 mb-1">Monat</label>
+        <input type="month" id="exportMonth" value="<?= date('Y-m') ?>" class="px-3 py-2 border rounded-lg text-sm"/></div>
+      <a href="#" onclick="this.href='/api/index.php?action=bank/export&month='+document.getElementById('exportMonth').value+'&key=<?= API_KEY ?>'" class="px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50">CSV Export</a>
+      <a href="#" onclick="this.href='/admin/bank-statement.php?month='+document.getElementById('exportMonth').value" target="_blank" class="px-4 py-2 bg-brand text-white rounded-lg text-sm font-medium">PDF Kontoauszug</a>
+    </div>
+  </div>
+
   <!-- Recent Import History -->
   <?php
   $recentPayments = allLocal("SELECT ip.*, i.invoice_number, c.name as cname FROM invoice_payments ip LEFT JOIN invoices i ON ip.invoice_id_fk=i.inv_id LEFT JOIN customer c ON i.customer_id_fk=c.customer_id WHERE ip.payment_method LIKE '%Bank%' OR ip.payment_method LIKE '%Auto%' ORDER BY ip.payment_date DESC LIMIT 10");

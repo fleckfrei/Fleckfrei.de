@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Offline — Fleckfrei</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #f3f4f6; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { text-align: center; background: white; padding: 40px; border-radius: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 400px; }
+    .icon { width: 64px; height: 64px; border-radius: 16px; background: #2E7D6B; color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; margin-bottom: 16px; }
+    h1 { font-size: 20px; font-weight: 700; color: #1f2937; margin-bottom: 8px; }
+    p { color: #6b7280; font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+    button { background: #2E7D6B; color: white; border: none; padding: 12px 32px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    button:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">F</div>
+    <h1>Keine Verbindung</h1>
+    <p>Du bist gerade offline. Bitte prüfe deine Internetverbindung und versuche es erneut.</p>
+    <button onclick="location.reload()">Erneut versuchen</button>
+  </div>
+</body>
+</html>
