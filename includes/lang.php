@@ -1,0 +1,246 @@
+<?php
+/**
+ * Multi-Language Support — Fleckfrei
+ * Usage: t('key') returns translated string based on LOCALE config
+ */
+
+$TRANSLATIONS = [
+    'de' => [
+        // Navigation
+        'nav.dashboard' => 'Dashboard',
+        'nav.jobs' => 'Meine Jobs',
+        'nav.invoices' => 'Rechnungen',
+        'nav.workhours' => 'Arbeitsstunden',
+        'nav.documents' => 'Dokumente',
+        'nav.messages' => 'Nachrichten',
+        'nav.profile' => 'Profil',
+        'nav.booking' => 'Neue Buchung',
+        'nav.earnings' => 'Verdienst',
+        'nav.logout' => 'Abmelden',
+
+        // Common
+        'common.save' => 'Speichern',
+        'common.cancel' => 'Abbrechen',
+        'common.delete' => 'Löschen',
+        'common.edit' => 'Bearbeiten',
+        'common.search' => 'Suchen...',
+        'common.back' => 'Zurück',
+        'common.send' => 'Senden',
+        'common.saved' => 'Gespeichert.',
+        'common.no_data' => 'Keine Daten vorhanden.',
+        'common.hours' => 'Stunden',
+        'common.date' => 'Datum',
+        'common.status' => 'Status',
+        'common.active' => 'Aktiv',
+        'common.inactive' => 'Inaktiv',
+
+        // Jobs
+        'jobs.upcoming' => 'Kommende Jobs',
+        'jobs.completed' => 'Erledigt',
+        'jobs.cancelled' => 'Storniert',
+        'jobs.start' => 'JOB STARTEN',
+        'jobs.stop' => 'JOB BEENDEN',
+        'jobs.cancel' => 'Stornieren',
+        'jobs.partner' => 'Partner',
+        'jobs.note' => 'Notiz zum Job (Pflicht!)',
+        'jobs.photos' => 'Fotos (optional)',
+        'jobs.no_jobs' => 'Keine Jobs für heute.',
+
+        // Invoices
+        'inv.paid' => 'Bezahlt',
+        'inv.open' => 'Offen',
+        'inv.amount' => 'Betrag',
+        'inv.pdf' => 'PDF',
+
+        // Booking
+        'booking.title' => 'Neuen Termin buchen',
+        'booking.service' => 'Service',
+        'booking.date' => 'Datum',
+        'booking.time' => 'Uhrzeit',
+        'booking.hours' => 'Stunden',
+        'booking.frequency' => 'Häufigkeit',
+        'booking.once' => 'Einmalig',
+        'booking.weekly' => 'Wöchentlich',
+        'booking.biweekly' => 'Alle 2 Wochen',
+        'booking.monthly' => 'Monatlich',
+        'booking.address' => 'Adresse',
+        'booking.submit' => 'Termin buchen',
+        'booking.success' => 'Buchung eingegangen!',
+        'booking.confirm_text' => 'Wir bestätigen Ihren Termin in Kürze per E-Mail.',
+
+        // Messages
+        'msg.new' => 'Neue Nachricht',
+        'msg.history' => 'Nachrichten-Verlauf',
+        'msg.general' => 'Allgemein',
+        'msg.you' => 'Sie',
+        'msg.empty' => 'Noch keine Nachrichten.',
+
+        // Profile
+        'profile.personal' => 'Persönliche Daten',
+        'profile.name' => 'Name',
+        'profile.email' => 'E-Mail',
+        'profile.phone' => 'Telefon',
+        'profile.password' => 'Neues Passwort',
+        'profile.addresses' => 'Adressen',
+
+        // Contact
+        'contact.help' => 'Hilfe benötigt?',
+        'contact.whatsapp' => 'WhatsApp kontaktieren',
+    ],
+
+    'en' => [
+        'nav.dashboard' => 'Dashboard',
+        'nav.jobs' => 'My Jobs',
+        'nav.invoices' => 'Invoices',
+        'nav.workhours' => 'Work Hours',
+        'nav.documents' => 'Documents',
+        'nav.messages' => 'Messages',
+        'nav.profile' => 'Profile',
+        'nav.booking' => 'New Booking',
+        'nav.earnings' => 'Earnings',
+        'nav.logout' => 'Logout',
+
+        'common.save' => 'Save',
+        'common.cancel' => 'Cancel',
+        'common.delete' => 'Delete',
+        'common.edit' => 'Edit',
+        'common.search' => 'Search...',
+        'common.back' => 'Back',
+        'common.send' => 'Send',
+        'common.saved' => 'Saved.',
+        'common.no_data' => 'No data available.',
+        'common.hours' => 'Hours',
+        'common.date' => 'Date',
+        'common.status' => 'Status',
+        'common.active' => 'Active',
+        'common.inactive' => 'Inactive',
+
+        'jobs.upcoming' => 'Upcoming Jobs',
+        'jobs.completed' => 'Completed',
+        'jobs.cancelled' => 'Cancelled',
+        'jobs.start' => 'START JOB',
+        'jobs.stop' => 'STOP JOB',
+        'jobs.cancel' => 'Cancel',
+        'jobs.partner' => 'Partner',
+        'jobs.note' => 'Job note (required!)',
+        'jobs.photos' => 'Photos (optional)',
+        'jobs.no_jobs' => 'No jobs for today.',
+
+        'inv.paid' => 'Paid',
+        'inv.open' => 'Open',
+        'inv.amount' => 'Amount',
+        'inv.pdf' => 'PDF',
+
+        'booking.title' => 'Book an Appointment',
+        'booking.service' => 'Service',
+        'booking.date' => 'Date',
+        'booking.time' => 'Time',
+        'booking.hours' => 'Hours',
+        'booking.frequency' => 'Frequency',
+        'booking.once' => 'One-time',
+        'booking.weekly' => 'Weekly',
+        'booking.biweekly' => 'Every 2 weeks',
+        'booking.monthly' => 'Monthly',
+        'booking.address' => 'Address',
+        'booking.submit' => 'Book Now',
+        'booking.success' => 'Booking received!',
+        'booking.confirm_text' => 'We will confirm your appointment shortly via email.',
+
+        'msg.new' => 'New Message',
+        'msg.history' => 'Message History',
+        'msg.general' => 'General',
+        'msg.you' => 'You',
+        'msg.empty' => 'No messages yet.',
+
+        'profile.personal' => 'Personal Information',
+        'profile.name' => 'Name',
+        'profile.email' => 'Email',
+        'profile.phone' => 'Phone',
+        'profile.password' => 'New Password',
+        'profile.addresses' => 'Addresses',
+
+        'contact.help' => 'Need help?',
+        'contact.whatsapp' => 'Contact via WhatsApp',
+    ],
+
+    'ro' => [
+        'nav.dashboard' => 'Panou',
+        'nav.jobs' => 'Joburile mele',
+        'nav.invoices' => 'Facturi',
+        'nav.workhours' => 'Ore de muncă',
+        'nav.documents' => 'Documente',
+        'nav.messages' => 'Mesaje',
+        'nav.profile' => 'Profil',
+        'nav.booking' => 'Rezervare nouă',
+        'nav.earnings' => 'Câștiguri',
+        'nav.logout' => 'Deconectare',
+
+        'common.save' => 'Salvează',
+        'common.cancel' => 'Anulează',
+        'common.delete' => 'Șterge',
+        'common.edit' => 'Editează',
+        'common.search' => 'Caută...',
+        'common.back' => 'Înapoi',
+        'common.send' => 'Trimite',
+        'common.saved' => 'Salvat.',
+        'common.no_data' => 'Nu sunt date disponibile.',
+        'common.hours' => 'Ore',
+        'common.date' => 'Data',
+        'common.status' => 'Status',
+        'common.active' => 'Activ',
+        'common.inactive' => 'Inactiv',
+
+        'jobs.upcoming' => 'Joburi viitoare',
+        'jobs.completed' => 'Finalizat',
+        'jobs.cancelled' => 'Anulat',
+        'jobs.start' => 'ÎNCEPE JOBUL',
+        'jobs.stop' => 'TERMINĂ JOBUL',
+        'jobs.cancel' => 'Anulează',
+        'jobs.partner' => 'Partener',
+        'jobs.note' => 'Notă despre job (obligatoriu!)',
+        'jobs.photos' => 'Fotografii (opțional)',
+        'jobs.no_jobs' => 'Niciun job pentru azi.',
+
+        'inv.paid' => 'Plătit',
+        'inv.open' => 'Deschis',
+        'inv.amount' => 'Sumă',
+        'inv.pdf' => 'PDF',
+
+        'booking.title' => 'Rezervă o programare',
+        'booking.service' => 'Serviciu',
+        'booking.date' => 'Data',
+        'booking.time' => 'Ora',
+        'booking.hours' => 'Ore',
+        'booking.frequency' => 'Frecvență',
+        'booking.once' => 'O singură dată',
+        'booking.weekly' => 'Săptămânal',
+        'booking.biweekly' => 'La 2 săptămâni',
+        'booking.monthly' => 'Lunar',
+        'booking.address' => 'Adresă',
+        'booking.submit' => 'Rezervă acum',
+        'booking.success' => 'Rezervare primită!',
+        'booking.confirm_text' => 'Vă vom confirma programarea în curând prin email.',
+
+        'msg.new' => 'Mesaj nou',
+        'msg.history' => 'Istoric mesaje',
+        'msg.general' => 'General',
+        'msg.you' => 'Tu',
+        'msg.empty' => 'Niciun mesaj încă.',
+
+        'profile.personal' => 'Date personale',
+        'profile.name' => 'Nume',
+        'profile.email' => 'Email',
+        'profile.phone' => 'Telefon',
+        'profile.password' => 'Parolă nouă',
+        'profile.addresses' => 'Adrese',
+
+        'contact.help' => 'Ai nevoie de ajutor?',
+        'contact.whatsapp' => 'Contactează pe WhatsApp',
+    ],
+];
+
+function t($key) {
+    global $TRANSLATIONS;
+    $lang = LOCALE;
+    return $TRANSLATIONS[$lang][$key] ?? $TRANSLATIONS['de'][$key] ?? $key;
+}

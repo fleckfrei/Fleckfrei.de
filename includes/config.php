@@ -80,6 +80,8 @@ function badge($status) {
     $label = $labels[$status] ?? $status;
     return "<span class=\"px-2 py-1 text-xs font-medium rounded-full bg-{$col}-100 text-{$col}-800\">$label</span>";
 }
+require_once __DIR__ . '/lang.php';
+
 function webhookNotify($event, $data) {
     $url = match($event) {
         'booking' => N8N_WEBHOOK_BOOKING,

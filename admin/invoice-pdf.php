@@ -169,8 +169,9 @@ $settings = one("SELECT * FROM settings LIMIT 1");
   <div class="inv-addresses">
     <div class="inv-addr">
       <label>Von</label>
-      <div class="name"><?= SITE ?></div>
-      <?php if (!empty($settings['company_address'])): ?><div><?= e($settings['company_address']) ?></div><?php endif; ?>
+      <div class="name"><?= !empty($settings['company']) ? e($settings['company']) : SITE ?></div>
+      <?php if (!empty($settings['street'])): ?><div><?= e($settings['street'].' '.($settings['number']??'')) ?></div>
+      <div><?= e(($settings['postal_code']??'').' '.($settings['city']??'')) ?></div><?php endif; ?>
       <div><?= CONTACT_EMAIL ?></div>
       <div><?= CONTACT_PHONE ?></div>
       <div><?= SITE_DOMAIN ?></div>
@@ -261,11 +262,30 @@ $settings = one("SELECT * FROM settings LIMIT 1");
   </div>
   <?php endif; ?>
 
+  <!-- Bank Details -->
+  <?php if (!empty($settings['iban'])): ?>
+  <div style="background:#f9fafb;border-radius:12px;padding:20px;margin-bottom:30px">
+    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin-bottom:12px">Bankverbindung</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+      <?php if (!empty($settings['bank'])): ?><div><span style="color:#6b7280">Bank:</span> <?= e($settings['bank']) ?></div><?php endif; ?>
+      <div><span style="color:#6b7280">IBAN:</span> <span style="font-family:monospace"><?= e($settings['iban']) ?></span></div>
+      <?php if (!empty($settings['bic'])): ?><div><span style="color:#6b7280">BIC:</span> <span style="font-family:monospace"><?= e($settings['bic']) ?></span></div><?php endif; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <?php if (!empty($settings['invoice_text'])): ?>
+  <div style="padding:16px 0;font-size:13px;color:#6b7280;border-top:1px solid #e5e7eb;margin-bottom:20px"><?= nl2br(e($settings['invoice_text'])) ?></div>
+  <?php endif; ?>
+
   <!-- Footer -->
   <div class="inv-footer">
-    <p style="margin-bottom:8px"><?= SITE ?> &middot; <?= CONTACT_EMAIL ?> &middot; <a href="https://<?= SITE_DOMAIN ?>"><?= SITE_DOMAIN ?></a></p>
-    <p>Vielen Dank für Ihr Vertrauen!</p>
-    <?php if (!empty($settings['tax_id'])): ?><p style="margin-top:8px">Steuernr.: <?= e($settings['tax_id']) ?></p><?php endif; ?>
+    <p style="margin-bottom:4px"><?= SITE ?><?php if (!empty($settings['company'])): ?> — <?= e($settings['company']) ?><?php endif; ?></p>
+    <?php if (!empty($settings['street'])): ?><p><?= e($settings['street'].' '.($settings['number']??'').', '.($settings['postal_code']??'').' '.($settings['city']??'')) ?></p><?php endif; ?>
+    <p><?= CONTACT_EMAIL ?> &middot; <a href="https://<?= SITE_DOMAIN ?>"><?= SITE_DOMAIN ?></a></p>
+    <?php if (!empty($settings['USt_IdNr'])): ?><p style="margin-top:4px">USt-IdNr: <?= e($settings['USt_IdNr']) ?></p><?php endif; ?>
+    <?php if (!empty($settings['fiscal_number'])): ?><p>Finanzamt-Nr.: <?= e($settings['fiscal_number']) ?></p><?php endif; ?>
+    <p style="margin-top:12px;color:#6b7280">Vielen Dank für Ihr Vertrauen!</p>
   </div>
 </div>
 

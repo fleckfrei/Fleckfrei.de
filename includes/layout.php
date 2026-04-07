@@ -118,11 +118,12 @@
       } elseif ($user['type'] === 'employee') {
         $badgeEmpMsgs = 0;
         try { $badgeEmpMsgs = val("SELECT COUNT(*) FROM messages WHERE recipient_type='employee' AND recipient_id=? AND read_at IS NULL", [$user['id']]) ?: 0; } catch (Exception $e) {}
-        $menu = [
-          ['/employee/', 'Meine Jobs', 'dashboard', $iconHome, ''],
-          ['/employee/messages.php', 'Nachrichten', 'messages', $iconMsg, $badgeEmpMsgs > 0 ? $badgeEmpMsgs : ''],
-          ['/employee/profile.php', 'Profil', 'profile', $iconProfile, ''],
-        ];
+        $menu = [];
+        if (employeeCan('portal_jobs')) $menu[] = ['/employee/', 'Meine Jobs', 'dashboard', $iconHome, ''];
+        if (employeeCan('portal_earnings')) $menu[] = ['/employee/earnings.php', 'Verdienst', 'earnings', $iconInv, ''];
+        if (employeeCan('portal_messages')) $menu[] = ['/employee/messages.php', 'Nachrichten', 'messages', $iconMsg, $badgeEmpMsgs > 0 ? $badgeEmpMsgs : ''];
+        if (employeeCan('portal_profile')) $menu[] = ['/employee/profile.php', 'Profil', 'profile', $iconProfile, ''];
+        if (empty($menu)) $menu[] = ['/employee/', 'Meine Jobs', 'dashboard', $iconHome, ''];
       } else {
         $menu = [['/login.php', 'Login', '', $iconHome, '']];
       }

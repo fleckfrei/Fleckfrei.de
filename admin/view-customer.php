@@ -372,20 +372,27 @@ foreach ($wh as $w) {
 
 <?php elseif ($tab === 'services'): ?>
 <!-- Services -->
+<div class="flex items-center justify-between mb-4">
+  <h3 class="font-semibold"><?= count($services) ?> Services</h3>
+  <a href="/admin/services.php" onclick="localStorage.setItem('prefillCustomer','<?= $cid ?>')" class="px-3 py-1.5 bg-brand text-white rounded-lg text-sm font-medium">+ Neuer Service</a>
+</div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
   <?php foreach ($services as $sv): ?>
   <div class="bg-white rounded-xl border p-5">
-    <h4 class="font-semibold mb-2"><?= e($sv['title']) ?></h4>
+    <div class="flex items-start justify-between">
+      <h4 class="font-semibold mb-2"><?= e($sv['title']) ?></h4>
+      <a href="/admin/services.php" class="text-xs text-brand hover:underline">Edit</a>
+    </div>
     <div class="space-y-1 text-sm text-gray-600">
-      <div>📍 <?= e($sv['street']) ?> <?= e($sv['number']) ?>, <?= e($sv['postal_code']) ?> <?= e($sv['city']) ?></div>
-      <?php if ($sv['total_price']): ?><div>💰 <?= money($sv['total_price']) ?>/h</div><?php endif; ?>
-      <?php if ($sv['box_code']): ?><div>🔑 Box: <?= e($sv['box_code']) ?> | Client: <?= e($sv['client_code']) ?></div><?php endif; ?>
-      <?php if ($sv['wifi_name']): ?><div>📶 <?= e($sv['wifi_name']) ?> / <?= e($sv['wifi_password']) ?></div><?php endif; ?>
-      <?php if ($sv['sqm']): ?><div>📐 <?= $sv['sqm'] ?>m² | <?= $sv['rooms'] ?? '?' ?> Zimmer</div><?php endif; ?>
+      <div><?= e($sv['street']) ?> <?= e($sv['number']) ?>, <?= e($sv['postal_code']) ?> <?= e($sv['city']) ?></div>
+      <?php if ($sv['total_price']): ?><div class="font-medium text-brand"><?= money($sv['total_price']) ?>/h</div><?php endif; ?>
+      <?php if ($sv['box_code']): ?><div class="text-xs text-gray-500">Box: <?= e($sv['box_code']) ?><?= $sv['client_code'] ? ' | Client: '.e($sv['client_code']) : '' ?><?= $sv['deposit_code'] ? ' | Deposit: '.e($sv['deposit_code']) : '' ?></div><?php endif; ?>
+      <?php if ($sv['wifi_name']): ?><div class="text-xs text-gray-500">WiFi: <?= e($sv['wifi_name']) ?> / <?= e($sv['wifi_password']) ?></div><?php endif; ?>
+      <?php if ($sv['qm']): ?><div class="text-xs text-gray-500"><?= $sv['qm'] ?>m² | <?= $sv['room'] ?? '?' ?> Zimmer</div><?php endif; ?>
     </div>
   </div>
   <?php endforeach; ?>
-  <?php if(empty($services)): ?><p class="text-sm text-gray-400">Keine Services zugewiesen.</p><?php endif; ?>
+  <?php if(empty($services)): ?><p class="text-sm text-gray-400">Keine Services zugewiesen. <a href="/admin/services.php" class="text-brand hover:underline">Service erstellen</a></p><?php endif; ?>
 </div>
 
 <?php elseif ($tab === 'notes'): ?>
