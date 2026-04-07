@@ -7,7 +7,7 @@ $cid = me()['id'];
 
 $month = $_GET['month'] ?? date('Y-m');
 
-$jobs = all("SELECT j.*, s.title as stitle, s.total_price as sprice, e.name as ename, e.surname as esurname
+$jobs = all("SELECT j.*, j.job_photos, s.title as stitle, s.total_price as sprice, e.name as ename, e.surname as esurname
     FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
     WHERE j.customer_id_fk=? AND j.job_status='COMPLETED' AND j.j_date LIKE ? AND j.status=1
     ORDER BY j.j_date DESC", [$cid, "$month%"]);
@@ -55,6 +55,7 @@ include __DIR__ . '/../includes/layout.php';
         <th class="px-4 py-3 text-left font-medium text-gray-600">Ende</th>
         <?php if (customerCan('wh_umsatz')): ?><th class="px-4 py-3 text-left font-medium text-gray-600">Stunden</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Kosten</th><?php endif; ?>
+        <?php if (customerCan('wh_fotos')): ?><th class="px-4 py-3 text-left font-medium text-gray-600">Fotos</th><?php endif; ?>
       </tr></thead>
       <tbody class="divide-y">
       <?php foreach ($jobs as $j):
@@ -70,6 +71,19 @@ include __DIR__ . '/../includes/layout.php';
         <?php if (customerCan('wh_umsatz')): ?>
         <td class="px-4 py-3 font-medium"><?= number_format($hrs, 1) ?>h</td>
         <td class="px-4 py-3"><?= money($cost) ?></td>
+        <?php endif; ?>
+        <?php if (customerCan('wh_fotos')):
+          $photos = !empty($j['job_photos']) ? json_decode($j['job_photos'], true) : [];
+        ?>
+        <td class="px-4 py-3">
+          <?php if (!empty($photos)): ?>
+          <div class="flex gap-1">
+            <?php foreach ($photos as $p): ?>
+            <a href="/uploads/jobs/<?= $j['j_id'] ?>/<?= e($p) ?>" target="_blank"><img src="/uploads/jobs/<?= $j['j_id'] ?>/<?= e($p) ?>" class="w-8 h-8 object-cover rounded border"/></a>
+            <?php endforeach; ?>
+          </div>
+          <?php else: ?><span class="text-gray-300">—</span><?php endif; ?>
+        </td>
         <?php endif; ?>
       </tr>
       <?php endforeach; ?>

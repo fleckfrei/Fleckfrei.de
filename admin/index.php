@@ -47,6 +47,38 @@ $unassigned = val("SELECT COUNT(*) FROM jobs WHERE emp_id_fk IS NULL AND job_sta
 // Jobs per day this month (for chart)
 $dailyJobs = all("SELECT j_date, COUNT(*) as cnt, SUM(CASE WHEN job_status='COMPLETED' THEN 1 ELSE 0 END) as done, SUM(CASE WHEN job_status='CANCELLED' THEN 1 ELSE 0 END) as cancelled FROM jobs WHERE j_date LIKE ? AND status=1 GROUP BY j_date ORDER BY j_date", ["$month%"]);
 
+// === Extended KPIs ===
+// Previous month comparison
+$prevMonth = date('Y-m', strtotime("$month-01 -1 month"));
+$prevCompleted = val("SELECT COUNT(*) FROM jobs WHERE job_status='COMPLETED' AND j_date LIKE ? AND status=1", ["$prevMonth%"]);
+$prevRevenue = val("SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE invoice_paid='yes' AND issue_date LIKE ?", ["$prevMonth%"]);
+$jobsDelta = $s['completed_month'] - $prevCompleted;
+$revenueDelta = $s['revenue_month'] - $prevRevenue;
+
+// Partner performance this month
+$partnerPerf = all("SELECT e.emp_id, e.name, e.surname,
+    COUNT(j.j_id) as jobs_count,
+    COALESCE(SUM(COALESCE(j.total_hours, j.j_hours)),0) as total_hours,
+    SUM(CASE WHEN j.job_status='CANCELLED' THEN 1 ELSE 0 END) as cancelled
+    FROM employee e
+    LEFT JOIN jobs j ON j.emp_id_fk=e.emp_id AND j.j_date LIKE ? AND j.status=1
+    WHERE e.status=1
+    GROUP BY e.emp_id ORDER BY jobs_count DESC", ["$month%"]);
+
+// Top 5 customers by revenue this month
+$topCustomers = all("SELECT c.name, c.customer_type,
+    COUNT(j.j_id) as jobs_count,
+    COALESCE(SUM(GREATEST(COALESCE(j.total_hours, j.j_hours), 2) * COALESCE(s.total_price,0)),0) as revenue
+    FROM customer c
+    JOIN jobs j ON j.customer_id_fk=c.customer_id AND j.job_status='COMPLETED' AND j.j_date LIKE ? AND j.status=1
+    LEFT JOIN services s ON j.s_id_fk=s.s_id
+    WHERE c.status=1
+    GROUP BY c.customer_id ORDER BY revenue DESC LIMIT 5", ["$month%"]);
+
+// Messages unread
+$unreadMsgs = 0;
+try { $unreadMsgs = val("SELECT COUNT(*) FROM messages WHERE recipient_type='admin' AND read_at IS NULL") ?: 0; } catch (Exception $e) {}
+
 include __DIR__ . '/../includes/layout.php';
 ?>
 
@@ -273,6 +305,88 @@ include __DIR__ . '/../includes/layout.php';
     </div>
   </div>
 </div>
+
+<!-- Month Comparison -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+  <!-- Monatsvergleich -->
+  <div class="bg-white rounded-xl border p-5">
+    <h3 class="font-semibold mb-4">Monatsvergleich</h3>
+    <div class="grid grid-cols-2 gap-4">
+      <div class="bg-gray-50 rounded-lg p-4">
+        <div class="text-sm text-gray-500 mb-1">Jobs erledigt</div>
+        <div class="text-2xl font-bold"><?= $s['completed_month'] ?></div>
+        <div class="text-xs mt-1 <?= $jobsDelta >= 0 ? 'text-green-600' : 'text-red-600' ?>">
+          <?= $jobsDelta >= 0 ? '+' : '' ?><?= $jobsDelta ?> vs. Vormonat (<?= $prevCompleted ?>)
+        </div>
+      </div>
+      <div class="bg-gray-50 rounded-lg p-4">
+        <div class="text-sm text-gray-500 mb-1">Umsatz bezahlt</div>
+        <div class="text-2xl font-bold text-brand"><?= money($s['revenue_month']) ?></div>
+        <div class="text-xs mt-1 <?= $revenueDelta >= 0 ? 'text-green-600' : 'text-red-600' ?>">
+          <?= $revenueDelta >= 0 ? '+' : '' ?><?= money($revenueDelta) ?> vs. Vormonat
+        </div>
+      </div>
+    </div>
+    <?php if ($unreadMsgs > 0): ?>
+    <div class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center justify-between">
+      <span class="text-sm text-blue-800 font-medium"><?= $unreadMsgs ?> ungelesene Nachricht(en)</span>
+      <a href="/admin/messages.php" class="text-xs text-brand font-medium hover:underline">Ansehen &rarr;</a>
+    </div>
+    <?php endif; ?>
+  </div>
+
+  <!-- Partner Performance -->
+  <div class="bg-white rounded-xl border p-5">
+    <h3 class="font-semibold mb-4">Partner-Performance (<?= $monthLabel ?>)</h3>
+    <div class="space-y-3">
+      <?php foreach ($partnerPerf as $pp):
+        $pctBar = $pp['jobs_count'] > 0 ? min(100, ($pp['jobs_count'] / max(1, $s['completed_month'] + $s['pending'])) * 100) : 0;
+      ?>
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-sm font-medium"><?= e($pp['name'].' '.($pp['surname']??'')) ?></span>
+          <span class="text-xs text-gray-500"><?= $pp['jobs_count'] ?> Jobs &middot; <?= round($pp['total_hours'],1) ?>h<?= $pp['cancelled'] > 0 ? ' &middot; <span class="text-red-500">'.$pp['cancelled'].' storn.</span>' : '' ?></span>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-2">
+          <div class="bg-brand rounded-full h-2" style="width:<?= $pctBar ?>%"></div>
+        </div>
+      </div>
+      <?php endforeach; ?>
+      <?php if (empty($partnerPerf)): ?>
+      <p class="text-gray-400 text-sm">Keine Partner-Daten.</p>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+
+<?php if (!empty($topCustomers)): ?>
+<!-- Top Kunden -->
+<div class="bg-white rounded-xl border p-5 mb-6">
+  <h3 class="font-semibold mb-4">Top Kunden nach Umsatz (<?= $monthLabel ?>)</h3>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50"><tr>
+        <th class="px-4 py-2 text-left font-medium text-gray-600">#</th>
+        <th class="px-4 py-2 text-left font-medium text-gray-600">Kunde</th>
+        <th class="px-4 py-2 text-left font-medium text-gray-600">Typ</th>
+        <th class="px-4 py-2 text-left font-medium text-gray-600">Jobs</th>
+        <th class="px-4 py-2 text-left font-medium text-gray-600">Umsatz</th>
+      </tr></thead>
+      <tbody class="divide-y">
+      <?php foreach ($topCustomers as $i => $tc): ?>
+      <tr class="hover:bg-gray-50">
+        <td class="px-4 py-2 text-gray-400"><?= $i+1 ?></td>
+        <td class="px-4 py-2 font-medium"><?= e($tc['name']) ?></td>
+        <td class="px-4 py-2 text-xs text-gray-500"><?= e($tc['customer_type']) ?></td>
+        <td class="px-4 py-2"><?= $tc['jobs_count'] ?></td>
+        <td class="px-4 py-2 font-bold text-brand"><?= money($tc['revenue']) ?></td>
+      </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- Job Detail Popup -->
 <div id="jobDetailModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden overflow-y-auto py-4">
