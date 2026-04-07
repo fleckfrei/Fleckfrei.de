@@ -122,7 +122,7 @@ include __DIR__ . '/../includes/layout.php';
             <?php if ($tab === 'archive'): ?>
               <form method="POST" class="inline"><input type="hidden" name="action" value="reactivate_customer"/><input type="hidden" name="customer_id" value="<?= $row['customer_id'] ?>"/><button class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg font-medium">Aktivieren</button></form>
             <?php else: ?>
-              <a href="/admin/customers.php?impersonate=<?= $row['customer_id'] ?>" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg">Login</a>
+              <form method="POST" class="inline"><input type="hidden" name="action" value="impersonate"/><input type="hidden" name="customer_id" value="<?= $row['customer_id'] ?>"/><input type="hidden" name="_csrf" value="<?= csrfToken() ?>"/><button class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg">Login</button></form>
               <form method="POST" class="inline" onsubmit="return confirm('Kunde deaktivieren?')"><input type="hidden" name="action" value="delete_customer"/><input type="hidden" name="customer_id" value="<?= $row['customer_id'] ?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Archiv</button></form>
             <?php endif; ?>
           </div>

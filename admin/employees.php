@@ -121,7 +121,7 @@ include __DIR__ . '/../includes/layout.php';
           <?php else: ?>
             <a href="/admin/view-employee.php?id=<?= $e2['emp_id'] ?>" class="px-2 py-1 text-xs bg-brand text-white rounded-lg">Öffnen</a>
             <button @click='emp=<?= json_encode(["emp_id"=>$e2["emp_id"],"name"=>$e2["name"],"surname"=>$e2["surname"],"email"=>$e2["email"],"phone"=>$e2["phone"],"tariff"=>$e2["tariff"],"location"=>$e2["location"]??"","nationality"=>$e2["nationality"]??"","status"=>$e2["status"],"notes"=>$e2["notes"]??""],JSON_HEX_APOS) ?>; editOpen=true' class="px-2 py-1 text-xs bg-brand/10 text-brand rounded-lg">Edit</button>
-            <a href="/admin/employees.php?impersonate=<?= $e2['emp_id'] ?>" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg">Login</a>
+            <form method="POST" class="inline"><input type="hidden" name="action" value="impersonate"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><input type="hidden" name="_csrf" value="<?= csrfToken() ?>"/><button class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg">Login</button></form>
             <form method="POST" class="inline" onsubmit="return confirm('Partner archivieren?')"><input type="hidden" name="action" value="delete_employee"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Archiv</button></form>
           <?php endif; ?>
         </div>

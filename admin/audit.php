@@ -4,7 +4,7 @@ requireAdmin();
 $title = 'Protokoll'; $page = 'audit';
 
 $filter = $_GET['entity'] ?? '';
-$logs = all("SELECT * FROM audit_log" . ($filter ? " WHERE entity=?" : "") . " ORDER BY created_at DESC LIMIT 200", $filter ? [$filter] : []);
+$logs = allLocal("SELECT * FROM audit_log" . ($filter ? " WHERE entity=?" : "") . " ORDER BY created_at DESC LIMIT 200", $filter ? [$filter] : []);
 
 include __DIR__ . '/../includes/layout.php';
 ?>
