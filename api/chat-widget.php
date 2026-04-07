@@ -4,7 +4,10 @@
  * Public endpoints for anonymous and customer chat
  */
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: https://fleckfrei.de');
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$allowed = ['https://fleckfrei.de', 'https://www.fleckfrei.de', 'http://localhost'];
+header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowed) ? $origin : 'https://fleckfrei.de'));
+header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
