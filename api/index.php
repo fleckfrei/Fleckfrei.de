@@ -568,6 +568,37 @@ try {
             return ['sent' => $ok];
         })(),
 
+        // Sync: bulk update job statuses from external system (la-renting)
+        $action === 'sync/jobs' && $method === 'POST' => (function() use ($body) {
+            if (empty($body['jobs']) || !is_array($body['jobs'])) throw new Exception('Need jobs array');
+            $updated = 0;
+            $skipped = 0;
+            foreach ($body['jobs'] as $j) {
+                if (empty($j['j_id']) || empty($j['job_status'])) { $skipped++; continue; }
+                // Only update if status actually changed
+                $current = one("SELECT job_status, start_time, end_time, total_hours FROM jobs WHERE j_id=?", [$j['j_id']]);
+                if (!$current) { $skipped++; continue; }
+                if ($current['job_status'] === $j['job_status'] && ($current['start_time'] ?? '') === ($j['start_time'] ?? '')) { $skipped++; continue; }
+
+                $sets = ['job_status=?'];
+                $params = [$j['job_status']];
+
+                if (!empty($j['start_time'])) { $sets[] = 'start_time=?'; $params[] = $j['start_time']; }
+                if (!empty($j['end_time'])) { $sets[] = 'end_time=?'; $params[] = $j['end_time']; }
+                if (!empty($j['total_hours'])) { $sets[] = 'total_hours=?'; $params[] = $j['total_hours']; }
+                if (!empty($j['cancel_date'])) { $sets[] = 'cancel_date=?'; $params[] = $j['cancel_date']; }
+                if (!empty($j['start_location'])) { $sets[] = 'start_location=?'; $params[] = $j['start_location']; }
+                if (!empty($j['end_location'])) { $sets[] = 'end_location=?'; $params[] = $j['end_location']; }
+                if (!empty($j['job_note'])) { $sets[] = 'job_note=?'; $params[] = $j['job_note']; }
+                if (isset($j['emp_id_fk'])) { $sets[] = 'emp_id_fk=?'; $params[] = $j['emp_id_fk']; }
+
+                $params[] = $j['j_id'];
+                q("UPDATE jobs SET " . implode(',', $sets) . " WHERE j_id=?", $params);
+                $updated++;
+            }
+            return ['updated' => $updated, 'skipped' => $skipped, 'total' => count($body['jobs'])];
+        })(),
+
         default => throw new Exception("Unknown: $action")
     };
     echo json_encode(['success'=>true, 'data'=>$result]);
