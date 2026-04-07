@@ -191,15 +191,87 @@ include __DIR__ . '/../includes/layout.php';
       <div class="text-gray-400 text-xs">Storno-Rate</div>
       <div class="font-medium <?= $totalJobs > 0 && ($cancelledJobs/$totalJobs) > 0.2 ? 'text-red-600' : 'text-green-600' ?>"><?= $totalJobs > 0 ? round(($cancelledJobs/$totalJobs)*100) : 0 ?>%</div>
     </div>
-    <?php if ($c['email']): ?>
-    <div>
-      <div class="text-gray-400 text-xs">OSINT</div>
-      <div class="flex gap-1">
-        <a href="https://www.google.com/search?q=<?= urlencode($c['name'] . ' ' . ($c['surname']??'') . ' Berlin') ?>" target="_blank" class="px-1.5 py-0.5 text-[10px] bg-gray-100 rounded hover:bg-gray-200">Google</a>
-        <a href="https://www.linkedin.com/search/results/all/?keywords=<?= urlencode($c['name'] . ' ' . ($c['surname']??'')) ?>" target="_blank" class="px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-700 rounded hover:bg-blue-100">LinkedIn</a>
+  </div>
+</div>
+
+<!-- OSINT / Digital Footprint -->
+<?php
+$email = $c['email'] ?? '';
+$emailDomain = $email ? substr($email, strpos($email, '@') + 1) : '';
+$fullName = trim(($c['name'] ?? '') . ' ' . ($c['surname'] ?? ''));
+$phone = $c['phone'] ?? '';
+$phoneClean = preg_replace('/[^0-9]/', '', $phone);
+
+// Email domain check
+$emailValid = false;
+$emailProvider = '';
+if ($emailDomain) {
+    $mxRecords = [];
+    @getmxrr($emailDomain, $mxRecords);
+    $emailValid = !empty($mxRecords);
+    $freeProviders = ['gmail.com','yahoo.com','hotmail.com','outlook.com','gmx.de','web.de','t-online.de','aol.com','icloud.com','protonmail.com','mail.ru','yandex.com'];
+    $emailProvider = in_array(strtolower($emailDomain), $freeProviders) ? 'Privat' : 'Geschäftlich';
+}
+?>
+<div class="bg-white rounded-xl border p-4 mb-4">
+  <h4 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Digital Footprint / OSINT</h4>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <!-- Email Analysis -->
+    <div class="bg-gray-50 rounded-lg p-3">
+      <div class="text-xs font-semibold text-gray-500 mb-2">E-Mail Analyse</div>
+      <div class="space-y-1.5 text-sm">
+        <div class="flex justify-between"><span class="text-gray-400">E-Mail:</span><span class="font-mono text-xs"><?= e($email) ?></span></div>
+        <div class="flex justify-between"><span class="text-gray-400">Domain:</span><span class="font-medium"><?= e($emailDomain) ?></span></div>
+        <div class="flex justify-between"><span class="text-gray-400">MX Valid:</span><span class="font-medium <?= $emailValid ? 'text-green-600' : 'text-red-600' ?>"><?= $emailValid ? '✓ Gültig' : '✗ Ungültig' ?></span></div>
+        <div class="flex justify-between"><span class="text-gray-400">Typ:</span><span class="font-medium"><?= $emailProvider ?></span></div>
+        <?php if ($emailProvider === 'Geschäftlich' && $emailDomain): ?>
+        <div class="flex justify-between"><span class="text-gray-400">Firma-Website:</span><a href="https://<?= e($emailDomain) ?>" target="_blank" class="text-brand hover:underline text-xs"><?= e($emailDomain) ?> ↗</a></div>
+        <?php endif; ?>
       </div>
     </div>
-    <?php endif; ?>
+
+    <!-- Quick Search Links -->
+    <div class="bg-gray-50 rounded-lg p-3">
+      <div class="text-xs font-semibold text-gray-500 mb-2">Suche nach: <?= e($fullName) ?></div>
+      <div class="flex flex-wrap gap-1.5">
+        <a href="https://www.google.com/search?q=<?= urlencode($fullName . ' Berlin') ?>" target="_blank" class="px-2 py-1 text-xs bg-white border rounded-lg hover:bg-gray-100">🔍 Google</a>
+        <a href="https://www.google.com/search?q=<?= urlencode('"' . $fullName . '"') ?>" target="_blank" class="px-2 py-1 text-xs bg-white border rounded-lg hover:bg-gray-100">🔍 Exakt</a>
+        <a href="https://www.linkedin.com/search/results/all/?keywords=<?= urlencode($fullName) ?>" target="_blank" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100">LinkedIn</a>
+        <a href="https://www.xing.com/search/members?keywords=<?= urlencode($fullName) ?>" target="_blank" class="px-2 py-1 text-xs bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100">XING</a>
+        <a href="https://www.facebook.com/search/people/?q=<?= urlencode($fullName) ?>" target="_blank" class="px-2 py-1 text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded-lg hover:bg-blue-100">Facebook</a>
+        <a href="https://www.instagram.com/<?= urlencode(strtolower(str_replace(' ', '', $fullName))) ?>" target="_blank" class="px-2 py-1 text-xs bg-pink-50 text-pink-700 border border-pink-200 rounded-lg hover:bg-pink-100">Instagram</a>
+        <?php if ($email): ?>
+        <a href="https://www.google.com/search?q=<?= urlencode('"' . $email . '"') ?>" target="_blank" class="px-2 py-1 text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-lg hover:bg-yellow-100">📧 Email Search</a>
+        <a href="https://haveibeenpwned.com/account/<?= urlencode($email) ?>" target="_blank" class="px-2 py-1 text-xs bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100">🔓 Breach Check</a>
+        <?php endif; ?>
+        <?php if ($phoneClean): ?>
+        <a href="https://www.google.com/search?q=<?= urlencode($phone) ?>" target="_blank" class="px-2 py-1 text-xs bg-white border rounded-lg hover:bg-gray-100">📞 Tel. Search</a>
+        <a href="https://www.tellows.de/num/<?= $phoneClean ?>" target="_blank" class="px-2 py-1 text-xs bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100">Tellows</a>
+        <?php endif; ?>
+        <?php if ($emailDomain && $emailProvider === 'Geschäftlich'): ?>
+        <a href="https://www.google.com/search?q=site:<?= urlencode($emailDomain) ?>" target="_blank" class="px-2 py-1 text-xs bg-white border rounded-lg hover:bg-gray-100">🌐 Domain</a>
+        <a href="https://www.handelsregister.de/rp_web/search.xhtml" target="_blank" class="px-2 py-1 text-xs bg-gray-100 border rounded-lg hover:bg-gray-200">Handelsregister</a>
+        <?php endif; ?>
+      </div>
+    </div>
+
+    <!-- Contact & Location -->
+    <div class="bg-gray-50 rounded-lg p-3">
+      <div class="text-xs font-semibold text-gray-500 mb-2">Kontakt & Standort</div>
+      <div class="space-y-1.5 text-sm">
+        <?php if ($phone): ?>
+        <div class="flex justify-between"><span class="text-gray-400">Telefon:</span><span><?= e($phone) ?></span></div>
+        <?php endif; ?>
+        <?php if (!empty($addresses)): $addr = $addresses[0]; ?>
+        <div class="flex justify-between"><span class="text-gray-400">Adresse:</span><span class="text-xs"><?= e($addr['street'] . ' ' . ($addr['number']??'')) ?></span></div>
+        <div class="flex justify-between"><span class="text-gray-400">Ort:</span><span><?= e(($addr['postal_code']??'') . ' ' . ($addr['city']??'')) ?></span></div>
+        <a href="https://www.google.com/maps/search/<?= urlencode($addr['street'] . ' ' . ($addr['number']??'') . ', ' . ($addr['postal_code']??'') . ' ' . ($addr['city']??'')) ?>" target="_blank" class="inline-block mt-1 px-2 py-1 text-xs bg-white border rounded-lg hover:bg-gray-100">📍 Google Maps</a>
+        <?php else: ?>
+        <div class="text-gray-400 text-xs">Keine Adresse hinterlegt</div>
+        <?php endif; ?>
+        <div class="flex justify-between mt-2"><span class="text-gray-400">Typ:</span><span class="font-medium"><?= e($c['customer_type']) ?></span></div>
+      </div>
+    </div>
   </div>
 </div>
 
