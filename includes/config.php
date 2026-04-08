@@ -29,7 +29,7 @@ define('TIMEZONE', 'Europe/Berlin');
 // DATABASE — Direkt La-Renting DB (Master) + lokale DB (Fleckfrei-spezifisch)
 // ============================================================
 // Master DB (La-Renting auf Hostinger) — Jobs, Kunden, Partner, Services, Rechnungen
-define('DB_HOST', '31.97.198.95');              // Hostinger Remote MySQL
+define('DB_HOST', 'localhost');                   // Hostinger MySQL (same server)
 define('DB_NAME', 'u860899303_la_renting');
 define('DB_USER', 'u860899303_root');
 define('DB_PASS', '***REDACTED***');
@@ -79,22 +79,25 @@ define('FEATURE_INVOICE_AUTO', true); // Auto-Rechnungserstellung
 // ============================================================
 // SYSTEM — Nicht ändern
 // ============================================================
-// Local DB (GoDaddy) — for local-only tables: messages, audit, settings
-$dbLocal = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
+// Main DB (Hostinger localhost) — all reads and writes
+$db = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     PDO::ATTR_PERSISTENT => true
 ]);
-
-// Main DB (Hostinger) — all reads and writes: jobs, customers, employees, invoices
-$db = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_PERSISTENT => true,
-    PDO::ATTR_TIMEOUT => 5
-]);
 $dbRemote = $db;
-define('DB_MODE', 'remote');
+
+// Local DB — for local-only tables: messages, audit, settings
+try {
+    $dbLocal = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_PERSISTENT => true
+    ]);
+} catch (Exception $e) {
+    $dbLocal = $db; // Fallback to main DB
+}
+define('DB_MODE', 'local');
 
 function q($sql, $p=[]) { global $db; $s=$db->prepare($sql); $s->execute($p); return $s; }
 function all($sql, $p=[]) { return q($sql,$p)->fetchAll(); }
