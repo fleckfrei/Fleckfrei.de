@@ -79,29 +79,22 @@ define('FEATURE_INVOICE_AUTO', true); // Auto-Rechnungserstellung
 // ============================================================
 // SYSTEM — Nicht ändern
 // ============================================================
-// FAST MODE: Local DB for reads (1ms), Sync from Hostinger every minute
-// This gives us: instant page loads + near-real-time data
-$db = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
+// Local DB (GoDaddy) — for local-only tables: messages, audit, settings
+$dbLocal = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     PDO::ATTR_PERSISTENT => true
 ]);
-define('DB_MODE', 'fast');
 
-// Remote DB for writes that need to go to Hostinger (bookings, status changes)
-try {
-    $dbRemote = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_PERSISTENT => true,
-        PDO::ATTR_TIMEOUT => 3
-    ]);
-} catch (Exception $e) {
-    $dbRemote = $db; // Fallback: write to local
-}
-
-// In fast mode, local DB IS the main DB — all reads are local (1ms)
-$dbLocal = $db;
+// Main DB (Hostinger) — all reads and writes: jobs, customers, employees, invoices
+$db = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_PERSISTENT => true,
+    PDO::ATTR_TIMEOUT => 5
+]);
+$dbRemote = $db;
+define('DB_MODE', 'remote');
 
 function q($sql, $p=[]) { global $db; $s=$db->prepare($sql); $s->execute($p); return $s; }
 function all($sql, $p=[]) { return q($sql,$p)->fetchAll(); }
