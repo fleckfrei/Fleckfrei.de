@@ -160,6 +160,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self._whois(body.get("domain", ""))
             elif path == "/socialscan":
                 result = self._socialscan(body.get("query", ""))
+            elif path == "/perplexity":
+                result = self._perplexity(body.get("query", ""))
             elif path == "/websearch":
                 # Scrape DuckDuckGo from VPS (not blocked here!)
                 query = body.get("query", "")
@@ -202,6 +204,31 @@ class Handler(BaseHTTPRequestHandler):
             result = {"error": str(e)}
         self._respond(200, result)
 
+    def _perplexity(self, query):
+        """Search via Perplexity Sonar AI — real web search with citations"""
+        import urllib.request, urllib.parse
+        cached, path = self._cached("perplexity", query)
+        if cached: return {**cached, "_cache": True}
+        data = json.dumps({
+            "model": "sonar",
+            "messages": [{"role": "user", "content": f"Search the web for: {query}. Return detailed findings including names, addresses, companies, reviews, social media profiles. Be thorough and specific."}],
+            "max_tokens": 500
+        }).encode()
+        req = urllib.request.Request("https://api.perplexity.ai/chat/completions", data=data, headers={
+            "Authorization": f"Bearer {os.environ.get('PERPLEXITY_KEY', '')}",
+            "Content-Type": "application/json"
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                result = json.loads(resp.read().decode())
+            content = result["choices"][0]["message"]["content"]
+            citations = result.get("citations", [])
+            output = {"query": query, "answer": content, "citations": citations, "model": "sonar"}
+            json.dump(output, open(path, "w"))
+            return output
+        except Exception as e:
+            return {"query": query, "error": str(e)}
+
     def _websearch(self, query, limit=5):
         """Scrape DuckDuckGo from VPS (not blocked here)"""
         import urllib.request, urllib.parse, re
@@ -224,7 +251,7 @@ class Handler(BaseHTTPRequestHandler):
             return {"query": query, "count": 0, "results": [], "error": str(e)}
 
     def _vulture(self, body):
-        """THE VULTURE — Deep multi-source intelligence scan"""
+        """THE VULTURE — Deep multi-source intelligence scan via Perplexity AI"""
         import concurrent.futures
         name = body.get("name", "")
         email = body.get("email", "")
@@ -235,6 +262,24 @@ class Handler(BaseHTTPRequestHandler):
 
         results = {}
         searches = {}
+
+        # PERPLEXITY AI SEARCH — real web search, not scraping
+        pplx_queries = []
+        if name: pplx_queries.append(f'"{name}" — find company, address, reviews, social media, Impressum, Handelsregister')
+        if email: pplx_queries.append(f'"{email}" — find registered accounts, websites, social media profiles, data breaches')
+        if phone: pplx_queries.append(f'"{phone}" — find owner name, carrier, location, associated businesses')
+        if plate: pplx_queries.append(f'license plate "{plate}" — find vehicle owner, make, model, listings')
+        if address: pplx_queries.append(f'"{address}" — find property owner, Airbnb listings, real estate, businesses at this address')
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            pplx_futures = {q: pool.submit(self._perplexity, q) for q in pplx_queries}
+            for q, future in pplx_futures.items():
+                try:
+                    res = future.result(timeout=15)
+                    if res.get("answer"):
+                        key = q[:30].replace('"','').strip()
+                        results[key] = res
+                except: pass
 
         # Build search queries
         if name:

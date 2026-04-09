@@ -552,7 +552,14 @@ function renderDeepResults(d, container) {
         }
     }
     if (d.correlation?.connections?.length) fundeItems.push(...d.correlation.connections.map(c=>`<div class="p-2 ${c.type.includes('warning')?'bg-red-50':'bg-blue-50'} rounded text-sm">${c.detail}</div>`));
-    // Vulture Web Search Results
+    // Perplexity AI Search Results (from Vulture)
+    if (d.vulture_web) {
+        for (const [key, data] of Object.entries(d.vulture_web)) {
+            if (!data.answer) continue;
+            fundeItems.push(`<div class="p-3 bg-indigo-50 rounded border border-indigo-200"><div class="text-xs font-semibold text-indigo-700 mb-1">Perplexity AI: ${key}</div><div class="text-xs text-gray-700 whitespace-pre-line">${data.answer.substring(0,400)}${data.answer.length>400?'...':''}</div>${data.citations?.length?'<div class="mt-1 text-[10px] text-gray-400">Quellen: '+data.citations.slice(0,3).map((c,i)=>`<a href="${c}" target="_blank" class="text-brand hover:underline">[${i+1}]</a>`).join(' ')+'</div>':''}</div>`);
+        }
+    }
+    // Legacy Vulture Web Search Results (DDG-based, may be empty)
     if (d.vulture_web) {
         const vLabels = {gelbe_seiten:'Gelbe Seiten',das_oertliche:'Das Örtliche',pagini_aurii:'Pagini Aurii (RO)',northdata:'NorthData',bundesanzeiger:'Bundesanzeiger',firmenwissen:'Firmenwissen',insolvenz:'Insolvenz',impressum:'Impressum',airbnb:'Airbnb',booking:'Booking.com',kleinanzeigen:'Kleinanzeigen',social:'Social Media',bewertungen:'Bewertungen',gericht:'Gericht/Polizei',dokumente:'Dokumente',email_trace:'Email Spur',email_social:'Email Social',email_paste:'Email Leaks',phone_trace:'Telefon Spur',phone_tellows:'Tellows',plate_exact:'Kennzeichen',plate_auto:'KFZ',address_immo:'Immobilien','11880':'11880'};
         for (const [key, data] of Object.entries(d.vulture_web)) {
