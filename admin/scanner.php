@@ -405,6 +405,48 @@ function renderDeepResults(d, container) {
             if (allHits.length) fundeItems.push(`<div class="p-2 bg-indigo-50 rounded"><div class="text-xs font-semibold text-indigo-700">${nrType}: ${nr}</div>${allHits.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block hover:underline">${r.title}</a>`).join('')}</div>`);
         }
     }
+    // Airbnb
+    if (d.airbnb_scan?.results) {
+        const allAbnb = Object.values(d.airbnb_scan.results).flat().slice(0,4);
+        if (allAbnb.length) fundeItems.push(`<div class="p-2 bg-pink-50 rounded"><div class="text-xs font-semibold text-pink-700">Airbnb/Booking Listings</div>${allAbnb.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block hover:underline">${r.title}</a>`).join('')}${d.airbnb_scan.links?'<div class="flex gap-2 mt-1">'+Object.entries(d.airbnb_scan.links).map(([k,v])=>`<a href="${v}" target="_blank" class="text-[10px] text-gray-400 hover:text-brand">${k}</a>`).join('')+'</div>':''}</div>`);
+    }
+    // Impressum Validation
+    if (d.impressum_validation) {
+        const iv = d.impressum_validation;
+        const ivColor = iv.valid ? 'green' : (iv.found ? 'red' : 'gray');
+        let ivHtml = `<div class="p-2 bg-${ivColor}-50 rounded border border-${ivColor}-200"><div class="text-xs font-semibold text-${ivColor}-700">Impressum ${iv.valid?'OK':'PROBLEM'}</div>`;
+        if (iv.extracted) {
+            const ex = iv.extracted;
+            if (ex.owner) ivHtml += `<div class="text-xs">Inhaber: <b>${ex.owner}</b></div>`;
+            if (ex.hrb) ivHtml += `<div class="text-xs">HRB: ${ex.hrb}</div>`;
+            if (ex.vat) ivHtml += `<div class="text-xs">USt: ${ex.vat}</div>`;
+            if (ex.email) ivHtml += `<div class="text-xs">Email: ${ex.email}</div>`;
+            if (ex.phone) ivHtml += `<div class="text-xs">Tel: ${ex.phone}</div>`;
+        }
+        if (iv.issues?.length) ivHtml += `<div class="text-xs text-red-600 mt-1">${iv.issues.join(' · ')}</div>`;
+        if (iv.url) ivHtml += `<a href="${iv.url}" target="_blank" class="text-[10px] text-brand">Impressum ansehen</a>`;
+        ivHtml += '</div>';
+        fundeItems.push(ivHtml);
+    }
+    // Website Deep
+    if (d.website_deep) {
+        const wd = d.website_deep;
+        let wdHtml = `<div class="p-2 bg-cyan-50 rounded"><div class="text-xs font-semibold text-cyan-700">Website (${wd.pages?.length||0} Seiten)</div>`;
+        if (wd.emails_found?.length) wdHtml += `<div class="text-xs">Emails: ${wd.emails_found.slice(0,3).join(', ')}</div>`;
+        if (wd.phones_found?.length) wdHtml += `<div class="text-xs">Tel: ${wd.phones_found.slice(0,3).join(', ')}</div>`;
+        if (wd.social_links?.length) wdHtml += `<div class="text-xs">Social: ${wd.social_links.slice(0,3).map(u=>`<a href="${u}" target="_blank" class="text-brand">${new URL(u).hostname.replace('www.','')}</a>`).join(', ')}</div>`;
+        wdHtml += '</div>';
+        fundeItems.push(wdHtml);
+    }
+    // Business Intel (NorthData, Bewertungen, Versicherung etc.)
+    if (d.business_intel) {
+        const bi = d.business_intel;
+        const biLabels = {northdata:'NorthData',bundesanzeiger:'Bundesanzeiger',creditreform:'Creditreform',firmenwissen:'Firmenwissen',werzuwem:'Wer-zu-Wem',versicherung:'Versicherung',bewertungen:'Bewertungen',transparency:'Transparenzreg.',genios:'Genios',unternehmensreg:'Unternehmensreg.'};
+        for (const [key, hits] of Object.entries(bi)) {
+            if (!Array.isArray(hits) || !hits.length) continue;
+            fundeItems.push(`<div class="p-2 bg-gray-50 rounded"><div class="text-xs font-semibold text-gray-700">${biLabels[key]||key} (${hits.length})</div>${hits.slice(0,2).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block hover:underline truncate">${r.title}</a>`).join('')}</div>`);
+        }
+    }
     if (d.correlation?.connections?.length) fundeItems.push(...d.correlation.connections.map(c=>`<div class="p-2 ${c.type.includes('warning')?'bg-red-50':'bg-blue-50'} rounded text-sm">${c.detail}</div>`));
     html += fundeItems.length ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-2">${fundeItems.join('')}</div>` : '<div class="text-sm text-gray-400">Keine besonderen Funde</div>';
     html += '</div>';

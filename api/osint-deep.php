@@ -991,7 +991,212 @@ if ($name) {
 }
 
 // ============================================================
-// 9f. NAME PERMUTATION ENGINE + USERNAME GENERATOR
+// 9f. AIRBNB PROFILE SCRAPER — Find hidden vacation rentals
+// ============================================================
+if ($name || $address) {
+    $airbnbResults = [];
+    $mh = curl_multi_init();
+    $handles = [];
+    $airbnbQueries = [];
+    if ($name) {
+        $airbnbQueries['host_profile'] = 'site:airbnb.de OR site:airbnb.com "' . $name . '" Gastgeber OR Host';
+        $airbnbQueries['host_listings'] = 'site:airbnb.de "' . $name . '" Wohnung OR Apartment OR Unterkunft';
+    }
+    if ($address) {
+        $airbnbQueries['address_listing'] = 'site:airbnb.de OR site:airbnb.com "' . $address . '"';
+        $airbnbQueries['address_booking'] = 'site:booking.com OR site:vrbo.com "' . $address . '"';
+    }
+    if ($phone) $airbnbQueries['phone_listing'] = 'site:airbnb.de OR site:booking.com "' . preg_replace('/[^+0-9]/', '', $phone) . '"';
+    foreach ($airbnbQueries as $qType => $query) {
+        $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$qType] = $ch;
+    }
+    $running = 0;
+    do { curl_multi_exec($mh, $running); curl_multi_select($mh, 0.3); } while ($running > 0);
+    foreach ($handles as $qType => $ch) {
+        $html = curl_multi_getcontent($ch);
+        if ($html && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $html, $dm, PREG_SET_ORDER)) {
+            foreach (array_slice($dm, 0, 5) as $m) {
+                $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
+                $airbnbResults[$qType][] = ['title' => trim(strip_tags($m[2])), 'url' => $rUrl, 'snippet' => trim(strip_tags($m[3]))];
+            }
+        }
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+    if (!empty($airbnbResults)) {
+        $results['airbnb_scan'] = [
+            'results' => $airbnbResults,
+            'links' => [
+                'airbnb_search' => 'https://www.airbnb.de/s/' . urlencode($address ?: $name) . '/homes',
+                'booking_search' => 'https://www.booking.com/searchresults.html?ss=' . urlencode($address ?: $name),
+                'vrbo_search' => 'https://www.vrbo.com/search?query=' . urlencode($address ?: $name),
+            ],
+        ];
+    }
+}
+
+// ============================================================
+// 9f2. IMPRESSUM SCRAPER + VALIDATION — Verify business data
+// ============================================================
+if ($domain && !in_array($domain, ['gmail.com','gmx.de','web.de','yahoo.com','hotmail.com','outlook.com','t-online.de','icloud.com','protonmail.com'])) {
+    $impressumData = ['found' => false, 'valid' => false, 'issues' => []];
+    // Try common Impressum URLs
+    $impUrls = ["https://{$domain}/impressum", "https://{$domain}/impressum.html", "https://{$domain}/imprint", "https://www.{$domain}/impressum", "https://{$domain}/legal", "https://{$domain}/about"];
+    $impHtml = null;
+    $impFoundUrl = '';
+    foreach ($impUrls as $iUrl) {
+        $ch = curl_init($iUrl);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>5, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code === 200 && $resp && strlen($resp) > 500 && (stripos($resp, 'Impressum') !== false || stripos($resp, 'Imprint') !== false || stripos($resp, 'Angaben gemäß') !== false)) {
+            $impHtml = $resp;
+            $impFoundUrl = $iUrl;
+            break;
+        }
+    }
+    if ($impHtml) {
+        $impressumData['found'] = true;
+        $impressumData['url'] = $impFoundUrl;
+        // Strip HTML tags, keep text
+        $impText = strip_tags(preg_replace('/<(script|style|nav|footer|header)[^>]*>.*?<\/\1>/si', '', $impHtml));
+        $impText = preg_replace('/\s+/', ' ', $impText);
+        // Extract structured data
+        $extracted = [];
+        if (preg_match('/(?:Geschäftsführer|Inhaber|Vertreten durch|Managing Director)[:\s]+([A-ZÄÖÜa-zäöüß\s\.\-]{3,50})/u', $impText, $m)) $extracted['owner'] = trim($m[1]);
+        if (preg_match('/(?:Handelsregister|HRB|HRA)[:\s]*([A-Z]+ ?\d+[^\s,]{0,20})/i', $impText, $m)) $extracted['hrb'] = trim($m[1]);
+        if (preg_match('/(?:USt-IdNr|USt\.?-?Id|VAT)[.:\s]*([A-Z]{2}\d{5,11})/i', $impText, $m)) $extracted['vat'] = trim($m[1]);
+        if (preg_match('/(?:Steuernummer|St\.?-?Nr)[.:\s]*([\d\/\s]{8,20})/i', $impText, $m)) $extracted['tax'] = trim($m[1]);
+        if (preg_match('/(\d{5})\s+([A-ZÄÖÜa-zäöüß\-]+)/u', $impText, $m)) $extracted['city'] = trim($m[1] . ' ' . $m[2]);
+        if (preg_match('/(?:Tel|Telefon|Phone|Fon)[.:\s]*([\+\d\s\-\/\(\)]{8,20})/i', $impText, $m)) $extracted['phone'] = trim($m[1]);
+        if (preg_match('/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/', $impText, $m)) $extracted['email'] = trim($m[0]);
+        $impressumData['extracted'] = $extracted;
+        // Validate
+        if ($name && !empty($extracted['owner']) && stripos($extracted['owner'], explode(' ', $name)[0]) === false) {
+            $impressumData['issues'][] = 'Impressum-Name (' . $extracted['owner'] . ') stimmt nicht mit Scan-Name (' . $name . ') überein';
+        }
+        if ($email && !empty($extracted['email']) && strtolower($extracted['email']) !== strtolower($email)) {
+            $impressumData['issues'][] = 'Impressum-Email (' . $extracted['email'] . ') weicht ab';
+        }
+        if ($phone && !empty($extracted['phone'])) {
+            $ph1 = preg_replace('/[^0-9]/', '', $phone);
+            $ph2 = preg_replace('/[^0-9]/', '', $extracted['phone']);
+            if (substr($ph1, -8) !== substr($ph2, -8)) $impressumData['issues'][] = 'Impressum-Telefon (' . $extracted['phone'] . ') weicht ab';
+        }
+        if (empty($extracted['hrb']) && empty($extracted['vat'])) $impressumData['issues'][] = 'Kein HRB oder USt-IdNr im Impressum';
+        if (empty($extracted['owner'])) $impressumData['issues'][] = 'Kein Geschäftsführer/Inhaber erkannt';
+        $impressumData['valid'] = empty($impressumData['issues']);
+        // Cross-check with Handelsregister results
+        if (!empty($results['handelsregister']['companies']) && !empty($extracted['hrb'])) {
+            $hrMatch = false;
+            foreach ($results['handelsregister']['companies'] as $hrc) {
+                if (str_contains($extracted['hrb'], $hrc['register_number'] ?? '---')) { $hrMatch = true; break; }
+            }
+            if (!$hrMatch) $impressumData['issues'][] = 'HRB-Nummer aus Impressum nicht im Handelsregister verifiziert';
+        }
+    } else {
+        $impressumData['issues'][] = 'Kein Impressum auf ' . $domain . ' gefunden';
+    }
+    $results['impressum_validation'] = $impressumData;
+}
+
+// ============================================================
+// 9f3. WEBSITE DEEP SCAN — Subpages, metadata, tech, links
+// ============================================================
+if ($domain && !in_array($domain, ['gmail.com','gmx.de','web.de','yahoo.com','hotmail.com','outlook.com','t-online.de'])) {
+    $webDeep = [];
+    // Scan key subpages in parallel
+    $subpages = ['/','about','/ueber-uns','/team','/kontakt','/contact','/datenschutz','/agb','/preise','/services','/portfolio'];
+    $mh = curl_multi_init();
+    $handles = [];
+    foreach (array_slice($subpages, 0, 6) as $sp) {
+        $url = "https://{$domain}{$sp}";
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>5, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_NOBODY=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$sp] = $ch;
+    }
+    $running = 0;
+    do { curl_multi_exec($mh, $running); curl_multi_select($mh, 0.3); } while ($running > 0);
+    $foundPages = [];
+    $allEmails = []; $allPhones = []; $allSocial = [];
+    foreach ($handles as $sp => $ch) {
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($code >= 200 && $code < 400) {
+            $html = curl_multi_getcontent($ch);
+            if ($html && strlen($html) > 200) {
+                $title = ''; if (preg_match('/<title[^>]*>([^<]+)</', $html, $tm)) $title = trim($tm[1]);
+                $foundPages[] = ['path' => $sp, 'title' => $title, 'size' => strlen($html)];
+                // Extract emails/phones from all pages
+                preg_match_all('/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/', $html, $em);
+                $allEmails = array_merge($allEmails, $em[0] ?? []);
+                preg_match_all('/(?:tel:|href="tel:)([\+\d\s\-\/\(\)]{8,20})/', $html, $pm);
+                $allPhones = array_merge($allPhones, $pm[1] ?? []);
+                // Social links
+                preg_match_all('/href="(https?:\/\/(?:www\.)?(?:facebook|instagram|twitter|x|linkedin|youtube|tiktok)\.[a-z]+\/[^"]+)"/i', $html, $sm);
+                $allSocial = array_merge($allSocial, $sm[1] ?? []);
+            }
+        }
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+    $webDeep['pages'] = $foundPages;
+    $webDeep['emails_found'] = array_values(array_unique(array_filter($allEmails, fn($e) => !str_contains($e, 'example') && !str_contains($e, 'wix') && !str_contains($e, 'wordpress'))));
+    $webDeep['phones_found'] = array_values(array_unique($allPhones));
+    $webDeep['social_links'] = array_values(array_unique($allSocial));
+    if (!empty($foundPages)) $results['website_deep'] = $webDeep;
+}
+
+// ============================================================
+// 9f4. NORTHDATA + BUSINESS REGISTRIES — Scrape public data
+// ============================================================
+if ($name) {
+    $bizSearches = [];
+    $mh = curl_multi_init();
+    $handles = [];
+    $bizQueries = [
+        'northdata' => 'site:northdata.de "' . $name . '"',
+        'bundesanzeiger' => 'site:bundesanzeiger.de "' . $name . '"',
+        'creditreform' => 'site:creditreform.de "' . $name . '"',
+        'firmenwissen' => 'site:firmenwissen.de "' . $name . '"',
+        'werzuwem' => 'site:wer-zu-wem.de "' . $name . '"',
+        'genios' => 'site:genios.de "' . $name . '"',
+        'unternehmensreg' => 'site:unternehmensregister.de "' . $name . '"',
+        'transparency' => '"' . $name . '" Transparenzregister OR "wirtschaftlich Berechtigter"',
+        'versicherung' => '"' . $name . '" Versicherung OR Haftpflicht OR Police OR versichert',
+        'bewertungen' => '"' . $name . '" Bewertung OR Review site:google.com OR site:trustpilot.com OR site:provenexpert.com OR site:kununu.de',
+    ];
+    foreach ($bizQueries as $qType => $query) {
+        $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$qType] = $ch;
+    }
+    $running = 0;
+    do { curl_multi_exec($mh, $running); curl_multi_select($mh, 0.3); } while ($running > 0);
+    foreach ($handles as $qType => $ch) {
+        $html = curl_multi_getcontent($ch);
+        if ($html && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $html, $dm, PREG_SET_ORDER)) {
+            foreach (array_slice($dm, 0, 5) as $m) {
+                $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
+                $bizSearches[$qType][] = ['title' => trim(strip_tags($m[2])), 'url' => $rUrl, 'snippet' => trim(strip_tags($m[3]))];
+            }
+        }
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+    if (!empty($bizSearches)) $results['business_intel'] = $bizSearches;
+}
+
+// ============================================================
+// 9f5. NAME PERMUTATION ENGINE + USERNAME GENERATOR
 // ============================================================
 if ($name) {
     $parts = preg_split('/\s+/', trim($name));
@@ -1589,6 +1794,30 @@ if (!empty($results['deep_intel']['insolvency'])) {
 }
 if (!empty($results['deep_intel']['leaked_docs'])) {
     $dossier['risk_factors'][] = 'Dokumente öffentlich auffindbar: ' . $results['deep_intel']['leaked_docs']['count'] . ' Treffer';
+}
+if (!empty($results['airbnb_scan'])) {
+    $totalAirbnb = array_sum(array_map('count', $results['airbnb_scan']['results']));
+    $dossier['findings'][] = 'Airbnb/Booking: ' . $totalAirbnb . ' Listings/Profile gefunden';
+}
+if (!empty($results['impressum_validation'])) {
+    $iv = $results['impressum_validation'];
+    if ($iv['found'] && $iv['valid']) $dossier['findings'][] = 'Impressum: Verifiziert, alle Daten konsistent';
+    elseif ($iv['found'] && !$iv['valid']) { $dossier['risk_factors'][] = 'Impressum: ' . count($iv['issues']) . ' Problem(e) — ' . implode(', ', array_slice($iv['issues'], 0, 2)); }
+    else $dossier['risk_factors'][] = 'Kein Impressum auf Domain gefunden';
+}
+if (!empty($results['website_deep'])) {
+    $wd = $results['website_deep'];
+    $dossier['findings'][] = 'Website: ' . count($wd['pages']) . ' Seiten, ' . count($wd['emails_found']) . ' Emails, ' . count($wd['social_links']) . ' Social Links';
+}
+if (!empty($results['plate_search'])) {
+    $totalPlate = array_sum(array_map('count', $results['plate_search']['results']));
+    if ($totalPlate > 0) $dossier['findings'][] = 'Kennzeichen ' . $results['plate_search']['plate'] . ': ' . $totalPlate . ' Treffer (' . $results['plate_search']['region'] . ')';
+}
+if (!empty($results['business_intel']['versicherung'])) {
+    $dossier['findings'][] = 'Versicherung: ' . count($results['business_intel']['versicherung']) . ' Treffer gefunden';
+}
+if (!empty($results['business_intel']['bewertungen'])) {
+    $dossier['findings'][] = 'Bewertungen: ' . count($results['business_intel']['bewertungen']) . ' Online-Bewertungen gefunden';
 }
 // Correlation score
 if (!empty($results['correlation'])) {
