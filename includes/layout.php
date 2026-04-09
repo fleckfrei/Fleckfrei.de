@@ -127,6 +127,7 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/settings.php', 'Einstellungen', 'settings', $iconCog, ''],
         ];
         // Conditional features
+        if (FEATURE_SMOOBU) array_splice($menu, 2, 0, [  ['/admin/bookings.php', 'Buchungen', 'bookings', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>', '']  ]);
         if (FEATURE_OSINT) array_splice($menu, -2, 0, [  ['/admin/scanner.php', 'OSI', 'scanner', $iconSearch, '']  ]);
       } elseif ($user['type'] === 'customer') {
         $menu = [];

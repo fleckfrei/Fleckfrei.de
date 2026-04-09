@@ -1,6 +1,9 @@
 <?php
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
+$allowedOrigins = ['https://app.fleckfrei.de', 'https://fleckfrei.de', 'https://app.la-renting.de'];
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowedOrigins)) { header('Access-Control-Allow-Origin: ' . $origin); }
+elseif (php_sapi_name() === 'cli' || ($_SERVER['HTTP_X_API_KEY'] ?? '') === (defined('API_KEY') ? API_KEY : '')) { header('Access-Control-Allow-Origin: *'); }
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, X-API-Key');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
@@ -9,8 +12,49 @@ require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/email.php';
 require_once __DIR__ . '/../includes/openbanking.php';
 
-// Stripe webhook — no auth needed (before auth check)
+// Smoobu webhook — no auth needed (before auth check)
 $action = $_GET['action'] ?? '';
+if ($action === 'smoobu/webhook' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $payload = json_decode(file_get_contents('php://input'), true);
+    if ($payload && !empty($payload['action'])) {
+        $booking = $payload['data'] ?? $payload;
+        $smoobuId = (int)($booking['id'] ?? 0);
+        $guestName = $booking['guest-name'] ?? $booking['guestName'] ?? '';
+        $arrival = $booking['arrival'] ?? null;
+        $departure = $booking['departure'] ?? null;
+        $channel = $booking['channel']['name'] ?? $booking['channel'] ?? 'direct';
+        $apartment = $booking['apartment']['name'] ?? $booking['apartmentName'] ?? '';
+        $apartmentId = (int)($booking['apartment']['id'] ?? $booking['apartmentId'] ?? 0);
+        $price = (float)($booking['price'] ?? 0);
+        $email = $booking['email'] ?? '';
+        $phone = $booking['phone'] ?? '';
+        $adults = (int)($booking['adults'] ?? 1);
+        $children = (int)($booking['children'] ?? 0);
+        $notice = $booking['notice'] ?? '';
+
+        if ($smoobuId && $arrival) {
+            global $dbLocal;
+            $existing = $dbLocal->prepare("SELECT cb_id FROM channel_bookings WHERE smoobu_id=?");
+            $existing->execute([$smoobuId]);
+            $ex = $existing->fetch();
+
+            if ($payload['action'] === 'delete' || ($booking['status'] ?? '') === 'cancelled') {
+                if ($ex) { $dbLocal->prepare("UPDATE channel_bookings SET status='cancelled', synced_at=NOW() WHERE smoobu_id=?")->execute([$smoobuId]); }
+            } elseif ($ex) {
+                $dbLocal->prepare("UPDATE channel_bookings SET guest_name=?, guest_email=?, guest_phone=?, property_name=?, property_id=?, channel=?, check_in=?, check_out=?, adults=?, children=?, price=?, notes=?, status='confirmed', synced_at=NOW() WHERE smoobu_id=?")
+                    ->execute([$guestName, $email, $phone, $apartment, $apartmentId, $channel, $arrival, $departure, $adults, $children, $price, $notice, $smoobuId]);
+            } else {
+                $dbLocal->prepare("INSERT INTO channel_bookings (smoobu_id, guest_name, guest_email, guest_phone, property_name, property_id, channel, check_in, check_out, adults, children, price, notes, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'confirmed')")
+                    ->execute([$smoobuId, $guestName, $email, $phone, $apartment, $apartmentId, $channel, $arrival, $departure, $adults, $children, $price, $notice]);
+            }
+            telegramNotify("🏠 <b>Smoobu " . ucfirst($payload['action']) . "</b>\n\n👤 $guestName\n🏨 $apartment ($channel)\n📅 $arrival → $departure\n💶 $price €");
+        }
+    }
+    echo json_encode(['success' => true]);
+    exit;
+}
+
+// Stripe webhook — no auth needed (before auth check)
 if ($action === 'stripe/webhook' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = file_get_contents('php://input');
     // Verify Stripe signature
@@ -1712,12 +1756,139 @@ try {
             return $results;
         })(),
 
+        // ============ SMOOBU CHANNEL MANAGER ============
+
+        // Smoobu: List bookings
+        $action === 'smoobu/bookings' && $method === 'GET' => (function() {
+            if (!FEATURE_SMOOBU) throw new Exception('Smoobu nicht konfiguriert');
+            $from = $_GET['from'] ?? date('Y-m-d');
+            $to = $_GET['to'] ?? date('Y-m-d', strtotime('+30 days'));
+            $page = (int)($_GET['page'] ?? 1);
+            return smoobuApi("/booking?from=$from&to=$to&page=$page&pageSize=50");
+        })(),
+
+        // Smoobu: List apartments/properties
+        $action === 'smoobu/apartments' && $method === 'GET' => (function() {
+            if (!FEATURE_SMOOBU) throw new Exception('Smoobu nicht konfiguriert');
+            return smoobuApi('/apartment');
+        })(),
+
+        // Smoobu: Get rates
+        $action === 'smoobu/rates' && $method === 'GET' => (function() {
+            if (!FEATURE_SMOOBU) throw new Exception('Smoobu nicht konfiguriert');
+            $aptId = $_GET['apartment_id'] ?? '';
+            $start = $_GET['start'] ?? date('Y-m-d');
+            $end = $_GET['end'] ?? date('Y-m-d', strtotime('+30 days'));
+            if (!$aptId) throw new Exception('apartment_id required');
+            return smoobuApi("/rates?apartments[]=$aptId&start_date=$start&end_date=$end");
+        })(),
+
+        // Smoobu: Get availability
+        $action === 'smoobu/availability' && $method === 'GET' => (function() {
+            if (!FEATURE_SMOOBU) throw new Exception('Smoobu nicht konfiguriert');
+            $aptId = $_GET['apartment_id'] ?? '';
+            $start = $_GET['start'] ?? date('Y-m-d');
+            $end = $_GET['end'] ?? date('Y-m-d', strtotime('+30 days'));
+            if (!$aptId) throw new Exception('apartment_id required');
+            return smoobuApi("/availability?apartments[]=$aptId&start_date=$start&end_date=$end");
+        })(),
+
+        // Smoobu: Full sync — fetch all bookings and cache locally
+        $action === 'smoobu/sync' && $method === 'POST' => (function() {
+            if (!FEATURE_SMOOBU) throw new Exception('Smoobu nicht konfiguriert');
+            global $dbLocal;
+            $from = date('Y-m-d', strtotime('-7 days'));
+            $to = date('Y-m-d', strtotime('+90 days'));
+            $created = 0; $updated = 0; $page = 1;
+
+            do {
+                $resp = smoobuApi("/booking?from=$from&to=$to&page=$page&pageSize=100");
+                $bookings = $resp['bookings'] ?? [];
+
+                foreach ($bookings as $b) {
+                    $smoobuId = (int)($b['id'] ?? 0);
+                    if (!$smoobuId) continue;
+                    $data = [
+                        $b['guest-name'] ?? '', $b['email'] ?? '', $b['phone'] ?? '',
+                        $b['apartment']['name'] ?? '', (int)($b['apartment']['id'] ?? 0),
+                        $b['channel']['name'] ?? 'direct',
+                        $b['arrival'] ?? null, $b['departure'] ?? null,
+                        (int)($b['adults'] ?? 1), (int)($b['children'] ?? 0),
+                        (float)($b['price'] ?? 0), $b['notice'] ?? '',
+                    ];
+                    $ex = $dbLocal->prepare("SELECT cb_id FROM channel_bookings WHERE smoobu_id=?");
+                    $ex->execute([$smoobuId]);
+                    if ($ex->fetch()) {
+                        $dbLocal->prepare("UPDATE channel_bookings SET guest_name=?, guest_email=?, guest_phone=?, property_name=?, property_id=?, channel=?, check_in=?, check_out=?, adults=?, children=?, price=?, notes=?, synced_at=NOW() WHERE smoobu_id=?")
+                            ->execute([...$data, $smoobuId]);
+                        $updated++;
+                    } else {
+                        $dbLocal->prepare("INSERT INTO channel_bookings (guest_name, guest_email, guest_phone, property_name, property_id, channel, check_in, check_out, adults, children, price, notes, smoobu_id, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'confirmed')")
+                            ->execute([...$data, $smoobuId]);
+                        $created++;
+                    }
+                }
+                $page++;
+            } while (count($bookings) >= 100 && $page <= 10);
+
+            audit('sync', 'smoobu', 0, "Sync: $created new, $updated updated");
+            if ($created > 0) {
+                telegramNotify("🏠 Smoobu Sync: $created neue Buchungen, $updated aktualisiert");
+            }
+            return ['created' => $created, 'updated' => $updated, 'pages_fetched' => $page - 1];
+        })(),
+
+        // Channel bookings: local cache list
+        $action === 'channel/bookings' && $method === 'GET' => (function() {
+            global $dbLocal;
+            $from = $_GET['from'] ?? date('Y-m-d');
+            $to = $_GET['to'] ?? date('Y-m-d', strtotime('+30 days'));
+            $channel = $_GET['channel'] ?? '';
+            $sql = "SELECT * FROM channel_bookings WHERE check_in BETWEEN ? AND ? AND status != 'cancelled'";
+            $p = [$from, $to];
+            if ($channel) { $sql .= " AND channel=?"; $p[] = $channel; }
+            $sql .= " ORDER BY check_in";
+            $stmt = $dbLocal->prepare($sql);
+            $stmt->execute($p);
+            return $stmt->fetchAll();
+        })(),
+
         default => throw new Exception("Unknown: $action")
     };
     echo json_encode(['success'=>true, 'data'=>$result]);
 } catch (Exception $e) {
     http_response_code(400);
     echo json_encode(['success'=>false, 'error'=>$e->getMessage()]);
+}
+
+/**
+ * Smoobu API helper
+ */
+function smoobuApi(string $endpoint, string $method = 'GET', ?array $data = null): array {
+    $url = SMOOBU_BASE . $endpoint;
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_HTTPHEADER => [
+            'Api-Key: ' . SMOOBU_API_KEY,
+            'Content-Type: application/json',
+            'Cache-Control: no-cache',
+        ],
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+        if ($data) curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    }
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($httpCode < 200 || $httpCode >= 300) {
+        throw new Exception("Smoobu API Error ($httpCode): " . ($err ?: substr($resp, 0, 200)));
+    }
+    return json_decode($resp, true) ?: [];
 }
 
 /**

@@ -61,3 +61,51 @@ try {
         $dbLocal->exec("INSERT INTO settings (company) VALUES ('')");
     }
 } catch (Exception $e) {}
+
+// Channel bookings cache (Smoobu sync)
+$dbLocal->exec("CREATE TABLE IF NOT EXISTS channel_bookings (
+    cb_id INT AUTO_INCREMENT PRIMARY KEY,
+    smoobu_id INT DEFAULT NULL,
+    guest_name VARCHAR(255) DEFAULT '',
+    guest_email VARCHAR(255) DEFAULT '',
+    guest_phone VARCHAR(100) DEFAULT '',
+    property_name VARCHAR(255) DEFAULT '',
+    property_id INT DEFAULT NULL,
+    channel VARCHAR(50) DEFAULT '',
+    check_in DATE DEFAULT NULL,
+    check_out DATE DEFAULT NULL,
+    adults INT DEFAULT 1,
+    children INT DEFAULT 0,
+    price DECIMAL(10,2) DEFAULT 0,
+    currency VARCHAR(10) DEFAULT 'EUR',
+    status VARCHAR(50) DEFAULT 'confirmed',
+    notes TEXT DEFAULT NULL,
+    job_id INT DEFAULT NULL,
+    synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE INDEX idx_smoobu (smoobu_id),
+    INDEX idx_checkin (check_in),
+    INDEX idx_property (property_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// iCal feeds (if not on master DB)
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS ical_feeds (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        customer_id_fk INT DEFAULT NULL,
+        label VARCHAR(255) DEFAULT '',
+        url TEXT NOT NULL,
+        platform VARCHAR(50) DEFAULT 'ical',
+        active TINYINT DEFAULT 1,
+        last_sync DATETIME DEFAULT NULL,
+        jobs_created INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_customer (customer_id_fk)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) {}
+
+// Add ical_uid column to jobs if missing
+try {
+    $cols = $db->query("SHOW COLUMNS FROM jobs LIKE 'ical_uid'")->fetchAll();
+    if (empty($cols)) { $db->exec("ALTER TABLE jobs ADD COLUMN ical_uid VARCHAR(255) DEFAULT NULL, ADD INDEX idx_ical_uid (ical_uid)"); }
+} catch (Exception $e) {}

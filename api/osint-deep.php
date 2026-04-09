@@ -18,7 +18,10 @@ register_shutdown_function(function() {
 ob_start();
 
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
+$_osi_origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$_osi_allowed = ['https://app.fleckfrei.de', 'https://fleckfrei.de'];
+if (in_array($_osi_origin, $_osi_allowed)) { header('Access-Control-Allow-Origin: ' . $_osi_origin); }
+else { header('Access-Control-Allow-Origin: https://app.fleckfrei.de'); }
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, X-API-Key');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
@@ -41,6 +44,33 @@ $address = trim($body['address'] ?? '');
 
 $results = [];
 $domain = '';
+$scanStart = microtime(true);
+
+// ============================================================
+// CACHE CHECK — Return cached results if < 24h old
+// ============================================================
+$cacheKey = md5(json_encode([$email, $name, $phone, $address]));
+try {
+    $cached = one("SELECT scan_id, deep_scan_data, created_at FROM osint_scans
+        WHERE MD5(CONCAT(COALESCE(scan_email,''), COALESCE(scan_name,''), COALESCE(scan_phone,''), COALESCE(scan_address,''))) = ?
+        AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR) AND deep_scan_data IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1", [$cacheKey]);
+    if ($cached && $cached['deep_scan_data']) {
+        $cachedData = json_decode($cached['deep_scan_data'], true);
+        if ($cachedData) {
+            $cachedData['_cache'] = [
+                'hit' => true,
+                'scan_id' => $cached['scan_id'],
+                'age_minutes' => round((time() - strtotime($cached['created_at'])) / 60),
+                'cached_at' => $cached['created_at'],
+            ];
+            ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true, 'data' => $cachedData]);
+            exit;
+        }
+    }
+} catch (Exception $e) { /* cache miss is ok */ }
 
 // ============================================================
 // 0. DB CROSS-REFERENCE FIRST (before network calls drop connection)
@@ -124,6 +154,50 @@ if ($email && strpos($email, '@') !== false) {
         'has_spf' => !empty($spfRecords), 'has_dmarc' => !empty($dmarcTxt),
         'has_dkim' => !empty($dkim),
     ];
+
+    // SPF Chain Resolution — reveal mail infrastructure
+    if (!empty($spfRecords)) {
+        $spfChain = [];
+        $spfSeen = [];
+        $spfResolve = function($dom, $depth = 0) use (&$spfResolve, &$spfSeen, &$spfChain) {
+            if ($depth > 5 || isset($spfSeen[$dom])) return;
+            $spfSeen[$dom] = true;
+            $txt = @dns_get_record($dom, DNS_TXT);
+            if (!$txt) return;
+            foreach ($txt as $r) {
+                if (!isset($r['txt']) || stripos($r['txt'], 'v=spf1') === false) continue;
+                if (preg_match_all('/include:([^\s]+)/', $r['txt'], $m)) {
+                    foreach ($m[1] as $inc) {
+                        $service = 'Unknown';
+                        if (str_contains($inc, 'google')) $service = 'Google Workspace';
+                        elseif (str_contains($inc, 'outlook') || str_contains($inc, 'microsoft')) $service = 'Microsoft 365';
+                        elseif (str_contains($inc, 'spf.protection')) $service = 'Microsoft 365';
+                        elseif (str_contains($inc, 'amazonses')) $service = 'Amazon SES';
+                        elseif (str_contains($inc, 'sendgrid')) $service = 'SendGrid';
+                        elseif (str_contains($inc, 'mailgun')) $service = 'Mailgun';
+                        elseif (str_contains($inc, 'mailchimp') || str_contains($inc, 'mandrillapp')) $service = 'Mailchimp';
+                        elseif (str_contains($inc, 'zendesk')) $service = 'Zendesk';
+                        elseif (str_contains($inc, 'freshdesk')) $service = 'Freshdesk';
+                        elseif (str_contains($inc, 'hubspot')) $service = 'HubSpot';
+                        elseif (str_contains($inc, 'zoho')) $service = 'Zoho';
+                        $spfChain[] = ['domain' => $inc, 'service' => $service, 'depth' => $depth];
+                        $spfResolve($inc, $depth + 1);
+                    }
+                }
+                if (preg_match_all('/(ip[46]):([^\s]+)/', $r['txt'], $m)) {
+                    foreach ($m[2] as $i => $ipRange) {
+                        $spfChain[] = ['ip' => $ipRange, 'type' => $m[1][$i], 'depth' => $depth];
+                    }
+                }
+            }
+        };
+        $spfResolve($domain);
+        if (!empty($spfChain)) {
+            $results['email_security']['spf_chain'] = $spfChain;
+            $services = array_unique(array_filter(array_column($spfChain, 'service')));
+            $results['email_security']['mail_services'] = array_values($services);
+        }
+    }
 
     // ---- Parallel curl requests for domain intel ----
     $mh = curl_multi_init();
@@ -315,8 +389,8 @@ if ($name) {
         'About.me' => ['url' => 'https://about.me/{u}', 'check' => 'status'],
     ];
 
-    // Use only first variation for speed
-    $checkUsers = array_slice($variations, 0, 1);
+    // Check top 3 variations in parallel (more coverage, same time due to curl_multi)
+    $checkUsers = array_slice($variations, 0, 3);
     $found = [];
 
     foreach ($checkUsers as $v) {
@@ -857,6 +931,13 @@ try {
        VALUES (?,?,?,?,?,?,?,?)",
       [$dbProfile['customer']['id'] ?? null, $name, $email, $phone, $address, '{}', json_encode($results), $_SESSION['uid'] ?? null]);
 } catch (Exception $e) {}
+
+// Add timing + cache info
+$results['_meta'] = [
+    'scan_time_seconds' => round(microtime(true) - $scanStart, 2),
+    'cache' => ['hit' => false, 'key' => $cacheKey],
+    'modules_run' => count(array_filter(array_keys($results), fn($k) => !str_starts_with($k, '_'))),
+];
 
 ob_end_clean();
 echo json_encode(['success' => true, 'data' => $results]);

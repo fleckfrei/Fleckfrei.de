@@ -29,7 +29,10 @@ include __DIR__ . '/../includes/layout.php';
       </div>
       <div class="flex items-center gap-3">
         <?php if ($inv['invoice_paid']!=='yes' && FEATURE_STRIPE): ?>
-          <button onclick="stripePayInv(<?= $inv['inv_id'] ?>)" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-semibold hover:opacity-90 transition">Jetzt bezahlen</button>
+          <button onclick="stripePayInv(<?= $inv['inv_id'] ?>)" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-semibold hover:opacity-90 transition">Karte/SEPA</button>
+        <?php endif; ?>
+        <?php if ($inv['invoice_paid']!=='yes' && FEATURE_PAYPAL): ?>
+          <paypal-button hidden data-inv="<?= $inv['inv_id'] ?>" class="paypal-v6-btn"></paypal-button>
         <?php endif; ?>
         <?php if (customerCan('inv_pdf')): ?>
           <a href="/admin/invoice-pdf.php?id=<?= $inv['inv_id'] ?>" target="_blank" class="px-3 py-2 border rounded-lg text-xs hover:bg-gray-50">PDF</a>
@@ -52,6 +55,7 @@ include __DIR__ . '/../includes/layout.php';
 </div>
 <?php
 $apiKey = API_KEY;
+$paypalId = PAYPAL_CLIENT_ID;
 $script = <<<JS
 function stripePayInv(invId) {
     const btn = event.target;
@@ -79,4 +83,66 @@ function stripePayInv(invId) {
     });
 }
 JS;
+if (FEATURE_PAYPAL) {
+$script .= <<<JS
+
+// PayPal v6 SDK — Web Components
+(function(){
+  const s = document.createElement('script');
+  s.src = 'https://www.paypal.com/web-sdk/v6/core';
+  s.onload = async function() {
+    try {
+      const sdkInstance = await window.paypal.createInstance({
+        clientId: '$paypalId',
+        components: ['paypal-payments'],
+        pageType: 'checkout',
+        locale: 'de-DE',
+      });
+
+      const methods = await sdkInstance.findEligibleMethods({ currencyCode: 'EUR' });
+      if (!methods.isEligible('paypal')) return;
+
+      document.querySelectorAll('.paypal-v6-btn').forEach(btn => {
+        const invId = parseInt(btn.dataset.inv);
+
+        const session = sdkInstance.createPayPalOneTimePaymentSession({
+          async onApprove(data) {
+            try {
+              const resp = await fetch('/api/paypal-capture.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order_id: data.orderId, inv_id: invId })
+              });
+              const d = await resp.json();
+              if (d.success) { location.reload(); }
+              else { alert(d.error || 'Capture fehlgeschlagen'); }
+            } catch (e) { alert('Netzwerk-Fehler'); }
+          },
+          onCancel() { console.log('PayPal cancelled'); },
+          onError(err) { console.error('PayPal Error:', err); }
+        });
+
+        btn.removeAttribute('hidden');
+        btn.addEventListener('click', async () => {
+          try {
+            const resp = await fetch('/api/paypal-create.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ inv_id: invId })
+            });
+            const d = await resp.json();
+            if (!d.success) { alert(d.error); return; }
+            await session.start(
+              { presentationMode: 'auto' },
+              Promise.resolve({ orderId: d.order_id })
+            );
+          } catch (e) { console.error('PayPal start error:', e); }
+        });
+      });
+    } catch (e) { console.error('PayPal v6 init error:', e); }
+  };
+  document.head.appendChild(s);
+})();
+JS;
+}
 include __DIR__ . '/../includes/footer.php'; ?>

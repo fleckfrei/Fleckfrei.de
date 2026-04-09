@@ -76,6 +76,24 @@ if (!defined('STRIPE_PK')) define('STRIPE_PK', '');
 if (!defined('STRIPE_SK')) define('STRIPE_SK', '');
 define('FEATURE_STRIPE', !empty(STRIPE_SK));
 
+// ============================================================
+// PAYPAL — Checkout (Button auf Kundenportal)
+// ============================================================
+$_paypalSecrets = __DIR__ . '/paypal-keys.php';
+if (file_exists($_paypalSecrets)) { require_once $_paypalSecrets; }
+if (!defined('PAYPAL_CLIENT_ID')) define('PAYPAL_CLIENT_ID', '');
+if (!defined('PAYPAL_SECRET')) define('PAYPAL_SECRET', '');
+define('PAYPAL_MODE', 'sandbox');  // 'sandbox' or 'live' — switch to 'live' when you have live keys
+define('PAYPAL_BASE', PAYPAL_MODE === 'sandbox' ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com');
+define('FEATURE_PAYPAL', !empty(PAYPAL_CLIENT_ID) && !empty(PAYPAL_SECRET));
+
+// ============================================================
+// SMOOBU — Channel Manager (Booking.com, VRBO, Agoda, Airbnb)
+// ============================================================
+define('SMOOBU_API_KEY', '');  // Set in Smoobu Dashboard > Settings > API
+define('SMOOBU_BASE', 'https://login.smoobu.com/api');
+define('FEATURE_SMOOBU', !empty(SMOOBU_API_KEY));
+
 define('FEATURE_OSINT', true);        // OSINT Scanner Seite
 define('FEATURE_RECURRING', true);    // Wiederkehrende Jobs
 define('FEATURE_AUDIT', true);        // Audit-Log
