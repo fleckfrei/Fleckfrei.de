@@ -55,8 +55,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_POST['scan_id'])) {
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['scan_email'])) {
     if (!verifyCsrf()) { header('Location: /admin/scanner.php'); exit; }
     $scanEmail = trim($_POST['scan_email']??''); $scanName = trim($_POST['scan_name']??''); $scanPhone = trim($_POST['scan_phone']??''); $scanAddress = trim($_POST['scan_address']??'');
-    $scanSerial = trim($_POST['scan_serial']??''); $scanDob = trim($_POST['scan_dob']??''); $scanIdNr = trim($_POST['scan_id_nr']??''); $scanPassport = trim($_POST['scan_passport']??''); $scanTaxId = trim($_POST['scan_tax_id']??'');
-    $scan = ($scanEmail || $scanName || $scanPhone || $scanSerial || $scanTaxId) ? true : false;
+    $scanSerial = trim($_POST['scan_serial']??''); $scanPlate = trim($_POST['scan_plate']??''); $scanDob = trim($_POST['scan_dob']??''); $scanIdNr = trim($_POST['scan_id_nr']??''); $scanPassport = trim($_POST['scan_passport']??''); $scanTaxId = trim($_POST['scan_tax_id']??'');
+    $scan = ($scanEmail || $scanName || $scanPhone || $scanSerial || $scanTaxId || $scanPlate) ? true : false;
 }
 
 $emailInfo = $scan ? analyzeEmail($scanEmail) : null;
@@ -258,7 +258,7 @@ function socialLinks($name, $email='', $phone='') {
 <div class="bg-white rounded-xl border mb-4">
   <form method="post" class="p-4" id="scanForm">
     <?= csrfField() ?>
-    <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
+    <div class="grid grid-cols-2 md:grid-cols-7 gap-3">
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">E-Mail</label>
         <input type="text" name="scan_email" value="<?= e($scanEmail) ?>" placeholder="name@firma.de" class="w-full px-3 py-2.5 border rounded-lg" id="fEmail"/></div>
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">Name</label>
@@ -267,8 +267,10 @@ function socialLinks($name, $email='', $phone='') {
         <input type="text" name="scan_phone" value="<?= e($scanPhone) ?>" placeholder="+49..." class="w-full px-3 py-2.5 border rounded-lg" id="fPhone"/></div>
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">Adresse</label>
         <input type="text" name="scan_address" value="<?= e($scanAddress) ?>" placeholder="Straße Nr, PLZ Stadt" class="w-full px-3 py-2.5 border rounded-lg" id="fAddress"/></div>
-      <div><label class="block text-xs font-semibold text-gray-500 mb-1">Nummer (HRB/Steuer/Az)</label>
+      <div><label class="block text-xs font-semibold text-gray-500 mb-1">Nr (HRB/Steuer/Az)</label>
         <input type="text" name="scan_serial" value="<?= e($scanSerial) ?>" placeholder="132/571/00584" class="w-full px-3 py-2.5 border rounded-lg" id="fSerial"/></div>
+      <div><label class="block text-xs font-semibold text-gray-500 mb-1">Kennzeichen</label>
+        <input type="text" name="scan_plate" value="<?= e($scanPlate ?? '') ?>" placeholder="B-AB 1234" class="w-full px-3 py-2.5 border rounded-lg" id="fPlate"/></div>
       <div class="flex items-end">
         <button class="w-full px-4 py-2.5 bg-brand text-white font-medium rounded-lg">Scan</button>
       </div>
@@ -312,7 +314,8 @@ async function startDeepScan() {
     const address = document.getElementById('fAddress')?.value || '';
     const serial = document.getElementById('fSerial')?.value || '';
     const taxid = document.getElementById('fTaxId')?.value || '';
-    if (!email && !name && !phone && !serial && !taxid) { alert('Mindestens ein Feld ausfüllen'); return; }
+    const plate = document.getElementById('fPlate')?.value || '';
+    if (!email && !name && !phone && !serial && !taxid && !plate) { alert('Mindestens ein Feld ausfüllen'); return; }
     btn.disabled = true; btn.classList.add('opacity-50');
     prog.classList.remove('hidden'); res.classList.add('hidden'); res.innerHTML = '';
 
@@ -326,6 +329,7 @@ async function startDeepScan() {
                 passport: document.getElementById('fPassport')?.value || '',
                 serial: document.getElementById('fSerial')?.value || '',
                 tax_id: document.getElementById('fTaxId')?.value || '',
+                plate: document.getElementById('fPlate')?.value || '',
             })
         });
         const data = await resp.json();
@@ -389,6 +393,11 @@ function renderDeepResults(d, container) {
     if (di.paste_leaks) fundeItems.push(`<div class="p-2 bg-red-50 rounded"><div class="text-xs font-semibold text-red-700">Paste-Leaks (${di.paste_leaks.count})</div>${di.paste_leaks.results.slice(0,2).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-red-600 block">${r.title}</a>`).join('')}</div>`);
     if (di.leaked_docs) fundeItems.push(`<div class="p-2 bg-orange-50 rounded"><div class="text-xs font-semibold text-orange-700">Dokumente (${di.leaked_docs.count})</div>${di.leaked_docs.results.slice(0,2).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block">${r.title}</a>`).join('')}</div>`);
     if (d.handelsregister) fundeItems.push(...d.handelsregister.companies.slice(0,3).map(c=>`<div class="p-2 bg-gray-50 rounded"><div class="text-xs font-semibold text-gray-500">Handelsregister</div><div class="text-sm font-medium">${c.name}</div><div class="text-xs text-gray-400">${c.register_type} ${c.register_number} · ${c.register_court}</div></div>`));
+    if (d.plate_search) {
+        const pl = d.plate_search;
+        const allPlateHits = Object.values(pl.results).flat().slice(0,5);
+        fundeItems.push(`<div class="p-2 bg-gray-800 text-white rounded"><div class="flex items-center gap-2 mb-1"><span class="px-2 py-0.5 bg-blue-600 rounded text-xs font-bold">D</span><span class="font-bold font-mono text-lg">${pl.plate}</span><span class="text-xs text-gray-400">${pl.region}</span></div>${allPlateHits.length?allPlateHits.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-blue-300 block hover:underline">${r.title}</a>`).join(''):'<div class="text-xs text-gray-400">Keine Treffer</div>'}${pl.links?'<div class="flex gap-2 mt-1">'+Object.entries(pl.links).map(([k,v])=>`<a href="${v}" target="_blank" class="text-[10px] text-gray-400 hover:text-white">${k}</a>`).join('')+'</div>':''}</div>`);
+    }
     if (d.registration_search) {
         for (const [nr, data] of Object.entries(d.registration_search)) {
             const nrType = data._type || 'Nummer';

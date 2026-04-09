@@ -47,6 +47,7 @@ $idNumber  = trim($body['id_number'] ?? '');   // Personalausweis-Nr
 $passNumber = trim($body['passport'] ?? '');   // Reisepass-Nr
 $serialNr  = trim($body['serial'] ?? '');      // Serien-Nr (Gewerbe/Handelsregister)
 $taxId     = trim($body['tax_id'] ?? '');      // Steuernummer / USt-IdNr
+$plate     = trim($body['plate'] ?? '');       // Kennzeichen (B-AB 1234)
 
 // Normalize DOB to YYYY-MM-DD
 if ($dob && preg_match('/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/', $dob, $dm)) {
@@ -54,7 +55,7 @@ if ($dob && preg_match('/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/', $dob, $dm)) {
 }
 
 // Verification anchors — used to confirm identity across sources
-$hardIds = array_filter(compact('email', 'phone', 'dob', 'idNumber', 'passNumber', 'serialNr', 'taxId'));
+$hardIds = array_filter(compact('email', 'phone', 'dob', 'idNumber', 'passNumber', 'serialNr', 'taxId', 'plate'));
 
 $results = [];
 $domain = '';
@@ -837,6 +838,63 @@ if ($domain) {
             $results['bgp_asn'] = ['ip' => $bgpIp, 'asn' => $asn, 'asn_name' => $asnName, 'prefix' => $prefix, 'country' => strtoupper($country), 'rdap' => $rdapData];
         }
     }
+}
+
+// ============================================================
+// 9d2. LICENSE PLATE SEARCH — Kennzeichen (FREE)
+// ============================================================
+if ($plate) {
+    $plateClean = strtoupper(preg_replace('/\s+/', ' ', trim($plate)));
+    $plateNoSpace = str_replace([' ', '-'], '', $plateClean);
+    $mh = curl_multi_init();
+    $handles = [];
+    $plateQueries = [
+        'exact' => '"' . $plateClean . '"',
+        'compact' => '"' . $plateNoSpace . '"',
+        'auto' => '"' . $plateClean . '" Auto OR Fahrzeug OR KFZ OR PKW',
+        'anzeigen' => '"' . $plateClean . '" site:kleinanzeigen.de OR site:mobile.de OR site:autoscout24.de',
+        'halter' => '"' . $plateClean . '" Halter OR Eigentümer OR Zulassung',
+        'unfall' => '"' . $plateClean . '" Unfall OR Polizei OR Blitzer OR Strafzettel',
+    ];
+    foreach ($plateQueries as $qType => $query) {
+        $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$qType] = $ch;
+    }
+    $running = 0;
+    do { curl_multi_exec($mh, $running); curl_multi_select($mh, 0.3); } while ($running > 0);
+    $plateResults = [];
+    foreach ($handles as $qType => $ch) {
+        $html = curl_multi_getcontent($ch);
+        if ($html && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $html, $dm, PREG_SET_ORDER)) {
+            foreach (array_slice($dm, 0, 5) as $m) {
+                $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
+                $plateResults[$qType][] = ['title' => trim(strip_tags($m[2])), 'url' => $rUrl, 'snippet' => trim(strip_tags($m[3]))];
+            }
+        }
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+
+    // Detect plate region
+    $region = '';
+    $regionMap = ['B'=>'Berlin','M'=>'München','HH'=>'Hamburg','K'=>'Köln','F'=>'Frankfurt','S'=>'Stuttgart','D'=>'Düsseldorf','DD'=>'Dresden','L'=>'Leipzig','N'=>'Nürnberg','DO'=>'Dortmund','E'=>'Essen','HB'=>'Bremen','H'=>'Hannover','DU'=>'Duisburg','BO'=>'Bochum','W'=>'Wuppertal','BI'=>'Bielefeld','MA'=>'Mannheim','KA'=>'Karlsruhe'];
+    $platePrefix = strtoupper(explode('-', str_replace(' ', '-', $plateClean))[0] ?? '');
+    $region = $regionMap[$platePrefix] ?? $platePrefix;
+
+    $results['plate_search'] = [
+        'plate' => $plateClean,
+        'region' => $region,
+        'results' => $plateResults,
+        'links' => [
+            'mobile_de' => 'https://suchen.mobile.de/fahrzeuge/search.html?q=' . urlencode($plateClean),
+            'autoscout' => 'https://www.autoscout24.de/lst?query=' . urlencode($plateClean),
+            'kleinanzeigen' => 'https://www.kleinanzeigen.de/s-' . urlencode($plateNoSpace) . '/k0',
+            'google' => 'https://www.google.com/search?q="' . urlencode($plateClean) . '"',
+        ],
+    ];
 }
 
 // ============================================================
