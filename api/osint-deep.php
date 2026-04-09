@@ -3,14 +3,10 @@
  * Fleckfrei OSI Deep Scan API
  * Intelligence gathering with DB cross-reference + external APIs.
  */
-ini_set('max_execution_time', 120);
-// Prevent web server timeout
-if (function_exists('set_time_limit')) set_time_limit(120);
-if (function_exists('apache_setenv')) @apache_setenv('no-gzip', '1');
-@ini_set('output_buffering', 'Off');
-header('X-Accel-Buffering: no'); // nginx
-// Send early headers to prevent proxy timeout
+ini_set('max_execution_time', 30);
 ignore_user_abort(true);
+// DuckDuckGo is BLOCKED from Hostinger (HTTP 000). Skip all search scraping.
+define('SKIP_SCRAPING', true);
 set_error_handler(function($errno, $errstr) {
     // Suppress warnings, continue execution
     return true;
@@ -138,7 +134,8 @@ if ($name || $email || $phone) {
 // ============================================================
 // HELPER: Safe curl fetch with validation
 // ============================================================
-function safeFetch(string $url, int $timeout = 10, array $opts = []): ?string {
+function safeFetch(string $url, int $timeout = 3, array $opts = []): ?string {
+    if (SKIP_SCRAPING && (str_contains($url, 'duckduckgo.com') || str_contains($url, 'google.com/search'))) return null;
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -864,6 +861,7 @@ if ($plate) {
         'unfall' => '"' . $plateClean . '" Unfall OR Polizei OR Blitzer OR Strafzettel',
     ];
     foreach ($plateQueries as $qType => $query) {
+        if (SKIP_SCRAPING) continue;
         $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
         curl_multi_add_handle($mh, $ch);
@@ -922,7 +920,7 @@ if ($plate) {
         if ($gdvData) $insuranceInfo['gdv_api'] = $gdvData;
     }
     // Also search for insurance info via web
-    $insSearch = safeFetch('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateClean . '" Versicherung OR versichert OR Haftpflicht OR Kfz-Versicherung'), 8);
+    $insSearch = SKIP_SCRAPING ? null : safeFetch('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateClean . '" Versicherung OR versichert OR Haftpflicht OR Kfz-Versicherung'), 8);
     if (!$insSearch) {
         $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateClean . '" Versicherung OR Haftpflicht'));
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
@@ -986,6 +984,7 @@ if ($plate) {
         $euQueries['pl_history'] = '"' . $plateClean . '" historiapojazdu OR CEPiK';
     }
     foreach ($euQueries as $qType => $query) {
+        if (SKIP_SCRAPING) continue;
         $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
         curl_multi_add_handle($mhEU, $ch);
@@ -1009,7 +1008,7 @@ if ($plate) {
     // Free EU vehicle APIs
     // EUCARIS-light: check if plate image appears anywhere (Google Images reverse)
     $plateImageSearch = [];
-    $imgCh = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateNoSpace . '" OR "' . $plateClean . '" filetype:jpg OR filetype:png'));
+    $imgCh = SKIP_SCRAPING ? null : curl_init('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateNoSpace . '" OR "' . $plateClean . '" filetype:jpg OR filetype:png'));
     curl_setopt_array($imgCh, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
     $imgHtml = curl_exec($imgCh); curl_close($imgCh);
     if ($imgHtml && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/s', $imgHtml, $dm, PREG_SET_ORDER)) {
@@ -1174,6 +1173,7 @@ if ($name || $address) {
     }
     if ($phone) $airbnbQueries['phone_listing'] = 'site:airbnb.de OR site:booking.com "' . preg_replace('/[^+0-9]/', '', $phone) . '"';
     foreach ($airbnbQueries as $qType => $query) {
+        if (SKIP_SCRAPING) continue;
         $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
         curl_multi_add_handle($mh, $ch);
@@ -1339,6 +1339,7 @@ if ($name) {
         'bewertungen' => '"' . $name . '" Bewertung OR Review site:google.com OR site:trustpilot.com OR site:provenexpert.com OR site:kununu.de',
     ];
     foreach ($bizQueries as $qType => $query) {
+        if (SKIP_SCRAPING) continue;
         $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
         curl_multi_add_handle($mh, $ch);
@@ -1400,6 +1401,7 @@ if ($name) {
     // Search top 6 most promising permutations (full name + each word + key combos)
     $searchPerms = array_slice($namePerms, 0, min(8, count($namePerms)));
     foreach ($searchPerms as $idx => $perm) {
+        if (SKIP_SCRAPING) continue;
         $url = 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $perm . '"' . ($email ? ' OR "' . $email . '"' : ''));
         $ch = curl_init($url);
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
@@ -1507,7 +1509,7 @@ if ($name || $email) {
 // 3. PasteBin/GitHub Gist — leaked data search (via DDG)
 if ($email) {
     $pasteResults = [];
-    $pasteUrl = 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $email . '" site:pastebin.com OR site:gist.github.com OR site:ghostbin.com OR site:paste.ee');
+    $pasteUrl = SKIP_SCRAPING ? '' : 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $email . '" site:pastebin.com OR site:gist.github.com OR site:ghostbin.com OR site:paste.ee');
     $pasteHtml = safeFetch($pasteUrl, 8);
     if (!$pasteHtml) {
         $ch = curl_init($pasteUrl);
@@ -1566,7 +1568,7 @@ if (isset($genUsernames)) {
 
 // 5. Impressum Scraper — find Impressum pages mentioning the person
 if ($name) {
-    $impUrl = 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $name . '" Impressum Geschäftsführer OR Inhaber OR Verantwortlich');
+    $impUrl = SKIP_SCRAPING ? '' : 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $name . '" Impressum Geschäftsführer OR Inhaber OR Verantwortlich');
     $ch = curl_init($impUrl);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
     $impHtml = curl_exec($ch); curl_close($ch);
@@ -1582,7 +1584,7 @@ if ($name) {
 
 // 6. Insolvenzbekanntmachungen (German insolvency announcements — FREE)
 if ($name) {
-    $insolvUrl = 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $name . '" site:insolvenzbekanntmachungen.de OR site:neu.insolvenzbekanntmachungen.de');
+    $insolvUrl = SKIP_SCRAPING ? '' : 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $name . '" site:insolvenzbekanntmachungen.de OR site:neu.insolvenzbekanntmachungen.de');
     $ch = curl_init($insolvUrl);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
     $insHtml = curl_exec($ch); curl_close($ch);
@@ -1621,6 +1623,7 @@ if ($name) {
         $socialQueries['social_email'] = '"' . $email . '" site:instagram.com OR site:linkedin.com OR site:facebook.com OR site:twitter.com';
     }
     foreach ($socialQueries as $qType => $query) {
+        if (SKIP_SCRAPING) continue;
         $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
         curl_multi_add_handle($mh, $ch);
@@ -1653,6 +1656,7 @@ if ($name || $email) {
     $mh = curl_multi_init();
     $handles = [];
     foreach ($docSearches as $key => $query) {
+        if (SKIP_SCRAPING) continue;
         $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
         curl_multi_add_handle($mh, $ch);
