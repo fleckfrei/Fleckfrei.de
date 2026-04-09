@@ -969,12 +969,7 @@ if ($plate) {
         if ($gdvData) $insuranceInfo['gdv_api'] = $gdvData;
     }
     // Also search for insurance info via web
-    $insSearch = SKIP_SCRAPING ? null : safeFetch('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateClean . '" Versicherung OR versichert OR Haftpflicht OR Kfz-Versicherung'), 8);
-    if (!$insSearch) {
-        $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateClean . '" Versicherung OR Haftpflicht'));
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
-        $insSearch = curl_exec($ch); curl_close($ch);
-    }
+    $insSearch = null; // DDG blocked from Hostinger — insurance search via Vulture/VPS
     if ($insSearch && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $insSearch, $dm, PREG_SET_ORDER)) {
         foreach (array_slice($dm, 0, 3) as $m) {
             $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
@@ -1057,9 +1052,12 @@ if ($plate) {
     // Free EU vehicle APIs
     // EUCARIS-light: check if plate image appears anywhere (Google Images reverse)
     $plateImageSearch = [];
-    $imgCh = SKIP_SCRAPING ? null : curl_init('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateNoSpace . '" OR "' . $plateClean . '" filetype:jpg OR filetype:png'));
-    curl_setopt_array($imgCh, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
-    $imgHtml = curl_exec($imgCh); curl_close($imgCh);
+    $imgHtml = '';
+    if (!SKIP_SCRAPING) {
+        $imgCh = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateNoSpace . '" OR "' . $plateClean . '" filetype:jpg OR filetype:png'));
+        curl_setopt_array($imgCh, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
+        $imgHtml = curl_exec($imgCh); curl_close($imgCh);
+    }
     if ($imgHtml && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/s', $imgHtml, $dm, PREG_SET_ORDER)) {
         foreach (array_slice($dm, 0, 5) as $m) {
             $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
@@ -1558,13 +1556,7 @@ if ($name || $email) {
 // 3. PasteBin/GitHub Gist — leaked data search (via DDG)
 if ($email) {
     $pasteResults = [];
-    $pasteUrl = SKIP_SCRAPING ? '' : 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $email . '" site:pastebin.com OR site:gist.github.com OR site:ghostbin.com OR site:paste.ee');
-    $pasteHtml = safeFetch($pasteUrl, 8);
-    if (!$pasteHtml) {
-        $ch = curl_init($pasteUrl);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
-        $pasteHtml = curl_exec($ch); curl_close($ch);
-    }
+    $pasteHtml = null; // DDG blocked — paste search via VPS Vulture
     if ($pasteHtml && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/s', $pasteHtml, $pm, PREG_SET_ORDER)) {
         foreach (array_slice($pm, 0, 10) as $m) {
             $pUrl = $m[1];
@@ -1617,10 +1609,7 @@ if (isset($genUsernames)) {
 
 // 5. Impressum Scraper — find Impressum pages mentioning the person
 if ($name) {
-    $impUrl = SKIP_SCRAPING ? '' : 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $name . '" Impressum Geschäftsführer OR Inhaber OR Verantwortlich');
-    $ch = curl_init($impUrl);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
-    $impHtml = curl_exec($ch); curl_close($ch);
+    $impHtml = null; // DDG blocked — impressum search via VPS Vulture
     if ($impHtml && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $impHtml, $im, PREG_SET_ORDER)) {
         $impResults = [];
         foreach (array_slice($im, 0, 8) as $m) {
@@ -1633,10 +1622,7 @@ if ($name) {
 
 // 6. Insolvenzbekanntmachungen (German insolvency announcements — FREE)
 if ($name) {
-    $insolvUrl = SKIP_SCRAPING ? '' : 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $name . '" site:insolvenzbekanntmachungen.de OR site:neu.insolvenzbekanntmachungen.de');
-    $ch = curl_init($insolvUrl);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>4, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
-    $insHtml = curl_exec($ch); curl_close($ch);
+    $insHtml = null; // DDG blocked — insolvency search via VPS Vulture
     $insResults = [];
     if ($insHtml && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $insHtml, $im2, PREG_SET_ORDER)) {
         foreach (array_slice($im2, 0, 5) as $m) {
