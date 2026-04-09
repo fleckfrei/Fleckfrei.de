@@ -9,13 +9,18 @@ $user = me(); $page = $page ?? ''; ?>
 <html lang="de" class="h-full">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
   <title><?= e($title ?? 'Admin') ?> — <?= SITE ?></title>
   <link rel="manifest" href="/manifest.php"/>
   <meta name="theme-color" content="<?= BRAND ?>"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
   <link rel="apple-touch-icon" href="/icons/icon.php?s=180"/>
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon.php?s=152"/>
+  <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon.php?s=167"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon.php?s=180"/>
+  <meta name="apple-mobile-web-app-title" content="<?= SITE ?>"/>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config={theme:{extend:{colors:{brand:'<?= BRAND ?>','brand-dark':'<?= BRAND_DARK ?>','brand-light':'<?= BRAND_LIGHT ?>'},fontFamily:{sans:['Inter','system-ui','sans-serif']}}}}</script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -71,6 +76,25 @@ $user = me(); $page = $page ?? ''; ?>
     }
     @media (max-width: 768px) {
       .fc .fc-toolbar { flex-direction: column; gap: 8px; }
+    }
+    /* PWA — iOS safe areas */
+    body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+    main { padding-bottom: env(safe-area-inset-bottom, 0); }
+    /* Mobile touch targets */
+    @media (max-width: 768px) {
+      .sidebar-link { padding: 10px 12px; min-height: 44px; }
+      button, .btn, a.px-3, a.px-4 { min-height: 44px; }
+      input, select, textarea { min-height: 44px; font-size: 16px !important; /* prevent iOS zoom */ }
+      table th, table td { padding: 8px 6px; }
+      .text-xs { font-size: 0.8rem; }
+    }
+    /* Pull-to-refresh indicator */
+    #ptrIndicator { position: fixed; top: 0; left: 50%; transform: translateX(-50%) translateY(-60px);
+                    z-index: 9999; transition: transform 0.2s; }
+    #ptrIndicator.active { transform: translateX(-50%) translateY(10px); }
+    /* Standalone mode: hide browser chrome gaps */
+    @media (display-mode: standalone) {
+      body { padding-top: env(safe-area-inset-top); }
     }
     /* Print */
     @media print { aside, header, footer, button { display: none !important; } main { margin: 0; } }
