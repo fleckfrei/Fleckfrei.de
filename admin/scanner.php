@@ -302,7 +302,9 @@ function socialLinks($name, $email='', $phone='') {
 
 <!-- Deep Scan — auto-triggers after Quick Scan -->
 <div id="deepScanProgress" class="hidden mb-4 p-4 bg-white rounded-xl border">
-  <div class="flex items-center gap-3"><div class="animate-spin w-5 h-5 border-2 border-brand border-t-transparent rounded-full"></div><span class="text-sm font-medium text-gray-700" id="deepScanStatus">Deep Scan läuft... 20+ Quellen</span></div>
+  <div class="flex items-center gap-3"><div class="animate-spin w-5 h-5 border-2 border-brand border-t-transparent rounded-full"></div><span class="text-sm font-medium text-gray-700" id="deepScanStatus">Deep Scan läuft...</span></div>
+  <div class="mt-2 bg-gray-200 rounded-full h-1.5"><div id="deepScanBar" class="h-1.5 rounded-full bg-brand transition-all" style="width:5%"></div></div>
+  <div class="text-xs text-gray-400 mt-1" id="deepScanEta">40+ Quellen werden parallel abgefragt</div>
 </div>
 <div id="deepScanResults" class="hidden mb-4"></div>
 <?php if ($scan): ?>
@@ -324,6 +326,17 @@ async function startDeepScan() {
     if (!email && !name && !phone && !serial && !taxid && !plate) { alert('Mindestens ein Feld ausfüllen'); return; }
     btn.disabled = true; btn.classList.add('opacity-50');
     prog.classList.remove('hidden'); res.classList.add('hidden'); res.innerHTML = '';
+    // Animate progress bar
+    let pct = 5;
+    const stages = ['DB-Abfrage...','DNS & Email...','Social Media...','Handelsregister...','Deep Intelligence...','Korrelation...','Fertig!'];
+    let stage = 0;
+    const progTimer = setInterval(() => {
+        pct = Math.min(pct + 3, 95);
+        document.getElementById('deepScanBar').style.width = pct+'%';
+        if (pct > stage * 14 + 10 && stage < stages.length) {
+            document.getElementById('deepScanStatus').textContent = stages[stage++];
+        }
+    }, 800);
 
     try {
         const resp = await fetch('/api/osint-deep.php', {
@@ -339,11 +352,15 @@ async function startDeepScan() {
             })
         });
         const data = await resp.json();
-        prog.classList.add('hidden');
+        clearInterval(progTimer);
+        document.getElementById('deepScanBar').style.width = '100%';
+        document.getElementById('deepScanStatus').textContent = 'Fertig!';
+        setTimeout(() => prog.classList.add('hidden'), 500);
         if (data.success) renderDeepResults(data.data, res);
         else res.innerHTML = '<div class="p-3 bg-red-50 text-red-700 rounded-lg">Fehler: '+(data.error||'Unbekannt')+'</div>';
         res.classList.remove('hidden');
     } catch(e) {
+        clearInterval(progTimer);
         prog.classList.add('hidden');
         res.innerHTML = '<div class="p-3 bg-red-50 text-red-700 rounded-lg">Netzwerkfehler: '+e.message+'</div>';
         res.classList.remove('hidden');

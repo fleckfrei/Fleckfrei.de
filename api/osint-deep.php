@@ -987,7 +987,7 @@ if ($plate) {
     }
     foreach ($euQueries as $qType => $query) {
         $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>6, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
         curl_multi_add_handle($mhEU, $ch);
         $hEU[$qType] = $ch;
     }
@@ -1010,7 +1010,7 @@ if ($plate) {
     // EUCARIS-light: check if plate image appears anywhere (Google Images reverse)
     $plateImageSearch = [];
     $imgCh = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateNoSpace . '" OR "' . $plateClean . '" filetype:jpg OR filetype:png'));
-    curl_setopt_array($imgCh, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>6, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
+    curl_setopt_array($imgCh, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
     $imgHtml = curl_exec($imgCh); curl_close($imgCh);
     if ($imgHtml && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/s', $imgHtml, $dm, PREG_SET_ORDER)) {
         foreach (array_slice($dm, 0, 5) as $m) {
@@ -1216,7 +1216,7 @@ if ($domain && !in_array($domain, ['gmail.com','gmx.de','web.de','yahoo.com','ho
     $impFoundUrl = '';
     foreach ($impUrls as $iUrl) {
         $ch = curl_init($iUrl);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>5, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
         $resp = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
@@ -1283,7 +1283,7 @@ if ($domain && !in_array($domain, ['gmail.com','gmx.de','web.de','yahoo.com','ho
     foreach (array_slice($subpages, 0, 6) as $sp) {
         $url = "https://{$domain}{$sp}";
         $ch = curl_init($url);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>5, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_NOBODY=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_NOBODY=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
         curl_multi_add_handle($mh, $ch);
         $handles[$sp] = $ch;
     }
@@ -1402,7 +1402,7 @@ if ($name) {
     foreach ($searchPerms as $idx => $perm) {
         $url = 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $perm . '"' . ($email ? ' OR "' . $email . '"' : ''));
         $ch = curl_init($url);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>6, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
         curl_multi_add_handle($mh, $ch);
         $handles[$perm] = $ch;
     }
@@ -1622,7 +1622,7 @@ if ($name) {
     }
     foreach ($socialQueries as $qType => $query) {
         $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>6, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>3, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
         curl_multi_add_handle($mh, $ch);
         $handles[$qType] = $ch;
     }
