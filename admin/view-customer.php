@@ -541,33 +541,139 @@ foreach ($wh as $w) {
 <!-- Services -->
 <div class="flex items-center justify-between mb-4">
   <h3 class="font-semibold"><?= count($services) ?> Services</h3>
-  <a href="/admin/services.php" onclick="localStorage.setItem('prefillCustomer','<?= $cid ?>')" class="px-3 py-1.5 bg-brand text-white rounded-lg text-sm font-medium">+ Neuer Service</a>
+  <button onclick="document.getElementById('addSvcForm').classList.toggle('hidden')" class="px-3 py-1.5 bg-brand text-white rounded-lg text-sm font-medium">+ Neuer Service</button>
 </div>
+<!-- Add Service Form (hidden) -->
+<div id="addSvcForm" class="hidden bg-white rounded-xl border p-5 mb-4">
+  <h4 class="font-semibold mb-3">Neuer Service für <?= e($c['name']) ?></h4>
+  <div class="grid grid-cols-2 gap-3">
+    <div class="col-span-2"><label class="text-xs text-gray-500">Service-Name *</label><input id="ns-title" placeholder="z.B. Wohnungsreinigung Berlin" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+    <div><label class="text-xs text-gray-500">Preis (netto/h) *</label><input id="ns-price" type="number" step="0.01" value="30.00" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+    <div><label class="text-xs text-gray-500">MwSt (%)</label><input id="ns-tax" type="number" value="19" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+    <div><label class="text-xs text-gray-500">Straße</label><input id="ns-street" value="<?= e($addr['street'] ?? '') ?> <?= e($addr['number'] ?? '') ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+    <div><label class="text-xs text-gray-500">Stadt</label><input id="ns-city" value="<?= e($addr['city'] ?? 'Berlin') ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+    <div><label class="text-xs text-gray-500">m²</label><input id="ns-qm" type="number" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+    <div><label class="text-xs text-gray-500">Zimmer</label><input id="ns-room" type="number" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+    <div><label class="text-xs text-gray-500">Box-Code</label><input id="ns-box" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+    <div><label class="text-xs text-gray-500">Client-Code</label><input id="ns-client" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+  </div>
+  <div class="flex gap-2 mt-3">
+    <button onclick="createSvc()" class="px-4 py-1.5 bg-brand text-white rounded-lg text-xs font-medium">Erstellen</button>
+    <button onclick="document.getElementById('addSvcForm').classList.add('hidden')" class="px-4 py-1.5 border rounded-lg text-xs">Abbrechen</button>
+  </div>
+  <div id="ns-msg" class="text-xs mt-2 hidden"></div>
+</div>
+
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <?php foreach ($services as $sv): ?>
-  <div class="bg-white rounded-xl border p-5">
-    <div class="flex items-start justify-between">
-      <h4 class="font-semibold mb-2"><?= e($sv['title']) ?></h4>
-      <a href="/admin/services.php" class="text-xs text-brand hover:underline">Edit</a>
+  <?php foreach ($services as $sv): $sid = $sv['s_id']; ?>
+  <div class="bg-white rounded-xl border p-5" id="svc-<?= $sid ?>">
+    <!-- View Mode -->
+    <div id="svc-view-<?= $sid ?>">
+      <div class="flex items-start justify-between">
+        <h4 class="font-semibold mb-2"><?= e($sv['title']) ?></h4>
+        <button onclick="toggleSvcEdit(<?= $sid ?>)" class="text-xs text-brand hover:underline">Edit</button>
+      </div>
+      <div class="space-y-1 text-sm text-gray-600">
+        <div><?= e($sv['street']) ?> <?= e($sv['number']) ?>, <?= e($sv['postal_code']) ?> <?= e($sv['city']) ?></div>
+        <?php if ($sv['total_price']): ?><div class="font-medium text-brand"><?= money($sv['total_price']) ?>/h</div><?php endif; ?>
+        <?php if ($sv['box_code']): ?><div class="text-xs text-gray-500">Box: <?= e($sv['box_code']) ?><?= $sv['client_code'] ? ' | Client: '.e($sv['client_code']) : '' ?><?= $sv['deposit_code'] ? ' | Deposit: '.e($sv['deposit_code']) : '' ?></div><?php endif; ?>
+        <?php if ($sv['wifi_name']): ?><div class="text-xs text-gray-500">WiFi: <?= e($sv['wifi_name']) ?> / <?= e($sv['wifi_password']) ?></div><?php endif; ?>
+        <?php if ($sv['qm']): ?><div class="text-xs text-gray-500"><?= $sv['qm'] ?>m² | <?= $sv['room'] ?? '?' ?> Zimmer</div><?php endif; ?>
+      </div>
     </div>
-    <div class="space-y-1 text-sm text-gray-600">
-      <div><?= e($sv['street']) ?> <?= e($sv['number']) ?>, <?= e($sv['postal_code']) ?> <?= e($sv['city']) ?></div>
-      <?php if ($sv['total_price']): ?><div class="font-medium text-brand"><?= money($sv['total_price']) ?>/h</div><?php endif; ?>
-      <?php if ($sv['box_code']): ?><div class="text-xs text-gray-500">Box: <?= e($sv['box_code']) ?><?= $sv['client_code'] ? ' | Client: '.e($sv['client_code']) : '' ?><?= $sv['deposit_code'] ? ' | Deposit: '.e($sv['deposit_code']) : '' ?></div><?php endif; ?>
-      <?php if ($sv['wifi_name']): ?><div class="text-xs text-gray-500">WiFi: <?= e($sv['wifi_name']) ?> / <?= e($sv['wifi_password']) ?></div><?php endif; ?>
-      <?php if ($sv['qm']): ?><div class="text-xs text-gray-500"><?= $sv['qm'] ?>m² | <?= $sv['room'] ?? '?' ?> Zimmer</div><?php endif; ?>
+    <!-- Edit Mode (hidden by default) -->
+    <div id="svc-edit-<?= $sid ?>" class="hidden space-y-3">
+      <div class="grid grid-cols-2 gap-2">
+        <div class="col-span-2"><label class="text-xs text-gray-500">Name</label><input id="se-title-<?= $sid ?>" value="<?= e($sv['title']) ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+        <div><label class="text-xs text-gray-500">Preis (netto/h)</label><input id="se-price-<?= $sid ?>" type="number" step="0.01" value="<?= $sv['total_price'] ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+        <div><label class="text-xs text-gray-500">MwSt (%)</label><input id="se-tax-<?= $sid ?>" type="number" step="1" value="19" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+        <div><label class="text-xs text-gray-500">Straße</label><input id="se-street-<?= $sid ?>" value="<?= e($sv['street']) ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+        <div><label class="text-xs text-gray-500">Stadt</label><input id="se-city-<?= $sid ?>" value="<?= e($sv['city']) ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+        <div><label class="text-xs text-gray-500">m²</label><input id="se-qm-<?= $sid ?>" type="number" value="<?= $sv['qm'] ?? '' ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+        <div><label class="text-xs text-gray-500">Zimmer</label><input id="se-room-<?= $sid ?>" type="number" value="<?= $sv['room'] ?? '' ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+        <div><label class="text-xs text-gray-500">Box-Code</label><input id="se-box-<?= $sid ?>" value="<?= e($sv['box_code'] ?? '') ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+        <div><label class="text-xs text-gray-500">Client-Code</label><input id="se-client-<?= $sid ?>" value="<?= e($sv['client_code'] ?? '') ?>" class="w-full px-2 py-1.5 border rounded-lg text-sm"/></div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="saveSvc(<?= $sid ?>)" class="px-4 py-1.5 bg-brand text-white rounded-lg text-xs font-medium">Speichern</button>
+        <button onclick="toggleSvcEdit(<?= $sid ?>)" class="px-4 py-1.5 border rounded-lg text-xs">Abbrechen</button>
+      </div>
+      <div id="svc-msg-<?= $sid ?>" class="text-xs hidden"></div>
     </div>
   </div>
   <?php endforeach; ?>
   <?php if(empty($services)): ?><p class="text-sm text-gray-400">Keine Services zugewiesen. <a href="/admin/services.php" class="text-brand hover:underline">Service erstellen</a></p><?php endif; ?>
 </div>
+<script>
+function toggleSvcEdit(id) {
+    document.getElementById('svc-view-'+id).classList.toggle('hidden');
+    document.getElementById('svc-edit-'+id).classList.toggle('hidden');
+}
+function createSvc() {
+    const title = document.getElementById('ns-title').value.trim();
+    if (!title) { alert('Name ist Pflichtfeld'); return; }
+    const data = {
+        title: title,
+        customer_id_fk: <?= $cid ?>,
+        total_price: parseFloat(document.getElementById('ns-price').value) || 30,
+        price: parseFloat(document.getElementById('ns-price').value) || 30,
+        tax_percentage: parseInt(document.getElementById('ns-tax').value) || 19,
+        street: document.getElementById('ns-street').value,
+        city: document.getElementById('ns-city').value,
+        qm: document.getElementById('ns-qm').value || null,
+        room: document.getElementById('ns-room').value || null,
+        box_code: document.getElementById('ns-box').value,
+        client_code: document.getElementById('ns-client').value,
+    };
+    fetch('/api/index.php?action=services/create', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'X-API-Key':'<?= API_KEY ?>'},
+        body: JSON.stringify(data)
+    }).then(r=>r.json()).then(d=>{
+        const msg = document.getElementById('ns-msg');
+        if(d.success) {
+            msg.textContent = 'Service erstellt!'; msg.className = 'text-xs text-green-600'; msg.classList.remove('hidden');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            msg.textContent = d.error || 'Fehler'; msg.className = 'text-xs text-red-600'; msg.classList.remove('hidden');
+        }
+    });
+}
+function saveSvc(id) {
+    const data = {
+        s_id: id,
+        title: document.getElementById('se-title-'+id).value,
+        total_price: parseFloat(document.getElementById('se-price-'+id).value) || 0,
+        street: document.getElementById('se-street-'+id).value,
+        city: document.getElementById('se-city-'+id).value,
+        qm: parseInt(document.getElementById('se-qm-'+id).value) || null,
+        room: parseInt(document.getElementById('se-room-'+id).value) || null,
+        box_code: document.getElementById('se-box-'+id).value,
+        client_code: document.getElementById('se-client-'+id).value,
+    };
+    fetch('/api/index.php?action=services/update', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'X-API-Key':'<?= API_KEY ?>'},
+        body: JSON.stringify(data)
+    }).then(r=>r.json()).then(d=>{
+        const msg = document.getElementById('svc-msg-'+id);
+        if(d.success) {
+            msg.textContent = 'Gespeichert!'; msg.className = 'text-xs text-green-600'; msg.classList.remove('hidden');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            msg.textContent = d.error || 'Fehler'; msg.className = 'text-xs text-red-600'; msg.classList.remove('hidden');
+        }
+    });
+}
+</script>
 
 <?php elseif ($tab === 'notes'): ?>
 <!-- Notizen / Interne Nachrichten -->
 <div class="max-w-2xl">
   <form method="POST" class="bg-white rounded-xl border p-5 mb-4">
+    <?= csrfField() ?>
     <input type="hidden" name="action" value="add_note"/>
-    <input type="hidden" name="author" value="Admin"/>
+    <input type="hidden" name="author" value="<?= e(me()['name']) ?>"/>
     <textarea name="message" required rows="2" placeholder="Interne Notiz schreiben..." class="w-full px-3 py-2 border rounded-xl text-sm mb-2"></textarea>
     <button type="submit" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium">Notiz speichern</button>
   </form>

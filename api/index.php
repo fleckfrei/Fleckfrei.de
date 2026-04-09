@@ -13,6 +13,13 @@ require_once __DIR__ . '/../includes/openbanking.php';
 $action = $_GET['action'] ?? '';
 if ($action === 'stripe/webhook' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = file_get_contents('php://input');
+    // Verify Stripe signature
+    if (defined('STRIPE_WEBHOOK_SECRET') && !empty($_SERVER['HTTP_STRIPE_SIGNATURE'])) {
+        $sig = $_SERVER['HTTP_STRIPE_SIGNATURE'];
+        $parts = []; foreach (explode(',', $sig) as $p) { $kv = explode('=', $p, 2); $parts[$kv[0]] = $kv[1] ?? ''; }
+        $expected = hash_hmac('sha256', ($parts['t'] ?? '') . '.' . $payload, STRIPE_WEBHOOK_SECRET);
+        if (!hash_equals($expected, $parts['v1'] ?? '')) { http_response_code(400); echo json_encode(['error'=>'Invalid signature']); exit; }
+    }
     $event = json_decode($payload, true);
     if ($event && ($event['type'] ?? '') === 'checkout.session.completed') {
         $session = $event['data']['object'] ?? [];
@@ -50,6 +57,20 @@ $body = json_decode(file_get_contents('php://input'), true) ?? [];
 
 try {
     $result = match(true) {
+        // Customer services (own + used in jobs)
+        $action === 'customer/services' && $method === 'GET' => (function() {
+            $cid = (int)($_GET['customer_id'] ?? 0);
+            if (!$cid) throw new Exception('Need customer_id');
+            // Get services assigned directly to customer + services used in their jobs
+            return all("SELECT DISTINCT s.s_id, s.title, s.street, s.city, s.total_price
+                FROM services s
+                WHERE s.status=1 AND (
+                    s.customer_id_fk = ?
+                    OR s.s_id IN (SELECT DISTINCT s_id_fk FROM jobs WHERE customer_id_fk = ? AND status=1)
+                )
+                ORDER BY s.title", [$cid, $cid]);
+        })(),
+
         // Stats
         $action === 'stats' => [
             'customers' => val("SELECT COUNT(*) FROM customer WHERE status=1"),
@@ -118,7 +139,50 @@ try {
                    $d['code_door']??'', $d['optional_products']??'', $d['emp_message']??'', $d['platform']??'admin', $recurGroup]);
                 $ids[] = $db->lastInsertId();
             }
+            // Telegram notification
+            $cust = one("SELECT name FROM customer WHERE customer_id=?", [$d['customer_id_fk']]);
+            $svc = one("SELECT title FROM services WHERE s_id=?", [$d['s_id_fk']??0]);
+            $custName = $cust['name'] ?? 'Unbekannt';
+            $svcTitle = $svc['title'] ?? '';
+            $msg = "📋 <b>Neuer Job</b>\n\n👤 {$custName}\n🏠 {$svcTitle}\n📅 {$d['j_date']} um {$d['j_time']}\n⏱ {$d['j_hours']}h";
+            if (count($ids) > 1) $msg .= "\n🔄 " . count($ids) . " Jobs erstellt (bis " . end($dates) . ")";
+            if (!empty($d['address'])) $msg .= "\n📍 {$d['address']}";
+            telegramNotify($msg);
             return ['j_id' => $ids[0], 'total_created' => count($ids), 'recurring' => $jobFor ? true : false, 'dates_until' => end($dates)];
+        })(),
+
+        // Delete single job (soft delete: status=0)
+        $action === 'jobs/delete' && $method === 'POST' => (function() use ($body) {
+            if (empty($body['j_id'])) throw new Exception('Need j_id');
+            q("UPDATE jobs SET status=0 WHERE j_id=?", [(int)$body['j_id']]);
+            return ['deleted' => 1, 'j_id' => (int)$body['j_id']];
+        })(),
+
+        // Delete jobs in a recurring series (optional date range: from, to)
+        $action === 'jobs/delete-recurring' && $method === 'POST' => (function() use ($body) {
+            if (empty($body['j_id'])) throw new Exception('Need j_id');
+            $job = one("SELECT recurring_group, customer_id_fk, s_id_fk, j_time, job_for FROM jobs WHERE j_id=?", [(int)$body['j_id']]);
+            if (!$job) throw new Exception('Job not found');
+            $from = $body['from'] ?? null;
+            $to = $body['to'] ?? null;
+            $count = 0;
+            // Build date conditions
+            $dateWhere = ''; $dateParams = [];
+            if ($from) { $dateWhere .= ' AND j_date >= ?'; $dateParams[] = $from; }
+            if ($to) { $dateWhere .= ' AND j_date <= ?'; $dateParams[] = $to; }
+            if (!empty($job['recurring_group'])) {
+                $r = q("UPDATE jobs SET status=0 WHERE recurring_group=? AND status=1" . $dateWhere,
+                    array_merge([$job['recurring_group']], $dateParams));
+                $count = $r->rowCount();
+            } elseif (!empty($job['job_for'])) {
+                $r = q("UPDATE jobs SET status=0 WHERE customer_id_fk=? AND s_id_fk=? AND j_time=? AND job_for=? AND status=1" . $dateWhere,
+                    array_merge([$job['customer_id_fk'], $job['s_id_fk'], $job['j_time'], $job['job_for']], $dateParams));
+                $count = $r->rowCount();
+            } else {
+                q("UPDATE jobs SET status=0 WHERE j_id=?", [(int)$body['j_id']]);
+                $count = 1;
+            }
+            return ['deleted' => $count];
         })(),
 
         // Cancel recurring: just this one or all future
@@ -151,10 +215,17 @@ try {
         $action === 'jobs/update' && $method === 'POST' => (function() use ($body) {
             $jid = (int)($body['j_id'] ?? 0);
             if (!$jid || empty($body['field'])) throw new Exception('Need j_id + field');
-            $allowed = ['j_date','j_time','j_hours','customer_id_fk','s_id_fk','address','code_door','platform','job_for','emp_message','job_note','job_status','no_people'];
+            $allowed = ['j_date','j_time','j_hours','customer_id_fk','s_id_fk','address','code_door','platform','job_for','emp_message','job_note','job_status','no_people','start_time','end_time','total_hours'];
             if (!in_array($body['field'], $allowed)) throw new Exception('Field not editable: '.$body['field']);
             $val = $body['value'] ?: null;
             q("UPDATE jobs SET {$body['field']}=? WHERE j_id=?", [$val, $jid]);
+            // Telegram notification for job changes
+            $job = one("SELECT j.*, c.name as cname, s.title as stitle FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.j_id=?", [$jid]);
+            if ($job) {
+                $fieldLabels = ['j_date'=>'Datum','j_time'=>'Uhrzeit','j_hours'=>'Stunden','address'=>'Adresse','job_status'=>'Status','emp_id_fk'=>'Partner','code_door'=>'Türcode','job_note'=>'Notiz'];
+                $label = $fieldLabels[$body['field']] ?? $body['field'];
+                telegramNotify("✏️ <b>Job aktualisiert</b>\n\n📋 #{$jid} — {$job['cname']}\n🏠 {$job['stitle']}\n📅 {$job['j_date']} {$job['j_time']}\n\n🔄 {$label}: {$val}");
+            }
             return ['updated' => $jid, 'field' => $body['field']];
         })(),
 
@@ -167,6 +238,11 @@ try {
                 q("UPDATE jobs SET emp_id_fk=?, job_status=CASE WHEN job_status='PENDING' THEN 'CONFIRMED' ELSE job_status END WHERE j_id=?", [$empId, $body['j_id']]);
             } else {
                 q("UPDATE jobs SET emp_id_fk=NULL WHERE j_id=?", [$body['j_id']]);
+            }
+            // Notify on assignment
+            $job = one("SELECT j.*, c.name as cname, e.name as ename, e.surname as esurname, s.title as stitle FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.j_id=?", [$body['j_id']]);
+            if ($job && $empId) {
+                telegramNotify("👤 <b>Partner zugewiesen</b>\n\n📋 #{$body['j_id']} — {$job['cname']}\n🏠 {$job['stitle']}\n📅 {$job['j_date']} {$job['j_time']}\n👷 {$job['ename']} {$job['esurname']}");
             }
             return ['assigned' => $body['j_id'], 'emp_id' => $empId];
         })(),
@@ -225,7 +301,7 @@ try {
             if (!$custId) throw new Exception('Need customer_id');
 
             // Get completed jobs without invoice for this customer in this month
-            $jobs = all("SELECT j.*, s.total_price as sprice FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id
+            $jobs = all("SELECT j.*, s.price as sprice FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id
                 WHERE j.customer_id_fk=? AND j.job_status='COMPLETED' AND j.status=1 AND j.j_date LIKE ? AND j.invoice_id IS NULL",
                 [$custId, "$month%"]);
             if (empty($jobs)) throw new Exception('Keine unbefakturierten Jobs für diesen Monat');
@@ -274,12 +350,87 @@ try {
             return ['invoice_id'=>$invId, 'invoice_number'=>$invNum, 'netto'=>$totalPrice, 'tax'=>$tax, 'total'=>$brutto, 'jobs_count'=>count($jobs), 'hours'=>$totalHours, 'period'=>"$startDate — $endDate"];
         })(),
 
+        // Manual invoice creation
+        $action === 'invoice/create' && $method === 'POST' => (function() use ($body) {
+            global $db;
+            $custId = (int)($body['customer_id'] ?? 0);
+            if (!$custId) throw new Exception('Kunde erforderlich');
+            $cust = one("SELECT * FROM customer WHERE customer_id=?", [$custId]);
+            if (!$cust) throw new Exception('Kunde nicht gefunden');
+
+            $netto = round((float)($body['netto'] ?? 0), 2);
+            if ($netto <= 0) throw new Exception('Betrag muss > 0 sein');
+
+            $issueDate = $body['issue_date'] ?? date('Y-m-d');
+            $description = $body['description'] ?? '';
+
+            // Generate sequential invoice number
+            $lastNum = val("SELECT invoice_number FROM invoices WHERE invoice_number LIKE 'FF-%' ORDER BY inv_id DESC LIMIT 1");
+            if ($lastNum && preg_match('/FF-(\d+)$/', $lastNum, $m)) {
+                $nextSeq = (int)$m[1] + 1;
+            } else {
+                $nextSeq = (int)val("SELECT COUNT(*)+1 FROM invoices");
+            }
+            $invNum = 'FF-' . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+
+            $tax = round($netto * TAX_RATE, 2);
+            $brutto = round($netto + $tax, 2);
+
+            $startDate = $body['start_date'] ?? $issueDate;
+            $endDate = $body['end_date'] ?? $issueDate;
+
+            q("INSERT INTO invoices (customer_id_fk, invoice_number, issue_date, price, tax, total_price, remaining_price, invoice_paid, start_date, end_date)
+               VALUES (?,?,?,?,?,?,?,'no',?,?)",
+              [$custId, $invNum, $issueDate, $netto, $tax, $brutto, $brutto, $startDate, $endDate]);
+            $invId = $db->lastInsertId();
+            audit('create', 'invoice', $invId, "Manuell: $invNum, $brutto €" . ($description ? " — $description" : ''));
+
+            $custName = $cust['name'] ?? '';
+            telegramNotify("💰 <b>Rechnung manuell erstellt</b>\n\n📄 $invNum\n👤 $custName\n💶 " . number_format($brutto,2,',','.') . " €\n📝 " . ($description ?: 'Keine Beschreibung'));
+
+            return ['invoice_id'=>$invId, 'invoice_number'=>$invNum, 'netto'=>$netto, 'tax'=>$tax, 'total'=>$brutto];
+        })(),
+
+        // Fetch customer jobs for invoice creation (unbilled jobs in date range)
+        $action === 'invoice/jobs' && $method === 'GET' => (function() {
+            $custId = (int)($_GET['customer_id'] ?? 0);
+            $start = $_GET['start'] ?? date('Y-m-01');
+            $end = $_GET['end'] ?? date('Y-m-t');
+            if (!$custId) throw new Exception('Need customer_id');
+            $jobs = all("SELECT j.j_id, j.j_date, j.j_time, j.j_hours, j.total_hours, j.job_status, j.invoice_id,
+                s.title as service, s.price as netto_rate, s.total_price as brutto_rate,
+                e.name as partner
+                FROM jobs j
+                LEFT JOIN services s ON j.s_id_fk=s.s_id
+                LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
+                WHERE j.customer_id_fk=? AND j.j_date BETWEEN ? AND ? AND j.status=1 AND j.job_status='COMPLETED'
+                ORDER BY j.j_date", [$custId, $start, $end]);
+            $lines = [];
+            foreach ($jobs as $j) {
+                $hrs = max(MIN_HOURS, $j['total_hours'] ?: $j['j_hours']);
+                $nettoRate = (float)($j['netto_rate'] ?? 0);
+                $bruttoRate = (float)($j['brutto_rate'] ?? 0);
+                $lines[] = [
+                    'j_id' => $j['j_id'],
+                    'date' => $j['j_date'],
+                    'service' => $j['service'] ?: 'Service',
+                    'hours' => $hrs,
+                    'netto_price' => $nettoRate,
+                    'brutto_price' => $bruttoRate,
+                    'netto_total' => round($nettoRate * $hrs, 2),
+                    'partner' => $j['partner'],
+                    'invoiced' => !empty($j['invoice_id']),
+                ];
+            }
+            return ['jobs' => $lines, 'count' => count($lines)];
+        })(),
+
         // CSV Export
         $action === 'export/workhours' && $method === 'GET' => (function() {
             $custId = $_GET['customer_id'] ?? '';
             $month = $_GET['month'] ?? date('Y-m');
             $sql = "SELECT j.j_date, j.j_time, j.j_hours, j.total_hours, j.job_status,
-                    c.name as cname, e.name as ename, e.surname as esurname, s.title as stitle, s.total_price as sprice
+                    c.name as cname, e.name as ename, e.surname as esurname, s.title as stitle, s.price as sprice
                     FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id LEFT JOIN services s ON j.s_id_fk=s.s_id
                     WHERE j.status=1 AND j.job_status='COMPLETED' AND j.j_date LIKE ?";
             $p = ["$month%"];
@@ -342,6 +493,47 @@ try {
             return $c;
         })(),
 
+        // WhatsApp OSINT check
+        $action === 'osint/whatsapp' && $method === 'GET' => (function() {
+            $phone = preg_replace('/[^0-9]/', '', $_GET['phone'] ?? '');
+            if (strlen($phone) < 8) throw new Exception('Invalid phone');
+            $result = ['phone' => $phone, 'exists' => null, 'profile_pic' => null, 'status' => null];
+            // Try wa.me check (redirects if account exists)
+            $ch = curl_init("https://wa.me/$phone");
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_FOLLOWLOCATION=>0, CURLOPT_HEADER=>1, CURLOPT_NOBODY=>1, CURLOPT_SSL_VERIFYPEER=>0]);
+            $headers = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            $result['http_code'] = $code;
+            $result['exists'] = ($code >= 200 && $code < 400);
+            // Check if phone appears in our DB
+            $dbMatch = one("SELECT c.customer_id, c.name, c.email FROM customer c WHERE c.phone LIKE ? LIMIT 1", ['%'.substr($phone,-8).'%']);
+            $result['db_match'] = $dbMatch ?: null;
+            return $result;
+        })(),
+
+        // OSINT scan save
+        $action === 'osint/save' && $method === 'POST' => (function() use ($body) {
+            global $db;
+            $custId = $body['customer_id'] ?? null;
+            $scanData = json_encode($body['scan_data'] ?? []);
+            $deepData = $body['deep_data'] ? json_encode($body['deep_data']) : null;
+            q("INSERT INTO osint_scans (customer_id_fk, scan_name, scan_email, scan_phone, scan_address, scan_data, deep_scan_data, scanned_by)
+               VALUES (?,?,?,?,?,?,?,?)",
+              [$custId, $body['name']??'', $body['email']??'', $body['phone']??'', $body['address']??'', $scanData, $deepData, me()['id']??null]);
+            return ['saved' => $db->lastInsertId()];
+        })(),
+
+        // OSINT scan history
+        $action === 'osint/history' && $method === 'GET' => (function() {
+            $custId = $_GET['customer_id'] ?? '';
+            $email = $_GET['email'] ?? '';
+            $where = '1=1'; $p = [];
+            if ($custId) { $where .= ' AND customer_id_fk=?'; $p[] = $custId; }
+            if ($email) { $where .= ' AND scan_email=?'; $p[] = $email; }
+            return all("SELECT scan_id, scan_name, scan_email, scan_phone, created_at FROM osint_scans WHERE $where ORDER BY created_at DESC LIMIT 20", $p);
+        })(),
+
         // Customer field update
         $action === 'customer/update' && $method === 'POST' => (function() use ($body) {
             if (empty($body['customer_id']) || empty($body['field'])) throw new Exception('Need customer_id + field');
@@ -365,7 +557,7 @@ try {
         // Invoice field update
         $action === 'invoice/update' && $method === 'POST' => (function() use ($body) {
             if (empty($body['inv_id']) || empty($body['field'])) throw new Exception('Need inv_id + field');
-            $allowed = ['issue_date','invoice_paid','remaining_price','total_price','start_date','end_date','invoice_number'];
+            $allowed = ['issue_date','invoice_paid','remaining_price','total_price','start_date','end_date','invoice_number','custom_note'];
             if (!in_array($body['field'], $allowed)) throw new Exception('Field not editable');
             $val = $body['value'] ?? null;
             if ($body['field'] === 'invoice_paid' && $val === 'yes') {
@@ -377,7 +569,152 @@ try {
             return ['updated' => $body['inv_id']];
         })(),
 
+        // Save custom invoice lines (for manual editing)
+        $action === 'invoice/save-lines' && $method === 'POST' => (function() use ($body) {
+            $invId = (int)($body['inv_id'] ?? 0);
+            if (!$invId) throw new Exception('Need inv_id');
+            $lines = $body['lines'] ?? [];
+            $note = $body['note'] ?? null;
+            $netto = 0;
+            foreach ($lines as $l) {
+                $netto += round(($l['hours'] ?? 0) * ($l['price'] ?? 0), 2);
+            }
+            $tax = round($netto * TAX_RATE, 2);
+            $brutto = round($netto + $tax, 2);
+            q("UPDATE invoices SET custom_lines=?, custom_note=?, price=?, tax=?, total_price=?, remaining_price=? WHERE inv_id=?",
+              [json_encode($lines), $note, $netto, $tax, $brutto, $brutto, $invId]);
+            audit('update', 'invoice', $invId, "Custom lines saved: $brutto €");
+            return ['saved' => $invId, 'netto' => $netto, 'tax' => $tax, 'total' => $brutto];
+        })(),
+
+        // XRechnung XML export
+        $action === 'invoice/xrechnung' && $method === 'GET' => (function() {
+            $invId = (int)($_GET['inv_id'] ?? 0);
+            if (!$invId) throw new Exception('Need inv_id');
+            $inv = one("SELECT i.*, c.name as cname, c.email as cemail, c.phone as cphone FROM invoices i LEFT JOIN customer c ON i.customer_id_fk=c.customer_id WHERE i.inv_id=?", [$invId]);
+            if (!$inv) throw new Exception('Invoice not found');
+            $addr = one("SELECT * FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC LIMIT 1", [$inv['customer_id_fk']]);
+            try { $settings = one("SELECT * FROM settings LIMIT 1"); } catch (Exception $e) { $settings = []; }
+            if (!$settings) $settings = [];
+            $customLines = $inv['custom_lines'] ? json_decode($inv['custom_lines'], true) : null;
+
+            // Build line items
+            $xmlLines = '';
+            if ($customLines) {
+                foreach ($customLines as $i => $l) {
+                    $lineTotal = round(($l['hours']??0)*($l['price']??0), 2);
+                    $lineTax = round($lineTotal * TAX_RATE, 2);
+                    $xmlLines .= '<cac:InvoiceLine>
+  <cbc:ID>'.($i+1).'</cbc:ID>
+  <cbc:InvoicedQuantity unitCode="HUR">'.number_format($l['hours']??0, 2, '.', '').'</cbc:InvoicedQuantity>
+  <cbc:LineExtensionAmount currencyID="EUR">'.number_format($lineTotal, 2, '.', '').'</cbc:LineExtensionAmount>
+  <cac:Item><cbc:Name>'.htmlspecialchars($l['service']??'Service').'</cbc:Name>
+    <cac:ClassifiedTaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>19</cbc:Percent>
+      <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+    </cac:ClassifiedTaxCategory>
+  </cac:Item>
+  <cac:Price><cbc:PriceAmount currencyID="EUR">'.number_format($l['price']??0, 2, '.', '').'</cbc:PriceAmount></cac:Price>
+</cac:InvoiceLine>';
+                }
+            } else {
+                $xmlLines = '<cac:InvoiceLine>
+  <cbc:ID>1</cbc:ID>
+  <cbc:InvoicedQuantity unitCode="HUR">1</cbc:InvoicedQuantity>
+  <cbc:LineExtensionAmount currencyID="EUR">'.number_format($inv['price'], 2, '.', '').'</cbc:LineExtensionAmount>
+  <cac:Item><cbc:Name>Dienstleistung</cbc:Name>
+    <cac:ClassifiedTaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>19</cbc:Percent>
+      <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+    </cac:ClassifiedTaxCategory>
+  </cac:Item>
+  <cac:Price><cbc:PriceAmount currencyID="EUR">'.number_format($inv['price'], 2, '.', '').'</cbc:PriceAmount></cac:Price>
+</cac:InvoiceLine>';
+            }
+
+            $netto = number_format($inv['price'], 2, '.', '');
+            $tax = number_format($inv['tax'], 2, '.', '');
+            $total = number_format($inv['total_price'], 2, '.', '');
+            $issueDate = $inv['issue_date'] ?: date('Y-m-d');
+            $dueDate = date('Y-m-d', strtotime($issueDate . ' +14 days'));
+
+            $xml = '<?xml version="1.0" encoding="UTF-8"?>
+<ubl:Invoice xmlns:ubl="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+  xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+  xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:xoev-de:kosit:standard:xrechnung_3.0</cbc:CustomizationID>
+<cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>
+<cbc:ID>'.htmlspecialchars($inv['invoice_number']).'</cbc:ID>
+<cbc:IssueDate>'.$issueDate.'</cbc:IssueDate>
+<cbc:DueDate>'.$dueDate.'</cbc:DueDate>
+<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>
+<cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+<cbc:BuyerReference>'.htmlspecialchars($inv['cname']).'</cbc:BuyerReference>
+<cac:AccountingSupplierParty><cac:Party>
+  <cac:PartyName><cbc:Name>'.htmlspecialchars($settings['company'] ?? SITE).'</cbc:Name></cac:PartyName>
+  <cac:PostalAddress>
+    <cbc:StreetName>'.htmlspecialchars(($settings['street']??'').' '.($settings['number']??'')).'</cbc:StreetName>
+    <cbc:CityName>'.htmlspecialchars($settings['city']??'Berlin').'</cbc:CityName>
+    <cbc:PostalZone>'.htmlspecialchars($settings['postal_code']??'').'</cbc:PostalZone>
+    <cac:Country><cbc:IdentificationCode>DE</cbc:IdentificationCode></cac:Country>
+  </cac:PostalAddress>
+  <cac:PartyTaxScheme>
+    <cbc:CompanyID>'.htmlspecialchars($settings['USt_IdNr']??'').'</cbc:CompanyID>
+    <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+  </cac:PartyTaxScheme>
+  <cac:Contact><cbc:ElectronicMail>'.CONTACT_EMAIL.'</cbc:ElectronicMail></cac:Contact>
+</cac:Party></cac:AccountingSupplierParty>
+<cac:AccountingCustomerParty><cac:Party>
+  <cac:PartyName><cbc:Name>'.htmlspecialchars($inv['cname']).'</cbc:Name></cac:PartyName>
+  <cac:PostalAddress>
+    <cbc:StreetName>'.htmlspecialchars(($addr['street']??'').' '.($addr['number']??'')).'</cbc:StreetName>
+    <cbc:CityName>'.htmlspecialchars($addr['city']??'').'</cbc:CityName>
+    <cbc:PostalZone>'.htmlspecialchars($addr['postal_code']??'').'</cbc:PostalZone>
+    <cac:Country><cbc:IdentificationCode>DE</cbc:IdentificationCode></cac:Country>
+  </cac:PostalAddress>
+  <cac:Contact><cbc:ElectronicMail>'.htmlspecialchars($inv['cemail']??'').'</cbc:ElectronicMail></cac:Contact>
+</cac:Party></cac:AccountingCustomerParty>
+<cac:PaymentMeans>
+  <cbc:PaymentMeansCode>58</cbc:PaymentMeansCode>
+  <cac:PayeeFinancialAccount><cbc:ID>'.htmlspecialchars($settings['iban']??'').'</cbc:ID>
+    <cbc:Name>'.htmlspecialchars($settings['company']??SITE).'</cbc:Name>
+    <cac:FinancialInstitutionBranch><cbc:ID>'.htmlspecialchars($settings['bic']??'').'</cbc:ID></cac:FinancialInstitutionBranch>
+  </cac:PayeeFinancialAccount>
+</cac:PaymentMeans>
+<cac:TaxTotal>
+  <cbc:TaxAmount currencyID="EUR">'.$tax.'</cbc:TaxAmount>
+  <cac:TaxSubtotal>
+    <cbc:TaxableAmount currencyID="EUR">'.$netto.'</cbc:TaxableAmount>
+    <cbc:TaxAmount currencyID="EUR">'.$tax.'</cbc:TaxAmount>
+    <cac:TaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>19</cbc:Percent>
+      <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme>
+    </cac:TaxCategory>
+  </cac:TaxSubtotal>
+</cac:TaxTotal>
+<cac:LegalMonetaryTotal>
+  <cbc:LineExtensionAmount currencyID="EUR">'.$netto.'</cbc:LineExtensionAmount>
+  <cbc:TaxExclusiveAmount currencyID="EUR">'.$netto.'</cbc:TaxExclusiveAmount>
+  <cbc:TaxInclusiveAmount currencyID="EUR">'.$total.'</cbc:TaxInclusiveAmount>
+  <cbc:PayableAmount currencyID="EUR">'.$total.'</cbc:PayableAmount>
+</cac:LegalMonetaryTotal>
+'.$xmlLines.'
+</ubl:Invoice>';
+
+            header('Content-Type: application/xml; charset=utf-8');
+            header('Content-Disposition: attachment; filename="XRechnung_'.$inv['invoice_number'].'.xml"');
+            echo $xml;
+            exit;
+        })(),
+
         // Employee status update
+        // Update single employee field (inline edit)
+        $action === 'employee/update' && $method === 'POST' => (function() use ($body) {
+            if (empty($body['emp_id']) || empty($body['field'])) throw new Exception('Need emp_id + field');
+            $allowed = ['name','surname','email','phone','tariff','location','nationality','notes'];
+            if (!in_array($body['field'], $allowed)) throw new Exception('Field not editable');
+            q("UPDATE employee SET {$body['field']}=? WHERE emp_id=?", [$body['value'] ?? '', (int)$body['emp_id']]);
+            audit('inline_edit', 'employee', $body['emp_id'], $body['field'] . ' updated');
+            return ['updated' => (int)$body['emp_id'], 'field' => $body['field']];
+        })(),
+
         $action === 'employee/status' && $method === 'POST' => (function() use ($body) {
             if (empty($body['emp_id'])) throw new Exception('Need emp_id');
             $status = isset($body['status']) ? (int)$body['status'] : 1;
@@ -391,6 +728,44 @@ try {
 
         // Services
         $action === 'services' => all("SELECT s.*, c.name as customer_name FROM services s LEFT JOIN customer c ON s.customer_id_fk=c.customer_id WHERE s.status=1 ORDER BY s.title"),
+
+        // Create service (admin only)
+        $action === 'services/create' && $method === 'POST' => (function() use ($body) {
+            if (($_SESSION['utype'] ?? '') !== 'admin') throw new Exception('Admin only');
+            if (empty($body['title'])) throw new Exception('Need title');
+            global $db;
+            $price = (float)($body['price'] ?? $body['total_price'] ?? 30);
+            $taxPct = (float)($body['tax_percentage'] ?? 19);
+            $tax = round($price * $taxPct / 100, 2);
+            $total = $price;
+            q("INSERT INTO services (title, price, total_price, tax, tax_percentage, coin, street, number, postal_code, city, country, qm, room, box_code, client_code, deposit_code, customer_id_fk, status)
+               VALUES (?,?,?,?,?,'€',?,?,?,?,'Deutschland',?,?,?,?,?,?,1)",
+              [$body['title'], $price, $total, $tax, $taxPct,
+               $body['street']??'', $body['number']??'', $body['postal_code']??'', $body['city']??'Berlin',
+               $body['qm']??null, $body['room']??null, $body['box_code']??'', $body['client_code']??'', $body['deposit_code']??'',
+               $body['customer_id_fk']??null]);
+            $newId = $db->lastInsertId();
+            audit('create', 'service', $newId, $body['title']);
+            return one("SELECT * FROM services WHERE s_id=?", [$newId]);
+        })(),
+
+        // Update service (admin only)
+        $action === 'services/update' && $method === 'POST' => (function() use ($body) {
+            if (($_SESSION['utype'] ?? '') !== 'admin') throw new Exception('Admin only');
+            $sid = (int)($body['s_id'] ?? 0);
+            if (!$sid) throw new Exception('Need s_id');
+            $allowed = ['title','total_price','price','street','number','postal_code','city','qm','room','box_code','client_code','deposit_code','wifi_name','wifi_password'];
+            $sets = []; $params = [];
+            foreach ($body as $k => $v) {
+                if ($k === 's_id') continue;
+                if (in_array($k, $allowed)) { $sets[] = "$k=?"; $params[] = $v; }
+            }
+            if (empty($sets)) throw new Exception('Nothing to update');
+            $params[] = $sid;
+            q("UPDATE services SET " . implode(',', $sets) . " WHERE s_id=?", $params);
+            audit('update', 'service', $sid, implode(', ', array_keys(array_diff_key($body, ['s_id'=>1]))));
+            return one("SELECT * FROM services WHERE s_id=?", [$sid]);
+        })(),
 
         // Invoices
         $action === 'invoices' => all("SELECT i.*, c.name as customer_name FROM invoices i LEFT JOIN customer c ON i.customer_id_fk=c.customer_id ORDER BY i.issue_date DESC LIMIT 200"),
@@ -1046,10 +1421,326 @@ try {
             return ['updated' => $updated, 'skipped' => $skipped, 'total' => count($body['jobs'])];
         })(),
 
+        // iCal Feeds: List all
+        $action === 'ical/feeds' && $method === 'GET' => all(
+            "SELECT f.*, c.name as customer_name FROM ical_feeds f LEFT JOIN customer c ON f.customer_id_fk=c.customer_id ORDER BY f.created_at DESC"
+        ),
+
+        // iCal Feeds: Add new feed
+        $action === 'ical/feeds' && $method === 'POST' => (function() use ($body) {
+            foreach (['customer_id_fk','label','url','platform'] as $r) {
+                if (empty($body[$r])) throw new Exception("Missing: $r");
+            }
+            if (!filter_var($body['url'], FILTER_VALIDATE_URL) || !preg_match('#^https?://#i', $body['url'])) {
+                throw new Exception('Invalid URL — must be HTTP(S)');
+            }
+            q("INSERT INTO ical_feeds (customer_id_fk, label, url, platform, active, created_at) VALUES (?,?,?,?,1,NOW())",
+                [$body['customer_id_fk'], $body['label'], $body['url'], $body['platform']]);
+            global $db;
+            $id = $db->lastInsertId();
+            audit('create', 'ical_feed', $id, "Feed: {$body['label']} ({$body['platform']})");
+            return one("SELECT f.*, c.name as customer_name FROM ical_feeds f LEFT JOIN customer c ON f.customer_id_fk=c.customer_id WHERE f.id=?", [$id]);
+        })(),
+
+        // iCal Feeds: Delete
+        $action === 'ical/feeds/delete' && $method === 'POST' => (function() use ($body) {
+            $id = (int)($body['id'] ?? 0);
+            if (!$id) throw new Exception('Missing id');
+            $feed = one("SELECT * FROM ical_feeds WHERE id=?", [$id]);
+            if (!$feed) throw new Exception('Feed not found');
+            q("DELETE FROM ical_feeds WHERE id=?", [$id]);
+            audit('delete', 'ical_feed', $id, "Feed: {$feed['label']}");
+            return ['deleted' => $id];
+        })(),
+
+        // iCal Sync: Sync one or all feeds
+        $action === 'ical/sync' && $method === 'POST' => (function() use ($body) {
+            $feedId = (int)($body['feed_id'] ?? 0);
+
+            if ($feedId) {
+                $feeds = all("SELECT * FROM ical_feeds WHERE id=? AND active=1", [$feedId]);
+            } else {
+                $feeds = all("SELECT * FROM ical_feeds WHERE active=1");
+            }
+
+            if (empty($feeds)) throw new Exception('No active feeds found');
+
+            $totalCreated = 0;
+            $totalUpdated = 0;
+            $totalSkipped = 0;
+            $feedResults = [];
+
+            foreach ($feeds as $feed) {
+                $created = 0; $updated = 0; $skipped = 0; $errors = [];
+
+                // Fetch iCal URL
+                $ch = curl_init($feed['url']);
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 30,
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_USERAGENT => 'Fleckfrei/1.0 iCal-Sync',
+                    CURLOPT_SSL_VERIFYPEER => true,
+                ]);
+                $icalData = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlErr = curl_error($ch);
+                curl_close($ch);
+
+                if (!$icalData || $httpCode !== 200) {
+                    $feedResults[] = ['feed_id' => $feed['id'], 'label' => $feed['label'], 'error' => $curlErr ?: "HTTP $httpCode"];
+                    continue;
+                }
+
+                // Parse VCALENDAR — split into VEVENT blocks
+                $events = [];
+                if (preg_match_all('/BEGIN:VEVENT(.+?)END:VEVENT/s', $icalData, $matches)) {
+                    foreach ($matches[1] as $block) {
+                        $ev = [];
+                        // Extract fields line by line (handle folded lines)
+                        $unfolded = preg_replace('/\r?\n[ \t]/', '', $block);
+                        $lines = preg_split('/\r?\n/', $unfolded);
+                        foreach ($lines as $line) {
+                            $line = trim($line);
+                            if (!$line || strpos($line, ':') === false) continue;
+                            [$key, $val] = explode(':', $line, 2);
+                            // Strip params like DTSTART;VALUE=DATE
+                            $keyBase = explode(';', $key)[0];
+                            $ev[strtoupper($keyBase)] = $val;
+                        }
+                        if (!empty($ev['DTSTART'])) {
+                            $events[] = $ev;
+                        }
+                    }
+                }
+
+                foreach ($events as $ev) {
+                    $uid = $ev['UID'] ?? '';
+                    $summary = $ev['SUMMARY'] ?? '';
+                    $description = $ev['DESCRIPTION'] ?? '';
+                    $dtStart = $ev['DTSTART'] ?? '';
+                    $dtEnd = $ev['DTEND'] ?? '';
+
+                    // Parse DTSTART into date + time
+                    $parsedStart = icalParseDate($dtStart);
+                    if (!$parsedStart) { $skipped++; continue; }
+                    $jDate = $parsedStart['date'];
+                    $jTime = $parsedStart['time'];
+
+                    // Parse DTEND for duration info (optional)
+                    $parsedEnd = icalParseDate($dtEnd);
+                    $jHours = 2; // default
+                    if ($parsedEnd) {
+                        $startTs = strtotime($parsedStart['date'] . ' ' . $parsedStart['time']);
+                        $endTs = strtotime($parsedEnd['date'] . ' ' . $parsedEnd['time']);
+                        if ($endTs > $startTs) {
+                            $jHours = round(($endTs - $startTs) / 3600, 1);
+                        }
+                    }
+
+                    // Check for existing job by ical_uid
+                    if ($uid) {
+                        $existing = one("SELECT j_id, j_date, j_time FROM jobs WHERE ical_uid=?", [$uid]);
+                    } else {
+                        $existing = null;
+                    }
+
+                    if ($existing) {
+                        // Update if date/time changed
+                        if ($existing['j_date'] !== $jDate || substr($existing['j_time'] ?? '', 0, 5) !== substr($jTime, 0, 5)) {
+                            q("UPDATE jobs SET j_date=?, j_time=?, j_hours=? WHERE j_id=?",
+                                [$jDate, $jTime, $jHours, $existing['j_id']]);
+                            $updated++;
+                        } else {
+                            $skipped++;
+                        }
+                    } else {
+                        // Create new job
+                        q("INSERT INTO jobs (customer_id_fk, j_date, j_time, j_hours, job_status, platform, ical_uid, job_note, address, status) VALUES (?,?,?,?,?,?,?,?,?,1)",
+                            [
+                                $feed['customer_id_fk'],
+                                $jDate,
+                                $jTime,
+                                $jHours,
+                                'PENDING',
+                                $feed['platform'],
+                                $uid,
+                                trim($summary . ($description ? "\n" . str_replace('\\n', "\n", $description) : '')),
+                                $ev['LOCATION'] ?? '',
+                            ]);
+                        $created++;
+                    }
+                }
+
+                // Update feed stats
+                q("UPDATE ical_feeds SET last_sync=NOW(), jobs_created=jobs_created+? WHERE id=?", [$created, $feed['id']]);
+
+                $totalCreated += $created;
+                $totalUpdated += $updated;
+                $totalSkipped += $skipped;
+
+                $feedResults[] = [
+                    'feed_id' => $feed['id'],
+                    'label' => $feed['label'],
+                    'events_found' => count($events),
+                    'created' => $created,
+                    'updated' => $updated,
+                    'skipped' => $skipped,
+                ];
+            }
+
+            audit('sync', 'ical', 0, "iCal sync: {$totalCreated} created, {$totalUpdated} updated");
+            if ($totalCreated > 0) {
+                telegramNotify("iCal Sync: {$totalCreated} neue Jobs importiert, {$totalUpdated} aktualisiert");
+            }
+
+            return [
+                'feeds_synced' => count($feedResults),
+                'total_created' => $totalCreated,
+                'total_updated' => $totalUpdated,
+                'total_skipped' => $totalSkipped,
+                'feeds' => $feedResults,
+            ];
+        })(),
+
+        // Deep OSINT scan — calls free public APIs
+        $action === 'osint/deep' && $method === 'POST' => (function() use ($body) {
+            $email = $body['email'] ?? '';
+            $name = $body['name'] ?? '';
+            $phone = $body['phone'] ?? '';
+            $address = $body['address'] ?? '';
+            $results = [];
+
+            // 1. Email domain deep check
+            if ($email && strpos($email,'@')!==false) {
+                $domain = substr($email, strpos($email,'@')+1);
+
+                // crt.sh — SSL certificate transparency (find subdomains)
+                $ch = curl_init("https://crt.sh/?q=%25.".$domain."&output=json");
+                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>10, CURLOPT_SSL_VERIFYPEER=>0]);
+                $crtRaw = curl_exec($ch); curl_close($ch);
+                $certs = json_decode($crtRaw, true);
+                if (is_array($certs)) {
+                    $subdomains = array_unique(array_column(array_slice($certs,0,50), 'common_name'));
+                    $results['subdomains'] = ['source'=>'crt.sh', 'count'=>count($subdomains), 'data'=>array_values(array_slice($subdomains,0,20))];
+                }
+
+                // DNS deep: SPF, DMARC, DKIM
+                $spf = @dns_get_record($domain, DNS_TXT);
+                $spfRecords = [];
+                if ($spf) foreach ($spf as $r) { if (isset($r['txt']) && stripos($r['txt'],'spf')!==false) $spfRecords[] = $r['txt']; }
+                $dmarc = @dns_get_record('_dmarc.'.$domain, DNS_TXT);
+                $dmarcTxt = $dmarc ? ($dmarc[0]['txt']??'') : '';
+                $results['email_security'] = ['spf'=>$spfRecords, 'dmarc'=>$dmarcTxt, 'has_spf'=>!empty($spfRecords), 'has_dmarc'=>!empty($dmarcTxt)];
+
+                // HackerTarget reverse IP (what else is hosted on same server)
+                $a = @dns_get_record($domain, DNS_A);
+                if (!empty($a[0]['ip'])) {
+                    $ip = $a[0]['ip'];
+                    $ch = curl_init("https://api.hackertarget.com/reverseiplookup/?q=".$ip);
+                    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8]);
+                    $revIp = curl_exec($ch); curl_close($ch);
+                    if ($revIp && !str_contains($revIp, 'error')) {
+                        $hosts = array_filter(explode("\n", trim($revIp)));
+                        $results['reverse_ip'] = ['ip'=>$ip, 'count'=>count($hosts), 'hosts'=>array_slice($hosts,0,15)];
+                    }
+                }
+
+                // Wayback Machine — how old is domain
+                $ch = curl_init("https://archive.org/wayback/available?url=".$domain);
+                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8]);
+                $wb = json_decode(curl_exec($ch), true); curl_close($ch);
+                if (!empty($wb['archived_snapshots']['closest'])) {
+                    $results['wayback'] = $wb['archived_snapshots']['closest'];
+                }
+
+                // WHOIS via free API
+                $ch = curl_init("https://api.hackertarget.com/whois/?q=".$domain);
+                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8]);
+                $whois = curl_exec($ch); curl_close($ch);
+                if ($whois && !str_contains($whois, 'error') && strlen($whois) > 50) {
+                    // Extract key fields
+                    $w = [];
+                    if (preg_match('/Registrar:\s*(.+)/i', $whois, $m)) $w['registrar'] = trim($m[1]);
+                    if (preg_match('/Creation Date:\s*(.+)/i', $whois, $m)) $w['created'] = trim($m[1]);
+                    if (preg_match('/Updated Date:\s*(.+)/i', $whois, $m)) $w['updated'] = trim($m[1]);
+                    if (preg_match('/Registrant Organization:\s*(.+)/i', $whois, $m)) $w['org'] = trim($m[1]);
+                    if (preg_match('/Registrant Country:\s*(.+)/i', $whois, $m)) $w['country'] = trim($m[1]);
+                    if (preg_match('/Registrant Name:\s*(.+)/i', $whois, $m)) $w['registrant'] = trim($m[1]);
+                    $results['whois'] = $w;
+                }
+            }
+
+            // 2. Social media profile check (HTTP HEAD — does profile exist?)
+            if ($name) {
+                $slug = strtolower(preg_replace('/[^a-z0-9]/i', '', $name));
+                $slugDot = strtolower(str_replace(' ', '.', trim($name)));
+                $slugDash = strtolower(str_replace(' ', '-', trim($name)));
+                $checks = [
+                    'instagram' => 'https://www.instagram.com/'.$slug.'/',
+                    'tiktok' => 'https://www.tiktok.com/@'.$slug,
+                    'github' => 'https://github.com/'.$slug,
+                    'twitter' => 'https://x.com/'.$slug,
+                    'linkedin' => 'https://www.linkedin.com/in/'.$slugDash,
+                ];
+                $profiles = [];
+                foreach ($checks as $platform => $url) {
+                    $ch = curl_init($url);
+                    curl_setopt_array($ch, [CURLOPT_NOBODY=>1, CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>5, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0,
+                        CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+                    curl_exec($ch);
+                    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    $finalUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+                    curl_close($ch);
+                    $exists = ($code >= 200 && $code < 400 && !str_contains($finalUrl, 'login') && !str_contains($finalUrl, '404'));
+                    $profiles[$platform] = ['url'=>$url, 'status'=>$code, 'exists'=>$exists];
+                }
+                $results['profiles'] = $profiles;
+            }
+
+            // 3. Data breach check (Have I Been Pwned style — uses free API)
+            if ($email) {
+                $ch = curl_init("https://api.hackertarget.com/emailsearch/?q=".urlencode(substr($email, strpos($email,'@')+1)));
+                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8]);
+                $emailSearch = curl_exec($ch); curl_close($ch);
+                if ($emailSearch && !str_contains($emailSearch, 'error')) {
+                    $found = array_filter(explode("\n", trim($emailSearch)));
+                    $results['email_exposure'] = ['count'=>count($found), 'emails'=>array_slice($found,0,10)];
+                }
+            }
+
+            return $results;
+        })(),
+
         default => throw new Exception("Unknown: $action")
     };
     echo json_encode(['success'=>true, 'data'=>$result]);
 } catch (Exception $e) {
     http_response_code(400);
     echo json_encode(['success'=>false, 'error'=>$e->getMessage()]);
+}
+
+/**
+ * Parse iCal date string into ['date' => 'Y-m-d', 'time' => 'H:i']
+ * Handles: 20260415T140000Z, 20260415T140000, 20260415
+ */
+function icalParseDate(string $dt): ?array {
+    $dt = trim($dt);
+    if (!$dt) return null;
+    // Full datetime: 20260415T140000Z or 20260415T140000
+    if (preg_match('/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/', $dt, $m)) {
+        $ts = gmmktime((int)$m[4], (int)$m[5], (int)$m[6], (int)$m[2], (int)$m[3], (int)$m[1]);
+        // If Z (UTC), convert to Berlin
+        if (str_ends_with(trim($dt), 'Z')) {
+            $d = new DateTime('@' . $ts);
+            $d->setTimezone(new DateTimeZone('Europe/Berlin'));
+            return ['date' => $d->format('Y-m-d'), 'time' => $d->format('H:i')];
+        }
+        return ['date' => "{$m[1]}-{$m[2]}-{$m[3]}", 'time' => "{$m[4]}:{$m[5]}"];
+    }
+    // Date only: 20260415
+    if (preg_match('/^(\d{4})(\d{2})(\d{2})$/', $dt, $m)) {
+        return ['date' => "{$m[1]}-{$m[2]}-{$m[3]}", 'time' => '00:00'];
+    }
+    return null;
 }

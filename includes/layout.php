@@ -22,7 +22,19 @@ $user = me(); $page = $page ?? ''; ?>
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
-    body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #1a1a1a; font-size: 14px; }
+    /* Better readability */
+    th, td { color: #1f2937; }
+    label, .text-gray-600 { color: #374151 !important; }
+    .text-gray-500 { color: #4b5563 !important; }
+    .text-gray-400 { color: #6b7280 !important; }
+    .text-gray-300 { color: #9ca3af !important; }
+    input, select, textarea { color: #111827; font-size: 14px; }
+    h3, h4 { color: #111827; }
+    .text-xs { font-size: 0.8rem; }
+    .text-sm { font-size: 0.875rem; }
+    .text-\[11px\], .text-\[11\.5px\] { font-size: 12px !important; }
+    .text-\[10px\] { font-size: 11px !important; }
     /* Sidebar */
     .sidebar-link { transition: all 0.15s ease; }
     .sidebar-link.active { background: linear-gradient(135deg, <?= BRAND ?>, <?= BRAND_DARK ?>); color: white; box-shadow: 0 2px 8px rgba(<?= BRAND_RGB ?>,0.3); }
@@ -45,8 +57,8 @@ $user = me(); $page = $page ?? ''; ?>
     .fc .fc-button-primary { background: <?= BRAND ?>; border-color: <?= BRAND ?>; }
     .fc .fc-button-primary:hover { background: <?= BRAND_DARK ?>; border-color: <?= BRAND_DARK ?>; }
     .fc .fc-button-primary:not(:disabled).fc-button-active { background: <?= BRAND_DARK ?>; border-color: <?= BRAND_DARK ?>; }
-    .fc .fc-col-header-cell { font-size: 0.75rem; padding: 8px 0 !important; color: #6b7280; font-weight: 500; }
-    .fc .fc-daygrid-day-number { font-size: 0.8rem; padding: 4px 8px !important; color: #374151; }
+    .fc .fc-col-header-cell { font-size: 0.8rem; padding: 8px 0 !important; color: #374151; font-weight: 600; }
+    .fc .fc-daygrid-day-number { font-size: 0.85rem; padding: 4px 8px !important; color: #1f2937; font-weight: 500; }
     .fc .fc-day-today { background: <?= BRAND_LIGHT ?> !important; }
     .fc .fc-more-link { font-size: 10px; color: <?= BRAND ?>; font-weight: 600; }
     /* Transitions */
@@ -115,7 +127,7 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/settings.php', 'Einstellungen', 'settings', $iconCog, ''],
         ];
         // Conditional features
-        if (FEATURE_OSINT) array_splice($menu, -2, 0, [  ['/admin/scanner.php', 'OSINT Scanner', 'scanner', $iconSearch, '']  ]);
+        if (FEATURE_OSINT) array_splice($menu, -2, 0, [  ['/admin/scanner.php', 'OSI', 'scanner', $iconSearch, '']  ]);
       } elseif ($user['type'] === 'customer') {
         $menu = [];
         if (customerCan('dashboard')) $menu[] = ['/customer/', 'Dashboard', 'dashboard', $iconHome, ''];

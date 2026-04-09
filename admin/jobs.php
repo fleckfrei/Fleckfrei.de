@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $employees = all("SELECT emp_id, name, surname FROM employee WHERE status=1 ORDER BY name");
 $customers = all("SELECT customer_id, name, customer_type FROM customer WHERE status=1 ORDER BY name");
-$services = all("SELECT s_id, title, street, city, total_price FROM services WHERE status=1 ORDER BY title");
+$services = all("SELECT s_id, title, street, city, total_price, customer_id_fk FROM services WHERE status=1 ORDER BY title");
 
 // Group customers by type for optgroup dropdowns
 $grouped = [];
@@ -202,13 +202,13 @@ include __DIR__ . '/../includes/layout.php';
 </div>
 
 <!-- Quick Edit Popup (click on event) -->
-<div id="quickEditModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden overflow-y-auto py-4">
-  <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl m-4">
-    <div class="p-5 border-b flex items-center justify-between">
-      <h3 class="font-semibold" id="qeTitle">Job</h3>
+<div id="quickEditModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden overflow-y-auto py-2">
+  <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl m-2 max-h-[95vh] flex flex-col">
+    <div class="p-4 border-b flex items-center justify-between flex-shrink-0">
+      <h3 class="font-semibold text-sm" id="qeTitle">Job</h3>
       <button onclick="closeQuickEdit()" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
     </div>
-    <div class="p-5 space-y-3" id="qeBody">
+    <div class="p-4 space-y-2.5 overflow-y-auto flex-1" id="qeBody">
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-medium text-gray-500 mb-1">Datum</label>
@@ -309,17 +309,27 @@ include __DIR__ . '/../includes/layout.php';
       </div>
     </div>
     <!-- Quick action buttons -->
-    <div class="px-5 py-3 border-t bg-gray-50 flex gap-2 flex-wrap" id="qeActions">
-      <button onclick="quickAction('CONFIRMED')" id="qeConfirmBtn" class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium">Bestätigen</button>
-      <button onclick="quickAction('CANCELLED')" class="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium">Stornieren</button>
-      <button onclick="quickAction('PENDING')" class="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-medium">Zurücksetzen</button>
-      <button onclick="quickAction('COMPLETED')" class="px-3 py-1.5 bg-green-700 text-white rounded-lg text-xs font-medium">Erledigt</button>
+    <div class="px-4 py-2 border-t bg-gray-50 flex gap-1.5 flex-wrap flex-shrink-0" id="qeActions">
+      <button onclick="quickAction('CONFIRMED')" id="qeConfirmBtn" class="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-[11px] font-medium">Bestätigen</button>
+      <button onclick="quickAction('CANCELLED')" class="px-2.5 py-1 bg-red-600 text-white rounded-lg text-[11px] font-medium">Stornieren</button>
+      <button onclick="quickAction('PENDING')" class="px-2.5 py-1 bg-amber-500 text-white rounded-lg text-[11px] font-medium">Zurücksetzen</button>
+      <button onclick="quickAction('COMPLETED')" class="px-2.5 py-1 bg-green-700 text-white rounded-lg text-[11px] font-medium">Erledigt</button>
     </div>
-    <!-- Save / close -->
-    <div class="p-5 border-t flex gap-2">
-      <button onclick="saveQuickEdit()" class="flex-1 px-4 py-2.5 bg-brand text-white rounded-xl font-medium text-sm">Speichern</button>
-      <a id="qeFullEdit" href="#" class="px-4 py-2.5 border rounded-xl text-gray-600 text-sm text-center">Voll-Edit</a>
-      <button onclick="closeQuickEdit()" class="px-4 py-2.5 border rounded-xl text-gray-600 text-sm">Schliessen</button>
+    <div class="px-4 py-3 border-t flex gap-2 flex-shrink-0">
+      <button onclick="saveQuickEdit()" class="flex-1 px-3 py-2 bg-brand text-white rounded-xl font-medium text-xs">Speichern</button>
+      <a id="qeFullEdit" href="#" class="px-3 py-2 border rounded-xl text-gray-600 text-xs text-center">Detail</a>
+      <button onclick="deleteJob()" class="px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs">Löschen</button>
+      <button id="qeDeleteAllBtn" onclick="toggleSerieDelete()" class="px-3 py-2 bg-red-600 text-white rounded-xl text-xs hidden">Serie löschen</button>
+    </div>
+    <!-- Serie löschen: Datumsbereich -->
+    <div id="qeSeriePanel" class="px-4 py-3 border-t bg-red-50 hidden flex-shrink-0">
+      <p class="text-xs font-medium text-red-800 mb-2">Serie löschen — Zeitraum wählen:</p>
+      <div class="flex gap-2 items-end">
+        <div class="flex-1"><label class="text-[10px] text-red-600">Von</label><input type="date" id="qeSerieFrom" class="w-full px-2 py-1.5 border border-red-200 rounded-lg text-xs"/></div>
+        <div class="flex-1"><label class="text-[10px] text-red-600">Bis</label><input type="date" id="qeSerieTo" class="w-full px-2 py-1.5 border border-red-200 rounded-lg text-xs"/></div>
+        <button onclick="deleteSerieRange()" class="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium whitespace-nowrap">Löschen</button>
+      </div>
+      <p class="text-[10px] text-red-400 mt-1">Leer = alle Jobs der Serie</p>
     </div>
   </div>
 </div>
@@ -351,9 +361,9 @@ $custJson = json_encode(array_map(fn($c) => ['id'=>$c['customer_id'],'name'=>$c[
       </div>
       <div class="col-span-2">
         <label class="block text-xs font-medium text-gray-500 mb-1">Service / Objekt</label>
-        <select name="s_id_fk" required class="w-full px-3 py-2 border rounded-xl text-sm">
+        <select name="s_id_fk" id="newJobService" required class="w-full px-3 py-2 border rounded-xl text-sm">
           <option value="">Wählen...</option>
-          <?php foreach ($services as $sv): ?><option value="<?= $sv['s_id'] ?>"><?= e($sv['title']) ?> — <?= e($sv['street'].' '.$sv['city']) ?></option><?php endforeach; ?>
+          <?php foreach ($services as $sv): ?><option value="<?= $sv['s_id'] ?>" data-customer="<?= $sv['customer_id_fk'] ?? 0 ?>"><?= e($sv['title']) ?> — <?= e($sv['street'].' '.$sv['city']) ?></option><?php endforeach; ?>
         </select>
       </div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">Datum</label><input type="date" name="j_date" required class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
@@ -369,6 +379,29 @@ $custJson = json_encode(array_map(fn($c) => ['id'=>$c['customer_id'],'name'=>$c[
       <div class="col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Adresse</label><input type="text" name="address" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">Türcode</label><input type="text" name="code_door" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">Personen</label><input type="number" name="no_people" value="1" min="1" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+      <!-- Optional Products -->
+      <div class="col-span-2">
+        <label class="block text-xs font-medium text-gray-500 mb-1">Zusatzleistungen</label>
+        <div class="flex flex-wrap gap-3">
+          <label class="flex items-center gap-1.5 text-sm"><input type="checkbox" name="optional_products" value="Reinigungsmittel" class="rounded text-brand"/> Reinigungsmittel</label>
+          <label class="flex items-center gap-1.5 text-sm"><input type="checkbox" name="optional_products" value="Werkzeug" class="rounded text-brand"/> Werkzeug</label>
+          <label class="flex items-center gap-1.5 text-sm"><input type="checkbox" name="optional_products" value="Kinderbetten" class="rounded text-brand"/> Kinderbetten</label>
+          <label class="flex items-center gap-1.5 text-sm"><input type="checkbox" name="optional_products" value="Bettwaesche" class="rounded text-brand"/> Bettwäsche</label>
+          <label class="flex items-center gap-1.5 text-sm"><input type="checkbox" name="optional_products" value="Waescheservice" class="rounded text-brand"/> Wäscheservice</label>
+        </div>
+      </div>
+      <!-- Airbnb/Host fields (shown via JS) -->
+      <div id="airbnbFields" class="col-span-2 hidden border-t pt-3 mt-1">
+        <div class="text-xs font-semibold text-amber-700 mb-2">Gast-Info (Airbnb/Host)</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Gast-Name</label><input type="text" name="guest_name" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Gast-Telefon</label><input type="tel" name="guest_phone" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Check-out Datum</label><input type="date" name="guest_checkout_date" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Check-out Uhrzeit</label><input type="time" name="guest_checkout_time" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Check-in Datum</label><input type="date" name="check_in_date" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+          <div><label class="block text-xs font-medium text-gray-500 mb-1">Check-in Uhrzeit</label><input type="time" name="check_in_time" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+        </div>
+      </div>
       <div>
         <label class="block text-xs font-medium text-gray-500 mb-1">Wiederholung</label>
         <select name="job_for" id="newJobFor" class="w-full px-3 py-2 border rounded-xl text-sm" onchange="toggleRecurEnd(this.value)">
@@ -400,7 +433,13 @@ $custJson = json_encode(array_map(fn($c) => ['id'=>$c['customer_id'],'name'=>$c[
 
 <?php
 $apiKey = API_KEY;
+$allServicesJson = json_encode(array_map(fn($s) => ['s_id'=>$s['s_id'],'title'=>$s['title'],'street'=>$s['street']??'','city'=>$s['city']??''], $services));
 $script = <<<JS
+// Force clear old service worker cache
+if ('serviceWorker' in navigator) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+    navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
+}
 const API = '/api/index.php';
 const KEY = '{$apiKey}';
 // Softer, professional colors
@@ -444,13 +483,13 @@ const cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
         }).catch(() => { info.revert(); });
     },
     events: function(info, ok, fail) {
-        const p = new URLSearchParams({ action:'jobs', start:info.startStr.split('T')[0], end:info.endStr.split('T')[0] });
+        const p = new URLSearchParams({ action:'jobs', start:info.startStr.split('T')[0], end:info.endStr.split('T')[0], _t:Date.now() });
         const ef = document.getElementById('empFilter').value;
         const sf = document.getElementById('statusFilter').value;
         const tf = document.getElementById('typeFilter').value;
         if (ef) p.set('emp_id', ef);
         if (sf) p.set('status', sf);
-        fetch(API + '?' + p, { headers:{'X-API-Key':KEY} })
+        fetch(API + '?' + p, { headers:{'X-API-Key':KEY}, cache:'no-store' })
             .then(r=>r.json()).then(d => {
                 if (!d.success) return fail();
                 let data = d.data;
@@ -486,8 +525,10 @@ const cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
         openQuickEdit(info.event.extendedProps);
     },
     dateClick: function(info) {
+        activeDayStr = info.dateStr;
         loadDayPanel(info.dateStr);
         document.querySelector('#addJobModal [name="j_date"]').value = info.dateStr;
+        document.getElementById('addJobModal').classList.remove('hidden');
     }
 });
 cal.render();
@@ -501,25 +542,26 @@ document.getElementById('typeFilter').onchange = () => cal.refetchEvents();
 
 // Real-time: refresh every 5s for live status updates
 setInterval(() => { cal.refetchEvents(); }, 5000);
-// Also refresh day panel
+// Also refresh day panel — store the active date as data attribute for reliable parsing
+let activeDayStr = new Date().toISOString().split('T')[0];
+document.getElementById('dayPanelDate').dataset.iso = activeDayStr;
 setInterval(() => {
-    const activeDay = document.getElementById('dayPanelDate')?.textContent;
-    if (activeDay) {
-        const parts = activeDay.split('.');
-        if (parts.length === 3) loadDayPanel(parts[2]+'-'+parts[1]+'-'+parts[0]);
-    }
+    if (activeDayStr) loadDayPanel(activeDayStr);
 }, 5000);
 
 // Day Panel — shows all jobs for clicked date
 function loadDayPanel(dateStr) {
     const panel = document.getElementById('dayPanelJobs');
-    const dateObj = new Date(dateStr + 'T12:00:00');
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+    const parts = dateStr.split('-');
+    const dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 12, 0, 0);
+    if (isNaN(dateObj.getTime())) return;
     const dayNames = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
     document.getElementById('dayPanelTitle').textContent = dayNames[dateObj.getDay()];
     document.getElementById('dayPanelDate').textContent = dateObj.toLocaleDateString('de-DE');
 
     // Fetch jobs for this specific day
-    fetch(API + '?action=jobs&start=' + dateStr + '&end=' + dateStr, { headers:{'X-API-Key':KEY} })
+    fetch(API + '?action=jobs&start=' + dateStr + '&end=' + dateStr + '&_t=' + Date.now(), { headers:{'X-API-Key':KEY}, cache:'no-store' })
         .then(r=>r.json()).then(d => {
             if (!d.success || !d.data.length) {
                 panel.innerHTML = '<div class="text-center text-gray-400 text-sm py-6">Keine Jobs</div>';
@@ -596,7 +638,7 @@ function openQuickEdit(j) {
                 document.getElementById('qe_route_link').href = 'https://www.google.com/maps/dir/' + coords + '/' + encodeURIComponent(jobAddr);
 
                 // Use Distance Matrix API via our proxy
-                fetch('/api/index.php?action=distance&origin=' + encodeURIComponent(coords) + '&destination=' + encodeURIComponent(jobAddr) + '&key=<?= API_KEY ?>')
+                fetch('/api/index.php?action=distance&origin=' + encodeURIComponent(coords) + '&destination=' + encodeURIComponent(jobAddr) + '&key={$apiKey}')
                     .then(r => r.json()).then(d => {
                         if (!d.success || !d.data.modes) return;
                         const modes = d.data.modes;
@@ -632,9 +674,12 @@ function openQuickEdit(j) {
     const startBtn = document.getElementById('qeStartBtn');
     const stopBtn = document.getElementById('qeStopBtn');
     const pauseBtn = document.getElementById('qePauseBtn');
+    const deleteAllBtn = document.getElementById('qeDeleteAllBtn');
     startBtn.classList.add('hidden');
     stopBtn.classList.add('hidden');
     pauseBtn.classList.add('hidden');
+    // Show "Alle Serie löschen" for recurring jobs
+    if (j.recurring_group || j.job_for) { deleteAllBtn.classList.remove('hidden'); } else { deleteAllBtn.classList.add('hidden'); }
 
     if (j.job_status === 'PENDING' || j.job_status === 'CONFIRMED') {
         startBtn.classList.remove('hidden');
@@ -646,6 +691,47 @@ function openQuickEdit(j) {
     document.getElementById('quickEditModal').classList.remove('hidden');
 }
 // Helper to set select value reliably (handles optgroups + type mismatch)
+// Delete single job
+function deleteJob() {
+    if (!currentEditId) return;
+    if (!confirm('Job #' + currentEditId + ' wirklich löschen?')) return;
+    fetch(API + '?action=jobs/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },
+        body: JSON.stringify({ j_id: currentEditId })
+    }).then(r => r.json()).then(d => {
+        if (d.success) { closeQuickEdit(); cal.refetchEvents(); }
+        else alert(d.error || 'Fehler');
+    });
+}
+// Toggle serie delete panel
+function toggleSerieDelete() {
+    const panel = document.getElementById('qeSeriePanel');
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) {
+        // Pre-fill with current job date
+        const d = document.getElementById('qe_date').value;
+        document.getElementById('qeSerieFrom').value = d;
+        document.getElementById('qeSerieTo').value = '';
+    }
+}
+// Delete recurring jobs in date range
+function deleteSerieRange() {
+    if (!currentEditId) return;
+    const from = document.getElementById('qeSerieFrom').value;
+    const to = document.getElementById('qeSerieTo').value;
+    const msg = from && to ? 'Serie löschen von ' + from + ' bis ' + to + '?' : from ? 'Serie löschen ab ' + from + '?' : 'ALLE Jobs dieser Serie löschen?';
+    if (!confirm(msg)) return;
+    fetch(API + '?action=jobs/delete-recurring', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },
+        body: JSON.stringify({ j_id: currentEditId, from: from || null, to: to || null })
+    }).then(r => r.json()).then(d => {
+        if (d.success) { alert(d.data.deleted + ' Jobs gelöscht'); closeQuickEdit(); cal.refetchEvents(); }
+        else alert(d.error || 'Fehler');
+    });
+}
+
 function setSelect(id, val) {
     const sel = document.getElementById(id);
     if (!sel) return;
@@ -797,32 +883,63 @@ function applyBookingTemplate(custId) {
     const type = opt.getAttribute('data-type') || '';
     const badge = document.getElementById('templateBadge');
 
+    const airbnbFields = document.getElementById('airbnbFields');
+
     if (type === 'Company') {
-        // WA Partner template
         document.getElementById('newJobTime').value = '09:00';
         document.getElementById('newJobHours').value = '4';
         document.getElementById('newJobFor').value = 'weekly';
         document.getElementById('newJobPlatform').value = 'whatsapp';
-        badge.textContent = '📋 WA Partner';
+        badge.textContent = 'B2B Partner';
         badge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700';
-    } else if (type === 'Airbnb' || type === 'Host') {
-        // WA Host template
+        if (airbnbFields) airbnbFields.classList.add('hidden');
+    } else if (type === 'Airbnb' || type === 'Host' || type === 'Booking' || type === 'Short-Term Rental') {
         document.getElementById('newJobTime').value = '11:00';
         document.getElementById('newJobHours').value = '3';
         document.getElementById('newJobFor').value = '';
         document.getElementById('newJobPlatform').value = 'airbnb';
-        badge.textContent = '🏠 WA Host';
+        badge.textContent = 'Airbnb / Host';
         badge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700';
+        if (airbnbFields) airbnbFields.classList.remove('hidden');
     } else {
-        // WA Privat template
         document.getElementById('newJobTime').value = '09:00';
         document.getElementById('newJobHours').value = '3';
         document.getElementById('newJobFor').value = '';
         document.getElementById('newJobPlatform').value = 'whatsapp';
-        badge.textContent = '👤 WA Privat';
+        badge.textContent = 'Privatkunde';
         badge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700';
+        if (airbnbFields) airbnbFields.classList.add('hidden');
     }
     badge.classList.remove('hidden');
+
+    // Fetch customer's services via API (own + used in jobs)
+    const svcSel = document.getElementById('newJobService');
+    if (svcSel && custId) {
+        svcSel.innerHTML = '<option value="">Laden...</option>';
+        fetch('/api/index.php?action=customer/services&customer_id=' + custId + '&key={$apiKey}')
+            .then(r => r.json())
+            .then(d => {
+                svcSel.innerHTML = '<option value="">Wählen...</option>';
+                if (d.success && d.data.length > 0) {
+                    d.data.forEach(s => {
+                        const o = document.createElement('option');
+                        o.value = s.s_id;
+                        o.textContent = s.title + (s.street ? ' — ' + s.street + ' ' + (s.city||'') : '') + (s.total_price ? ' (' + s.total_price + ' €/h)' : '');
+                        svcSel.appendChild(o);
+                    });
+                } else {
+                    // Fallback: show all services
+                    const allOpts = {$allServicesJson};
+                    allOpts.forEach(s => {
+                        const o = document.createElement('option');
+                        o.value = s.s_id;
+                        o.textContent = s.title + (s.street ? ' — ' + s.street + ' ' + s.city : '');
+                        svcSel.appendChild(o);
+                    });
+                }
+            })
+            .catch(() => { svcSel.innerHTML = '<option value="">Fehler</option>'; });
+    }
 }
 
 // Toggle "Wiederholen bis" field + preview
@@ -857,6 +974,8 @@ function submitNewJob(e) {
     e.preventDefault();
     const fd = new FormData(e.target);
     const data = Object.fromEntries(fd);
+    // Collect optional products checkboxes
+    data.optional_products = Array.from(e.target.querySelectorAll('input[name="optional_products"]:checked')).map(c=>c.value).join(', ');
     data.customer_id_fk = parseInt(data.customer_id_fk);
     data.s_id_fk = parseInt(data.s_id_fk);
     if (data.emp_id_fk) data.emp_id_fk = parseInt(data.emp_id_fk);

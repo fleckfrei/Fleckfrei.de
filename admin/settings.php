@@ -9,6 +9,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'update_
     $checkboxes = ['email_booking','email_job_start','email_job_complete','email_invoice','email_reminder'];
     $sets = []; $params = [];
     foreach ($fields as $f) { $sets[] = "$f=?"; $params[] = in_array($f, $checkboxes) ? (isset($_POST[$f]) ? '1' : '0') : ($_POST[$f] ?? ''); }
+
+    // Handle logo upload
+    if (!empty($_FILES['logo']['tmp_name'])) {
+        $allowed = ['image/png','image/jpeg','image/gif','image/svg+xml','image/webp'];
+        if (in_array($_FILES['logo']['type'], $allowed) && $_FILES['logo']['size'] < 2 * 1024 * 1024) {
+            $ext = pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION);
+            $uploadDir = __DIR__ . '/../uploads/';
+            if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+            $filename = 'logo_' . time() . '.' . $ext;
+            if (move_uploaded_file($_FILES['logo']['tmp_name'], $uploadDir . $filename)) {
+                $sets[] = "logo_path=?";
+                $params[] = '/uploads/' . $filename;
+            }
+        }
+    }
+
     q("UPDATE settings SET " . implode(',', $sets), $params);
     header("Location: /admin/settings.php?saved=1"); exit;
 }
@@ -19,13 +35,29 @@ include __DIR__ . '/../includes/layout.php';
 
 <?php if (!empty($_GET['saved'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">Einstellungen gespeichert.</div><?php endif; ?>
 
-<form method="POST" class="space-y-6">
+<form method="POST" enctype="multipart/form-data" class="space-y-6">
+  <?= csrfField() ?>
   <input type="hidden" name="action" value="update_settings"/>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="bg-white rounded-xl border p-5">
       <h3 class="font-semibold mb-4">Unternehmen</h3>
       <div class="space-y-4">
+        <!-- Logo Upload -->
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-2">Firmen-Logo</label>
+          <div class="flex items-center gap-4">
+            <?php if (!empty($s['logo_path'])): ?>
+            <img src="<?= e($s['logo_path']) ?>" class="w-16 h-16 rounded-xl object-contain border bg-white" alt="Logo"/>
+            <?php else: ?>
+            <div class="w-16 h-16 rounded-xl bg-brand flex items-center justify-center text-white text-2xl font-bold"><?= LOGO_LETTER ?></div>
+            <?php endif; ?>
+            <div class="flex-1">
+              <input type="file" name="logo" accept="image/png,image/jpeg,image/svg+xml,image/webp" class="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-light file:text-brand hover:file:bg-brand hover:file:text-white file:cursor-pointer file:transition"/>
+              <p class="text-xs text-gray-400 mt-1">PNG, JPG, SVG oder WebP. Max 2MB.</p>
+            </div>
+          </div>
+        </div>
         <div class="grid grid-cols-2 gap-4">
           <div><label class="block text-sm font-medium text-gray-600 mb-1">Vorname</label><input name="first_name" value="<?= e($s['first_name']??'') ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>
           <div><label class="block text-sm font-medium text-gray-600 mb-1">Nachname</label><input name="last_name" value="<?= e($s['last_name']??'') ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>

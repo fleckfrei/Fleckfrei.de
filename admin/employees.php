@@ -96,17 +96,23 @@ include __DIR__ . '/../includes/layout.php';
     <?php foreach ($employees as $e2): ?>
     <tr class="hover:bg-gray-50">
       <td class="px-4 py-3 text-gray-400"><?= $e2['emp_id'] ?></td>
-      <td class="px-4 py-3 font-medium"><?= e($e2['name'].' '.$e2['surname']) ?></td>
-      <td class="px-4 py-3"><a href="mailto:<?= e($e2['email']) ?>" class="text-brand hover:underline"><?= e($e2['email']) ?></a></td>
-      <td class="px-4 py-3">
-        <?php if ($e2['phone']): $ph = preg_replace('/[^+0-9]/','',$e2['phone']); ?>
-        <div class="flex items-center gap-1.5">
-          <a href="tel:<?= e($ph) ?>" class="text-brand hover:underline"><?= e($e2['phone']) ?></a>
-          <a href="https://wa.me/<?= ltrim($ph,'+') ?>" target="_blank" title="WhatsApp" class="text-green-600 hover:text-green-700"><svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg></a>
-        </div>
-        <?php endif; ?>
+      <td class="px-3 py-2">
+        <input value="<?= e($e2['name']) ?>" onchange="updateEmp(<?=$e2['emp_id']?>,'name',this.value)" class="w-full px-2 py-1 text-sm font-medium border border-gray-200 rounded-lg focus:border-brand focus:outline-none bg-white cursor-pointer appearance-none" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22><path fill=%22%239ca3af%22 d=%22M3 5l3 3 3-3%22/></svg>');background-repeat:no-repeat;background-position:right 8px center;padding-right:24px"/>
       </td>
-      <td class="px-4 py-3 font-medium"><?= $e2['tariff'] ? money($e2['tariff']).'/h' : '-' ?></td>
+      <td class="px-3 py-2">
+        <input type="email" value="<?= e($e2['email']) ?>" onchange="updateEmp(<?=$e2['emp_id']?>,'email',this.value)" class="w-full px-2 py-1 text-sm border border-transparent rounded-lg hover:border-gray-200 focus:border-brand focus:outline-none bg-transparent text-brand"/>
+      </td>
+      <td class="px-3 py-2">
+        <div class="flex items-center gap-1">
+          <input value="<?= e($e2['phone']) ?>" onchange="updateEmp(<?=$e2['emp_id']?>,'phone',this.value)" class="w-full px-2 py-1 text-sm border border-transparent rounded-lg hover:border-gray-200 focus:border-brand focus:outline-none bg-transparent"/>
+          <?php if ($e2['phone']): $ph = preg_replace('/[^+0-9]/','',$e2['phone']); ?>
+          <a href="https://wa.me/<?= ltrim($ph,'+') ?>" target="_blank" title="WhatsApp" class="text-green-600 hover:text-green-700 flex-shrink-0"><svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg></a>
+          <?php endif; ?>
+        </div>
+      </td>
+      <td class="px-3 py-2">
+        <input type="number" value="<?= $e2['tariff'] ?>" step="0.5" onchange="updateEmp(<?=$e2['emp_id']?>,'tariff',this.value)" class="w-20 px-2 py-1 text-sm font-medium border border-transparent rounded-lg hover:border-gray-200 focus:border-brand focus:outline-none bg-transparent text-right"/> <span class="text-xs text-gray-400">€/h</span>
+      </td>
       <td class="px-4 py-3"><span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700"><?= $e2['done'] ?></span></td>
       <td class="px-4 py-3"><span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700"><?= $e2['pending'] ?></span></td>
       <td class="px-4 py-2">
@@ -166,6 +172,14 @@ include __DIR__ . '/../includes/layout.php';
 $apiKey = API_KEY;
 $script = <<<JS
 function filterRows(q){q=q.toLowerCase();document.querySelectorAll('#tbl tbody tr').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(q)?'':'none'})}
+function updateEmp(id,field,val){
+    fetch('/api/index.php?action=employee/update',{method:'POST',headers:{'Content-Type':'application/json','X-API-Key':'$apiKey'},body:JSON.stringify({emp_id:id,field:field,value:val})})
+    .then(r=>r.json()).then(d=>{
+        if(d.success){
+            const el=event.target;el.style.transition='background 0.3s';el.style.background='#dcfce7';setTimeout(()=>{el.style.background='';},800);
+        }else alert(d.error||'Fehler');
+    });
+}
 function updateEmpStatus(id,val,el){
     fetch('/api/index.php?action=employee/status',{method:'POST',headers:{'Content-Type':'application/json','X-API-Key':'$apiKey'},body:JSON.stringify({emp_id:id,status:parseInt(val)})})
     .then(r=>r.json()).then(d=>{if(d.success){el.className='px-2 py-1 text-xs font-medium border rounded-lg cursor-pointer '+(val==='1'?'bg-green-50 text-green-700 border-green-200':'bg-gray-50 text-gray-500 border-gray-200');el.closest('tr').style.transition='background 0.3s';el.closest('tr').style.background='#dcfce7';setTimeout(()=>{el.closest('tr').style.background='';},800);}else alert(d.error||'Fehler');});

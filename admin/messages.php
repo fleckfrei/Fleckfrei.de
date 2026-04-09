@@ -220,6 +220,7 @@ include __DIR__ . '/../includes/layout.php';
       <!-- Input -->
       <div class="chat-input">
         <form method="POST" class="flex gap-2">
+          <?= csrfField() ?>
           <input type="hidden" name="action" value="send"/>
           <input type="hidden" name="recipient_type" value="<?= e($chatType) ?>"/>
           <input type="hidden" name="recipient_id" value="<?= $chatId ?>"/>
@@ -259,5 +260,21 @@ document.querySelectorAll('.bubble').forEach(b => {
     const del = b.querySelector('form button');
     if (del) { del.style.opacity = '0'; b.addEventListener('mouseenter', () => del.style.opacity = '1'); b.addEventListener('mouseleave', () => del.style.opacity = '0'); }
 });
+
+// Auto-refresh: check for new messages every 3 seconds
+let lastMsgCount = document.querySelectorAll('.bubble').length;
+setInterval(() => {
+    fetch(location.href, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+        .then(r => r.text()).then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const newBubbles = doc.querySelectorAll('.bubble').length;
+            const newUnread = doc.querySelector('.chat-sidebar')?.innerHTML;
+            // Update sidebar (new messages indicator)
+            if (newUnread) document.querySelector('.chat-sidebar').innerHTML = newUnread;
+            // If new messages in current chat, reload
+            if (newBubbles > lastMsgCount) location.reload();
+        }).catch(() => {});
+}, 3000);
 JS;
 include __DIR__ . '/../includes/footer.php'; ?>

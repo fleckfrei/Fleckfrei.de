@@ -26,7 +26,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $tab = $_GET['tab'] ?? 'active';
 $statusFilter = $tab === 'archive' ? 0 : 1;
-$services = all("SELECT s.*, c.name as cname, COUNT(j.j_id) as jobs FROM services s LEFT JOIN customer c ON s.customer_id_fk=c.customer_id LEFT JOIN jobs j ON j.s_id_fk=s.s_id WHERE s.status=? GROUP BY s.s_id ORDER BY s.title", [$statusFilter]);
+$services = all("SELECT s.*,
+    COALESCE(c.name, (SELECT c2.name FROM jobs j2 LEFT JOIN customer c2 ON j2.customer_id_fk=c2.customer_id WHERE j2.s_id_fk=s.s_id AND j2.status=1 AND c2.name IS NOT NULL ORDER BY j2.j_date DESC LIMIT 1)) as cname,
+    COUNT(j.j_id) as jobs
+    FROM services s LEFT JOIN customer c ON s.customer_id_fk=c.customer_id LEFT JOIN jobs j ON j.s_id_fk=s.s_id AND j.status=1 WHERE s.status=? GROUP BY s.s_id ORDER BY s.title", [$statusFilter]);
 $activeCount = val("SELECT COUNT(*) FROM services WHERE status=1");
 $archiveCount = val("SELECT COUNT(*) FROM services WHERE status=0");
 $customers = all("SELECT customer_id, name, customer_type FROM customer WHERE status=1 ORDER BY name");
@@ -66,7 +69,7 @@ include __DIR__ . '/../includes/layout.php';
     <tr class="hover:bg-gray-50">
       <td class="px-4 py-3 text-gray-400"><?= $sv['s_id'] ?></td>
       <td class="px-4 py-3 font-medium"><?= e($sv['title']) ?></td>
-      <td class="px-4 py-3"><?= e($sv['cname']) ?></td>
+      <td class="px-4 py-3"><?= $sv['cname'] ? e($sv['cname']) : '<span class="text-gray-300">—</span>' ?></td>
       <td class="px-4 py-3 text-gray-500 text-xs"><?= e($sv['street'].' '.$sv['number'].', '.$sv['postal_code'].' '.$sv['city']) ?></td>
       <td class="px-4 py-3"><?= money($sv['price']) ?></td>
       <td class="px-4 py-3 font-medium"><?= money($sv['total_price']) ?></td>

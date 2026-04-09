@@ -15,9 +15,9 @@ define('BRAND_DARK', '#235F53');                  // Dunklere Variante
 define('BRAND_LIGHT', '#E8F5F1');                 // Helle Variante
 define('BRAND_RGB', '46,125,107');                // RGB für opacity
 define('LOGO_LETTER', 'F');                       // Buchstabe für Logo-Icon
-define('CONTACT_PHONE', '+4915757010977');         // WhatsApp/Telefon
+define('CONTACT_PHONE', '');                       // WhatsApp/Telefon (removed)
 define('CONTACT_EMAIL', 'info@fleckfrei.de');
-define('CONTACT_WA', '4915757010977');             // Ohne +
+define('CONTACT_WA', '');                          // Ohne + (removed)
 define('CURRENCY', '€');
 define('CURRENCY_POS', 'after');                   // 'before' ($100) oder 'after' (100 €)
 define('MIN_HOURS', 2);                            // Minimum Stunden für Kunden-Abrechnung
@@ -47,6 +47,13 @@ define('N8N_WEBHOOK_BOOKING', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-b
 define('N8N_WEBHOOK_STATUS', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-job-status');
 define('N8N_WEBHOOK_NOTIFY', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-notify');
 define('N8N_WEBHOOK_MESSAGE', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-message');
+
+// ============================================================
+// OSINT API KEYS
+// ============================================================
+define('SHODAN_API_KEY', '***REDACTED***');
+define('VT_API_KEY', '***REDACTED***');
+define('HUNTER_API_KEY', '***REDACTED***');
 
 // ============================================================
 // FEATURES — An/Aus schalten pro Installation
