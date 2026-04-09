@@ -40,6 +40,22 @@ if (empty($_SESSION['uid']) && $apiKey !== API_KEY) {
 }
 
 $body = json_decode(file_get_contents('php://input'), true) ?? [];
+
+// SearXNG Live Search — direct proxy to VPS
+if (!empty($body['searxng_live'])) {
+    $q = trim($body['query'] ?? '');
+    $cats = trim($body['categories'] ?? 'general');
+    if (!$q) { echo json_encode(['success'=>false, 'error'=>'query required']); exit; }
+    $ch = curl_init('http://89.116.22.185:8900/searxng');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>15, CURLOPT_POST=>1,
+        CURLOPT_POSTFIELDS=>json_encode(['query'=>$q, 'categories'=>$cats, 'limit'=>20]),
+        CURLOPT_HTTPHEADER=>['X-API-Key: '.API_KEY, 'Content-Type: application/json']]);
+    $raw = curl_exec($ch); curl_close($ch);
+    $data = $raw ? json_decode($raw, true) : null;
+    echo json_encode(['success'=>!empty($data), 'data'=>$data ?? ['results'=>[]]]);
+    exit;
+}
+
 $email   = trim($body['email'] ?? '');
 $name    = trim($body['name'] ?? '');
 $phone   = trim($body['phone'] ?? '');

@@ -411,7 +411,7 @@ function renderDeepResults(d, container) {
     </div>`;
 
     // === TABS ===
-    const tabs = ['Ergebnis','Funde','Suche','Details'];
+    const tabs = ['Ergebnis','Funde','Suche','SearXNG','Details'];
     html += `<div class="bg-white rounded-xl border mb-3 overflow-hidden">
         <div class="flex border-b" id="dsTabs">
             ${tabs.map((t,i)=>`<button onclick="dsTab(${i})" class="px-4 py-2.5 text-sm font-medium ${i===0?'text-brand border-b-2 border-brand':'text-gray-500 hover:text-gray-700'}" data-tab="${i}">${t}</button>`).join('')}
@@ -632,8 +632,43 @@ function renderDeepResults(d, container) {
     if (d.generated_usernames) html += `<div class="flex flex-wrap gap-1">${d.generated_usernames.usernames.map(u=>`<span class="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">${u}</span>`).join('')}</div>`;
     html += '</div>';
 
-    // --- TAB 3: Details (Verifikation, Netzwerk, Learning) ---
+    // --- TAB 3: SearXNG Live-Suche ---
     html += '<div class="ds-panel hidden" data-panel="3">';
+    // Pre-loaded SearXNG results from Deep Scan
+    if (d.searxng) {
+        const sxLabels = {searx_person:'Person',searx_business:'Firma',searx_reviews:'Bewertungen',searx_email:'Email',searx_phone:'Telefon'};
+        for (const [sxKey, sx] of Object.entries(d.searxng)) {
+            if (!sx.results?.length) continue;
+            html += `<div class="mb-3"><h4 class="text-xs font-semibold text-orange-700 mb-1">${sxLabels[sxKey]||sxKey} (${sx.count} Treffer)</h4><div class="space-y-1.5">`;
+            sx.results.forEach(r => {
+                html += `<div class="p-2 bg-orange-50 rounded hover:bg-orange-100"><a href="${r.url}" target="_blank" class="text-sm font-medium text-brand hover:underline block">${r.title}</a>`;
+                if (r.snippet) html += `<div class="text-xs text-gray-500 mt-0.5">${r.snippet}</div>`;
+                html += `<div class="text-[10px] text-gray-400 truncate">${r.url}</div></div>`;
+            });
+            html += '</div></div>';
+        }
+    }
+    // Live search form
+    html += `<div class="mt-4 pt-4 border-t">
+        <h4 class="text-xs font-semibold text-gray-500 mb-2">Live-Suche (SearXNG)</h4>
+        <div class="flex gap-2 mb-3">
+            <input type="text" id="sxQuery" placeholder="Beliebigen Suchbegriff eingeben..." class="flex-1 px-3 py-2 border rounded-lg text-sm" value="${d._meta?.target||''}"/>
+            <select id="sxCategory" class="px-3 py-2 border rounded-lg text-sm">
+                <option value="general">Allgemein</option>
+                <option value="news">Nachrichten</option>
+                <option value="images">Bilder</option>
+                <option value="social media">Social Media</option>
+                <option value="science">Wissenschaft</option>
+                <option value="files">Dateien</option>
+            </select>
+            <button onclick="searxngLive()" class="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600" id="sxBtn">Suchen</button>
+        </div>
+        <div id="sxResults" class="space-y-2"></div>
+    </div>`;
+    html += '</div>';
+
+    // --- TAB 4: Details (Verifikation, Netzwerk, Learning) ---
+    html += '<div class="ds-panel hidden" data-panel="4">';
     if (vf.modules) {
         html += '<div class="mb-3"><h4 class="text-xs font-semibold text-gray-500 mb-2">Verifikation</h4><div class="space-y-1">';
         for (const [mod, info] of Object.entries(vf.modules)) {
@@ -661,6 +696,34 @@ function dsTab(n) {
         b.classList.toggle('text-gray-500', i!==n);
     });
     document.querySelectorAll('.ds-panel').forEach((p,i) => p.classList.toggle('hidden', i!==n));
+}
+function searxngLive() {
+    var q = document.getElementById('sxQuery').value;
+    var cat = document.getElementById('sxCategory').value;
+    var btn = document.getElementById('sxBtn');
+    var res = document.getElementById('sxResults');
+    if (!q) return;
+    btn.textContent = 'Suche...'; btn.disabled = true;
+    res.innerHTML = '<div class="text-center text-gray-400 py-4"><div class="inline-block w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div></div>';
+    fetch('/api/osint-deep.php', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({searxng_live: true, query: q, categories: cat})
+    }).then(function(r){return r.json()}).then(function(d){
+        btn.textContent = 'Suchen'; btn.disabled = false;
+        if (!d.success || !d.data || !d.data.results) { res.innerHTML = '<div class="text-red-500 text-sm">Fehler: '+(d.error||'Keine Ergebnisse')+'</div>'; return; }
+        var items = d.data.results;
+        if (!items.length) { res.innerHTML = '<div class="text-gray-400 text-sm">Keine Ergebnisse</div>'; return; }
+        res.innerHTML = '<div class="text-xs text-gray-400 mb-2">'+items.length+' Ergebnisse via SearXNG</div>' +
+            items.map(function(r){
+                return '<div class="p-2.5 bg-white border rounded-lg hover:shadow-sm">' +
+                    '<a href="'+r.url+'" target="_blank" class="text-sm font-medium text-brand hover:underline">'+r.title+'</a>' +
+                    (r.snippet ? '<div class="text-xs text-gray-500 mt-0.5">'+r.snippet+'</div>' : '') +
+                    '<div class="text-[10px] text-gray-400 truncate mt-0.5">'+r.url+'</div></div>';
+            }).join('');
+    }).catch(function(e){
+        btn.textContent = 'Suchen'; btn.disabled = false;
+        res.innerHTML = '<div class="text-red-500 text-sm">Netzwerkfehler</div>';
+    });
 }
 function renderDeepCards(data, container) {
     container.innerHTML = '';
