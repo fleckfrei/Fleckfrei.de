@@ -96,16 +96,25 @@ try {
 // ============================================================
 $dbProfile = [];
 if ($name || $email || $phone) {
+    // Build conditions only for provided fields (prevent false matches)
+    $dbWhere = []; $dbParams = [];
+    if ($email) { $dbWhere[] = 'c.email=?'; $dbParams[] = $email; }
+    if ($name) { $dbWhere[] = 'c.name LIKE ?'; $dbParams[] = '%' . $name . '%'; }
+    if ($phone && strlen(preg_replace('/[^0-9]/', '', $phone)) >= 10) {
+        $dbWhere[] = 'c.phone LIKE ?';
+        $dbParams[] = '%' . substr(preg_replace('/[^0-9]/', '', $phone), -10) . '%';
+    }
+    if (empty($dbWhere)) { $dbWhere[] = '1=0'; } // No valid search = no results
     $like = '%' . ($name ?: $email) . '%';
-    $phoneLike = $phone ? '%' . substr(preg_replace('/[^0-9]/', '', $phone), -8) . '%' : '%impossible%';
+    $phoneLike = '%impossible%'; // Not used anymore
     try {
         $customers = all("SELECT c.*, COUNT(j.j_id) as total_jobs,
             SUM(CASE WHEN j.job_status='COMPLETED' THEN 1 ELSE 0 END) as completed_jobs,
             SUM(CASE WHEN j.job_status='CANCELLED' THEN 1 ELSE 0 END) as cancelled_jobs,
             MAX(j.j_date) as last_job_date, MIN(j.j_date) as first_job_date
             FROM customer c LEFT JOIN jobs j ON j.customer_id_fk=c.customer_id AND j.status=1
-            WHERE c.email=? OR c.name LIKE ? OR c.phone LIKE ?
-            GROUP BY c.customer_id LIMIT 5", [$email ?: '', $like, $phoneLike]);
+            WHERE " . implode(' OR ', $dbWhere) . "
+            GROUP BY c.customer_id LIMIT 5", $dbParams);
         if (!empty($customers)) {
             $cid = $customers[0]['customer_id'];
             $services = all("SELECT s_id, title, price, total_price, street, city FROM services WHERE customer_id_fk=? AND status=1", [$cid]);
