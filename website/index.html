@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Fleckfrei — Smart Home Care Berlin | Smart. Sauber. Zuverlaessig.</title>
+  <meta name="description" content="Fleckfrei — Home Care Service in Berlin fuer Wohnungen, Short-Term Rentals und Offices. Online buchen, live verfolgen. Ab 56,58 EUR netto."/>
+  <meta name="keywords" content="Home Care Berlin, Smart Home Management, Buchungsplattformen"/>
+  <meta name="robots" content="index,follow"/>
+  <meta name="author" content="Fleckfrei"/>
+  <meta name="theme-color" content="#2E7D6B"/>
+  <link rel="canonical" href="https://fleckfrei.de/"/>
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Fleckfrei — Smart Home Care Berlin"/>
+  <meta property="og:description" content="Berlins smartester Home Care Service. Online buchen, live verfolgen. Ab 56,58 EUR."/>
+  <meta property="og:url" content="https://fleckfrei.de/"/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:locale" content="de_DE"/>
+  <meta property="og:site_name" content="Fleckfrei"/>
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="Fleckfrei — Smart Home Care Berlin"/>
+  <meta name="twitter:description" content="Smart Home Care ab 56,58 EUR. Online buchen."/>
+  <meta name="twitter:image" content="https://fleckfrei.de/img/hero-bed.png"/>
+  <meta property="og:image:width" content="1200"/>
+  <meta property="og:image:height" content="630"/>
+  <meta property="og:image:type" content="image/png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="Fleckfrei"/>
+  <meta name="format-detection" content="telephone=no"/>
+  <meta name="referrer" content="strict-origin-when-cross-origin"/>
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"LocalBusiness",
+    "name":"Fleckfrei",
+    "description":"Smart Home Care fuer Wohnungen, Short-Term Rentals und Offices in Berlin",
+    "url":"https://fleckfrei.de",
+    "telephone":"",
+    "email":"info@fleckfrei.de",
+    "address":{"@type":"PostalAddress","streetAddress":"Herzbergstr. 100","addressLocality":"Berlin","postalCode":"10317","addressCountry":"DE"},
+    "geo":{"@type":"GeoCoordinates","latitude":"52.5200","longitude":"13.4050"},
+    "priceRange":"$$",
+    "currenciesAccepted":"EUR",
+    "paymentAccepted":"Kreditkarte, SEPA, PayPal",
+    "areaServed":{"@type":"City","name":"Berlin"},
+    "openingHoursSpecification":[
+      {"@type":"OpeningHoursSpecification","dayOfWeek":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],"opens":"06:00","closes":"22:00"},
+      {"@type":"OpeningHoursSpecification","dayOfWeek":"Sunday","opens":"08:00","closes":"19:00"}
+    ],
+    "aggregateRating":{"@type":"AggregateRating","ratingValue":"4.9","reviewCount":"200","bestRating":"5"},
+    "sameAs":["https://wa.me/message/OVHQQCZT7WYAH1"]
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"Service",
+    "serviceType":"Smart Home Care",
+    "provider":{"@type":"LocalBusiness","name":"Fleckfrei"},
+    "areaServed":{"@type":"City","name":"Berlin"},
+    "hasOfferCatalog":{
+      "@type":"OfferCatalog",
+      "name":"Home Care Services",
+      "itemListElement":[
+        {"@type":"Offer","itemOffered":{"@type":"Service","name":"Home Care"},"price":"56.58","priceCurrency":"EUR"},
+        {"@type":"Offer","itemOffered":{"@type":"Service","name":"Short-Term Rental Service"},"price":"56.58","priceCurrency":"EUR"},
+        {"@type":"Offer","itemOffered":{"@type":"Service","name":"Business Service"},"price":"56.58","priceCurrency":"EUR"}
+      ]
+    }
+  }
+  </script>
+
+  <link rel="icon" href="img/logo/favicon.svg"/>
+  <meta property="og:image" content="https://fleckfrei.de/img/hero-bed.png"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet"/>
+  <!-- PayPal SDK — replace CLIENT_ID with your PayPal client ID -->
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+  {"@type":"Question","name":"Wie funktioniert die iCal-Synchronisation?","acceptedAnswer":{"@type":"Answer","text":"Verbinden Sie Ihren Kalender. Neue Buchungen werden automatisch erkannt und ein Service wird eingeplant."}},
+  {"@type":"Question","name":"Kann ich kostenlos stornieren?","acceptedAnswer":{"@type":"Answer","text":"Ja, bis 2 Stunden vor dem Termin kostenfrei."}},
+  {"@type":"Question","name":"Sind die Partner versichert?","acceptedAnswer":{"@type":"Answer","text":"Ja, alle Partner sind voll haftpflichtversichert."}},
+  {"@type":"Question","name":"Welche Zahlungsarten gibt es?","acceptedAnswer":{"@type":"Answer","text":"Kreditkarte, Debitkarte, SEPA-Lastschrift und PayPal."}},
+  {"@type":"Question","name":"Gibt es Langzeitvertraege?","acceptedAnswer":{"@type":"Answer","text":"Nein. Alle Services sind flexibel und jederzeit kuendbar."}}
+  ]}
+  </script>
+  <link rel="stylesheet" href="css/fleckfrei-v2.css"/>
+</head>
+<body>
+
+<!-- PRELOADER -->
+<div class="preloader" id="preloader">
+  <div class="preloader__logo" style="color:#fff;font-size:2rem;font-weight:800">fleckfrei.</div>
+</div>
+
+<!-- NAVBAR -->
+<nav class="nav" id="nav">
+  <div class="nav__inner">
+    <a href="/" class="logo">
+      <img src="img/logo/logo-nav.svg" alt="fleckfrei" class="logo__img" width="160" height="36"/>
+    </a>
+    <div class="nav__menu" id="navMenu">
+      <a href="#leistungen">Leistungen</a>
+      <a href="#vorteile">Vorteile</a>
+      <a href="#preise">Preise</a>
+      <a href="#ablauf">Ablauf</a>
+      <a href="#bewertungen">Bewertungen</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <div class="nav__right">
+      <a href="https://wa.me/message/OVHQQCZT7WYAH1" class="nav__wa" target="_blank" aria-label="WhatsApp">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.138.56 4.143 1.54 5.886L0 24l6.304-1.654A11.955 11.955 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-1.97 0-3.839-.53-5.455-1.45l-.39-.232-3.744.982.999-3.648-.254-.404A9.715 9.715 0 012.25 12 9.75 9.75 0 0112 2.25 9.75 9.75 0 0121.75 12 9.75 9.75 0 0112 21.75z"/></svg>
+      </a>
+      <a href="#buchen" class="btn btn--cta">Jetzt buchen</a>
+      <a href="https://app.fleckfrei.de" class="btn btn--glass" target="_blank" rel="noopener noreferrer">Login</a>
+      <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero__bg"></div>
+  <div class="hero__inner">
+    <div class="hero__content" data-animate="fade-up">
+      <div class="hero__eyebrow">Smart Home Care &mdash; Berlin</div>
+      <h1>Sauberkeit,<br/>die man <em>sieht</em><br/>und <em>spuert</em>.</h1>
+      <p class="hero__lead">Ihre Plattform fuer Wohnungen, Short-Term Rentals und Offices in Berlin. Wir verbinden Sie mit den besten Partnern — transparent, automatisch und digital.</p>
+      <div class="hero__actions">
+        <a href="#buchen" class="btn btn--cta btn--xl">
+          Service buchen
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a href="https://wa.me/message/OVHQQCZT7WYAH1" class="btn btn--wa btn--xl" target="_blank" rel="noopener noreferrer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.138.56 4.143 1.54 5.886L0 24l6.304-1.654A11.955 11.955 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-1.97 0-3.839-.53-5.455-1.45l-.39-.232-3.744.982.999-3.648-.254-.404A9.715 9.715 0 012.25 12 9.75 9.75 0 0112 2.25 9.75 9.75 0 0121.75 12 9.75 9.75 0 0112 21.75z"/></svg>
+          Per WhatsApp anfragen
+        </a>
+      </div>
+    </div>
+    <div class="hero__image" data-animate="fade-up" data-delay="100">
+      <img src="img/hero-bed.png" alt="Fleckfrei - Zuverlaessig vorbereitetes Hotelbett mit gebrandeten Handtuechern" width="600" height="400" loading="eager"/>
+    </div>
+    <div class="hero__metrics" data-animate="fade-up" data-delay="200">
+      <div class="metric">
+        <span class="metric__value" data-count="4.9">0</span>
+        <span class="metric__unit">/5</span>
+        <span class="metric__label">Bewertung</span>
+      </div>
+      <div class="metric__divider"></div>
+      <div class="metric">
+        <span class="metric__value" data-count="200">0</span>
+        <span class="metric__unit">+</span>
+        <span class="metric__label">Zufriedene Kunden</span>
+      </div>
+      <div class="metric__divider"></div>
+      <div class="metric">
+        <span class="metric__value">&lt;2h</span>
+        <span class="metric__label">Reaktionszeit</span>
+      </div>
+      <div class="metric__divider"></div>
+      <div class="metric">
+        <span class="metric__value">24/7</span>
+        <span class="metric__label">Erreichbar</span>
+      </div>
+    </div>
+  </div>
+  <div class="hero__scroll">
+    <span>Mehr entdecken</span>
+    <div class="hero__scroll-line"></div>
+  </div>
+</header>
+
+<!-- PRODUKTE SHOWCASE -->
+<section class="showcase">
+  <div class="showcase__inner">
+    <div class="showcase__item" data-animate="fade-up">
+      <img src="img/produkte.png" alt="Fleckfrei eigene Pflegeprodukte - Fettloeser, Kalkloeser, Glasloeser" width="400" height="300" loading="lazy"/>
+      <span>Eigene Fleckfrei Produkte</span>
+    </div>
+    <div class="showcase__item" data-animate="fade-up" data-delay="100">
+      <img src="img/flasche.png" alt="Fleckfrei Trinkflasche - Sauber gedacht" width="300" height="400" loading="lazy"/>
+      <span>Sauber gedacht</span>
+    </div>
+    <div class="showcase__item" data-animate="fade-up" data-delay="200">
+      <img src="img/arbeit-3.jpg" alt="Fleckfrei Partner bei der Arbeit" width="400" height="300" loading="lazy"/>
+      <span>Unsere Partner</span>
+    </div>
+  </div>
+</section>
+
+
+<!-- LEISTUNGEN -->
+<section class="section" id="leistungen">
+  <div class="section__inner">
+    <div class="section__header" data-animate="fade-up">
+      <span class="label">Unsere Leistungen</span>
+      <h2>Drei Welten.<br/>Ein Standard.</h2>
+      <p class="section__sub">Ob Zuhause, im Office oder zwischen zwei Gaesten — wir liefern Qualitaet, die man sieht.</p>
+    </div>
+
+    <div class="services-grid">
+      <article class="service-card" data-animate="fade-up">
+        <div class="service-card__visual">
+          <div class="service-card__num">01</div>
+          <div class="service-card__icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
+        </div>
+        <h3>Home Care</h3>
+        <div class="service-card__price">
+          <span class="service-card__amount">ab 56,58 EUR</span>
+          <span class="service-card__vat">netto zzgl. 19% MwSt.</span>
+        </div>
+        <p>Regelmaessige Pflege fuer Ihr Zuhause. Vertrauenswuerdige Partner, Live-Updates, Foto-Dokumentation nach jedem Einsatz.</p>
+        <ul>
+          <li>Woechentlich bis monatlich</li>
+          <li>Fester Partner</li>
+          <li>Zufriedenheitsgarantie</li>
+        </ul>
+        <img src="img/kueche.jpg" alt="Fleckfrei Kuechenpflege" class="service-card__img" loading="lazy"/>
+        <a href="#buchen" class="service-card__link">Jetzt buchen <span>&rarr;</span></a>
+      </article>
+
+      <article class="service-card service-card--featured" data-animate="fade-up" data-delay="100">
+        <div class="service-card__badge">Meistgebucht</div>
+        <div class="service-card__visual">
+          <div class="service-card__num">02</div>
+          <div class="service-card__icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+          </div>
+        </div>
+        <h3>Short-Term Rental</h3>
+        <div class="service-card__price">
+          <span class="service-card__amount">ab 56,58 EUR</span>
+          <span class="service-card__vat">netto zzgl. 19% MwSt.</span>
+          <span class="service-card__vat-badge">Staffelpreise ab 3 Wohnungen</span>
+        </div>
+        <p>Vollautomatische Turnover-Service. iCal-Sync mit Buchungsplattformen. Wir kommen, wenn Ihre Gaeste gehen.</p>
+        <ul>
+          <li>Automatische Buchung via Kalender</li>
+          <li>Waesche- und Handtuch-Service</li>
+          <li>Schadens-Dokumentation mit Fotos</li>
+          <li>Produkt-Nachfuellung</li>
+        </ul>
+        <img src="img/hero-bed.png" alt="Short-Term Rental Service" class="service-card__img" loading="lazy"/>
+        <a href="#buchen" class="service-card__link">Jetzt buchen <span>&rarr;</span></a>
+      </article>
+
+      <article class="service-card" data-animate="fade-up" data-delay="200">
+        <div class="service-card__visual">
+          <div class="service-card__num">03</div>
+          <div class="service-card__icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+        </div>
+        <h3>Business &amp; Office</h3>
+        <div class="service-card__price">
+          <span class="service-card__amount">ab 56,58 EUR</span>
+          <span class="service-card__vat">netto zzgl. 19% MwSt.</span>
+          <span class="service-card__vat-badge">Vorsteuerabzug moeglich</span>
+        </div>
+        <p>Flexibler Service fuer Startups und Unternehmen. On-Demand oder regelmaessig. Keine Langzeitvertraege.</p>
+        <ul>
+          <li>Flexible Terminplanung</li>
+          <li>Qualitaetskontrolle via Doku</li>
+          <li>Sofort kuendbar</li>
+          <li><strong>MwSt. voll absetzbar</strong></li>
+        </ul>
+        <img src="img/buero.jpg" alt="Fleckfrei Business Service" class="service-card__img" loading="lazy"/>
+        <a href="#buchen" class="service-card__link">Jetzt buchen <span>&rarr;</span></a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- VORTEILE -->
+<section class="section section--dark" id="vorteile">
+  <div class="section__inner">
+    <div class="section__header" data-animate="fade-up">
+      <span class="label label--light">Warum Fleckfrei</span>
+      <h2>Was uns<br/>anders macht.</h2>
+    </div>
+    <div class="features-grid">
+      <div class="feature" data-animate="fade-up">
+        <div class="feature__icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <h4>2h Reaktionszeit</h4>
+        <p>Anfrage rein, Antwort in unter 2 Stunden. Garantiert.</p>
+      </div>
+      <div class="feature" data-animate="fade-up" data-delay="50">
+        <div class="feature__icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <h4>Live-Tracking</h4>
+        <p>Verfolgen Sie jeden Einsatz in Echtzeit im Kundenportal.</p>
+      </div>
+      <div class="feature" data-animate="fade-up" data-delay="100">
+        <div class="feature__icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <h4>iCal Auto-Sync</h4>
+        <p>Buchungsplattformen — neue Buchung erkannt, Service geplant. Automatisch.</p>
+      </div>
+      <div class="feature" data-animate="fade-up" data-delay="150">
+        <div class="feature__icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <h4>Foto-Dokumentation</h4>
+        <p>Smarte Vorher/Nachher-Fotos nach jedem Einsatz. Fuer Ihre Sicherheit.</p>
+      </div>
+      <div class="feature" data-animate="fade-up" data-delay="200">
+        <div class="feature__icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h4>Voll versichert</h4>
+        <p>Haftpflichtversicherung inklusive. Im Schadensfall sind Sie abgesichert.</p>
+      </div>
+      <div class="feature" data-animate="fade-up" data-delay="250">
+        <div class="feature__icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        </div>
+        <h4>WhatsApp &amp; Telegram</h4>
+        <p>Kommunizieren Sie ueber Ihren Lieblingskanal. Automatische Uebersetzung inklusive.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PREISE -->
+<section class="section" id="preise">
+  <div class="section__inner">
+    <div class="section__header" data-animate="fade-up">
+      <span class="label">Transparente Preise</span>
+      <h2>Faire Preise.<br/>Keine Ueberraschungen.</h2>
+      <p class="section__sub">Alle Preise netto zzgl. 19% MwSt. Keine versteckten Kosten, keine Mindestlaufzeit.</p>
+      <div class="vat-info">
+        <div class="vat-info__item">
+          <strong>Gewerbliche Kunden:</strong> Vorsteuerabzug moeglich — Sie zahlen effektiv nur den Nettopreis
+        </div>
+        <div class="vat-info__item">
+          <strong>Private Kunden:</strong> Haushaltsnahe Dienstleistungen — bis zu 20% steuerlich absetzbar (max. 4.000 EUR/Jahr)
+        </div>
+      </div>
+    </div>
+    <div class="pricing" data-animate="fade-up">
+      <div class="pricing__main">
+        <div class="pricing__highlight">
+          <span class="pricing__badge">Basispreis</span>
+          <div class="pricing__amount">
+            <span class="pricing__currency">EUR</span>
+            <span class="pricing__number">56,58</span>
+            <span class="pricing__period">/ Einsatz netto</span>
+          </div>
+          <p>Gilt fuer alle Service-Typen. Inklusive Anfahrt, Service und Dokumentation.</p>
+          <a href="#buchen" class="btn btn--cta btn--xl" style="margin-top:1.5rem">Jetzt buchen</a>
+        </div>
+      </div>
+      <div class="pricing__extras">
+        <h4>Zusatzleistungen</h4>
+        <div class="pricing__item">
+          <span>Pflegemittel-Flatrate</span>
+          <span class="pricing__item-price">12,99 EUR<small>/Monat</small></span>
+        </div>
+        <div class="pricing__item">
+          <span>Waeschetransport</span>
+          <span class="pricing__item-price">30,00 EUR<small>zzgl. MwSt.</small></span>
+        </div>
+        <div class="pricing__item">
+          <span>Waescheservice</span>
+          <span class="pricing__item-price">13,40 EUR<small>/kg</small></span>
+        </div>
+        <div class="pricing__item">
+          <span>Metall-Schluesselbox</span>
+          <span class="pricing__item-price">23,99 EUR<small>einmalig</small></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ABLAUF -->
+<section class="section section--alt" id="ablauf">
+  <div class="section__inner">
+    <div class="section__header" data-animate="fade-up">
+      <span class="label">In 4 Schritten</span>
+      <h2>So einfach geht's.</h2>
+    </div>
+    <div class="timeline">
+      <div class="timeline__step" data-animate="fade-up">
+        <div class="timeline__marker">1</div>
+        <div class="timeline__content">
+          <h4>Service waehlen</h4>
+          <p>Home Care, Short-Term Rental oder Office — waehlen Sie Ihren Service und gewuenschte Extras.</p>
+        </div>
+      </div>
+      <div class="timeline__step" data-animate="fade-up" data-delay="100">
+        <div class="timeline__marker">2</div>
+        <div class="timeline__content">
+          <h4>Termin buchen</h4>
+          <p>Online-Formular ausfuellen oder per WhatsApp anfragen. Sofortige Bestaetigung.</p>
+        </div>
+      </div>
+      <div class="timeline__step" data-animate="fade-up" data-delay="200">
+        <div class="timeline__marker">3</div>
+        <div class="timeline__content">
+          <h4>Sicher bezahlen</h4>
+          <p>Kreditkarte, SEPA oder PayPal. Automatische Rechnung per E-Mail.</p>
+        </div>
+      </div>
+      <div class="timeline__step" data-animate="fade-up" data-delay="300">
+        <div class="timeline__marker">4</div>
+        <div class="timeline__content">
+          <h4>Live verfolgen</h4>
+          <p>Echtzeit-Updates im Kundenportal. Foto-Dokumentation nach jedem Einsatz.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BOOKING -->
+<section class="section section--booking" id="buchen">
+  <div class="section__inner">
+    <div class="section__header" data-animate="fade-up">
+      <span class="label">Online Buchen</span>
+      <h2>Ihren Service<br/>in 3 Minuten gebucht.</h2>
+    </div>
+    <form class="book" id="bookingForm">
+      <!-- Step 1 -->
+      <div class="book__step active" data-step="1">
+        <div class="book__step-header">
+          <span class="book__step-num">01</span>
+          <h3>Service waehlen</h3>
+        </div>
+        <div class="book__services">
+          <label class="book__option">
+            <input type="radio" name="service" value="privathaushalt" required/>
+            <div class="book__option-card">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              <strong>Home Care</strong>
+              <span class="book__dynamic-price" data-type="private">ab 56,58 EUR</span>
+            </div>
+          </label>
+          <label class="book__option">
+            <input type="radio" name="service" value="ferienwohnung"/>
+            <div class="book__option-card">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
+              <strong>Short-Term Rental</strong>
+              <span class="book__dynamic-price" data-type="str">ab 56,58 EUR</span>
+            </div>
+          </label>
+          <label class="book__option">
+            <input type="radio" name="service" value="buero"/>
+            <div class="book__option-card">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              <strong>Business / Office</strong>
+              <span class="book__dynamic-price" data-type="office">ab 56,58 EUR</span>
+            </div>
+          </label>
+        </div>
+        <div class="book__extras">
+          <h4>Zusatzleistungen</h4>
+          <label class="book__check"><input type="checkbox" name="extras" value="pflegemittel"/><span>Pflegemittel-Flatrate (+12,99 EUR/Monat)</span></label>
+          <label class="book__check"><input type="checkbox" name="extras" value="waesche"/><span>Waescheservice (+13,40 EUR/kg)</span></label>
+          <label class="book__check"><input type="checkbox" name="extras" value="schluesselbox"/><span>Schluesselbox (+23,99 EUR einmalig)</span></label>
+          <label class="book__check"><input type="checkbox" name="extras" value="fotodoku"/><span>Foto-Dokumentation (+8,00 EUR/Einsatz)</span></label>
+          <label class="book__check"><input type="checkbox" name="extras" value="waeschetransport"/><span>Waeschetransport (+30,00 EUR/Einsatz)</span></label>
+          <label class="book__check"><input type="checkbox" name="extras" value="expressSlot"/><span>Express-Zeitfenster (+15,00 EUR)</span></label>
+        </div>
+        <!-- Buchungsplattformen
+        <div class="book__str-fields" id="strFields" style="display:none">
+          <h4>Buchungsplattformen</h4>
+          <div class="field" style="max-width:300px">
+            <label>Anzahl Wohnungen</label>
+            <input type="number" name="numProperties" value="1" min="1" max="50" placeholder="1"/>
+            <small class="book__discount-hint" id="multiPropertyHint"></small>
+          </div>
+        </div>
+        <!-- Live price preview -->
+        <div class="book__price-preview" id="pricePreview" style="display:none">
+          <div class="book__price-tag">
+            <span>Geschaetzter Preis:</span>
+            <strong id="livePrice">--</strong>
+            <small>netto / Einsatz</small>
+          </div>
+        </div>
+        <button type="button" class="btn btn--cta btn--xl book__next" onclick="goStep(2)">Weiter</button>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="book__step" data-step="2">
+        <div class="book__step-header">
+          <span class="book__step-num">02</span>
+          <h3>Ihre Daten</h3>
+        </div>
+        <div class="book__grid">
+          <div class="field"><label>Vor- und Nachname *</label><input type="text" name="name" autocomplete="name" required placeholder="Max Mustermann"/></div>
+          <div class="field"><label>E-Mail *</label><input type="email" name="email" autocomplete="email" required placeholder="max@beispiel.de"/></div>
+          <div class="field"><label>Telefon *</label><input type="tel" name="phone" autocomplete="tel" pattern="^\+?[0-9\s\-()]{7,}$" required placeholder="+49 170 1234567"/></div>
+          <div class="field"><label>Adresse *</label><input type="text" name="address" autocomplete="street-address" required placeholder="Musterstr. 12, 10115 Berlin"/></div>
+          <div class="field"><label>Flaeche (m2) *</label><input type="number" name="sqm" required placeholder="65" min="10" max="500"/></div>
+          <div class="field"><label>Zimmer</label><input type="number" name="rooms" placeholder="3" min="1" max="20"/></div>
+          <div class="field"><label>Wunschtermin *</label><input type="date" name="date" required/></div>
+          <div class="field"><label>Uhrzeit *</label>
+            <select name="time" required>
+              <option value="">Bitte waehlen</option>
+              <option>06:00</option><option>07:00</option><option>08:00</option><option>09:00</option><option>10:00</option><option>11:00</option><option>12:00</option><option>13:00</option><option>14:00</option><option>15:00</option><option>16:00</option><option>17:00</option><option>18:00</option><option>19:00</option><option>20:00</option>
+            </select>
+          </div>
+          <div class="field"><label>Klingelname *</label><input type="text" name="doorbell" required placeholder="Name am Klingelschild"/></div>
+          <div class="field"><label>Etage</label>
+            <select name="floor">
+              <option value="eg">EG</option>
+              <option value="1">1. OG</option><option value="2">2. OG</option><option value="3">3. OG</option>
+              <option value="4">4. OG</option><option value="5">5. OG</option><option value="6+">6+ OG</option>
+              <option value="dg">DG</option>
+            </select>
+          </div>
+          <div class="field"><label>Aufzug</label>
+            <select name="elevator">
+              <option value="ja">Ja, Aufzug vorhanden</option>
+              <option value="nein">Nein, kein Aufzug</option>
+            </select>
+          </div>
+          <div class="field"><label>Zugang</label>
+            <select name="access">
+              <option value="klingeln">Klingeln</option>
+              <option value="schluessel">Schluessel hinterlegt</option>
+              <option value="code">Tuercode</option>
+              <option value="smartlock">Smartlock</option>
+            </select>
+          </div>
+          <div class="field field--full"><label>Haeufigkeit</label>
+            <select name="frequency">
+              <option value="einmalig">Einmalig</option>
+              <option value="woechentlich">Woechentlich</option>
+              <option value="2-woechentlich">Alle 2 Wochen</option>
+              <option value="monatlich">Monatlich</option>
+            </select>
+          </div>
+          <div class="field field--full"><label>Anmerkungen</label><textarea name="notes" rows="3" placeholder="Zugang, Schluessel, besondere Wuensche..."></textarea></div>
+        </div>
+        <div class="book__nav">
+          <button type="button" class="btn btn--ghost" onclick="goStep(1)">Zurueck</button>
+          <button type="button" class="btn btn--cta btn--xl" onclick="goStep(3)">Zur Zusammenfassung</button>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="book__step" data-step="3">
+        <div class="book__step-header">
+          <span class="book__step-num">03</span>
+          <h3>Zusammenfassung &amp; Zahlung</h3>
+        </div>
+        <div class="book__summary" id="bookingSummary"></div>
+        <div class="book__payment">
+          <h4>Zahlungsmethode</h4>
+          <div class="book__pay-options">
+            <label class="book__pay-opt"><input type="radio" name="payment" value="card" checked/><span>Kreditkarte / Debitkarte</span></label>
+            <label class="book__pay-opt"><input type="radio" name="payment" value="sepa"/><span>SEPA-Lastschrift</span></label>
+            <label class="book__pay-opt"><input type="radio" name="payment" value="paypal"/><span>PayPal</span></label>
+            <label class="book__pay-opt"><input type="radio" name="payment" value="rechnung"/><span>Auf Rechnung</span></label>
+          </div>
+          <div id="cardElement" class="book__card-el"></div>
+          <div id="paypalElement" class="book__paypal-el" style="display:none"></div>
+          <div id="cardErrors" class="book__card-err"></div>
+        </div>
+        <div class="book__nav">
+          <button type="button" class="btn btn--ghost" onclick="goStep(2)">Zurueck</button>
+          <button type="submit" class="btn btn--cta btn--xl" id="submitBtn">
+            <span id="btnText">Jetzt verbindlich buchen</span>
+            <span id="btnSpinner" class="spinner" style="display:none"></span>
+          </button>
+        </div>
+        <p class="book__legal">Mit der Buchung akzeptieren Sie unsere <a href="/agb">AGB</a> und <a href="/datenschutz">Datenschutzerklaerung</a>. Kostenlose Stornierung bis 2h vor dem Termin.</p>
+      </div>
+
+      <!-- Step 4: Confirmation -->
+      <div class="book__step" data-step="4">
+        <div class="book__confirm">
+          <div class="book__confirm-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <h3>Buchung bestaetigt!</h3>
+          <p>Vielen Dank. Sie erhalten in Kuerze eine Bestaetigung per E-Mail und WhatsApp.</p>
+          <div id="confirmationDetails"></div>
+          <p>Verfolgen Sie Ihre Buchung im <a href="https://app.fleckfrei.de" target="_blank" rel="noopener noreferrer">Kundenportal</a>.</p>
+          <a href="/" class="btn btn--cta">Zur Startseite</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- BEWERTUNGEN -->
+<section class="section" id="bewertungen">
+  <div class="section__inner">
+    <div class="section__header" data-animate="fade-up">
+      <span class="label">Kundenstimmen</span>
+      <h2>Das sagen<br/>unsere Kunden.</h2>
+    </div>
+    <div class="reviews-grid">
+      <blockquote class="review" data-animate="fade-up">
+        <div class="review__stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <p>&bdquo;Das Kundenportal ist genial — ich sehe in Echtzeit, wann der Service stattfindet und bekomme Fotos danach. Absolut transparent!&ldquo;</p>
+        <footer>
+          <strong>Maria K.</strong>
+          <span>Privatkundin, Charlottenburg</span>
+        </footer>
+      </blockquote>
+      <blockquote class="review" data-animate="fade-up" data-delay="100">
+        <div class="review__stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <p>&bdquo;Seit wir Fleckfrei nutzen, sind unsere Mieteinnahmen um 30% gestiegen. Die automatische Buchung ueber Buchungsplattformen</p>
+        <footer>
+          <strong>Thomas R.</strong>
+          <span>Buchungsplattformen</span>
+        </footer>
+      </blockquote>
+      <blockquote class="review" data-animate="fade-up" data-delay="200">
+        <div class="review__stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <p>&bdquo;Zuverlaessig, puenktlich und zuverlaessig. Die Foto-Dokumentation gibt uns volle Sicherheit bei der Uebergabe.&ldquo;</p>
+        <footer>
+          <strong>Sandra L.</strong>
+          <span>Office-Managerin, Kreuzberg</span>
+        </footer>
+      </blockquote>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section section--alt" id="faq">
+  <div class="section__inner">
+    <div class="section__header" data-animate="fade-up">
+      <span class="label">FAQ</span>
+      <h2>Haeufig gestellte Fragen.</h2>
+    </div>
+    <div class="faq-list">
+      <details class="faq" data-animate="fade-up"><summary>Wie funktioniert die iCal-Synchronisation?</summary><p>Verbinden Sie Ihren Buchungsplattformen</p></details>
+      <details class="faq" data-animate="fade-up"><summary>Kann ich kostenlos stornieren?</summary><p>Ja, bis 2 Stunden vor dem Termin kostenfrei. Danach faellt eine kleine Aufwandspauschale an.</p></details>
+      <details class="faq" data-animate="fade-up"><summary>Sind die Partner versichert?</summary><p>Ja, alle Partner sind voll haftpflichtversichert. Im Schadensfall sind Sie komplett abgesichert.</p></details>
+      <details class="faq" data-animate="fade-up"><summary>Welche Zahlungsarten gibt es?</summary><p>Kreditkarte, Debitkarte und SEPA-Lastschrift. Die Zahlung erfolgt sicher ueber Stripe.</p></details>
+      <details class="faq" data-animate="fade-up"><summary>Wie erreiche ich den Kundenservice?</summary><p>Per WhatsApp, Telegram oder E-Mail — 24/7. Reaktionszeit unter 2 Stunden.</p></details>
+      <details class="faq" data-animate="fade-up"><summary>Gibt es Langzeitvertraege?</summary><p>Nein. Alle Services sind flexibel und jederzeit kuendbar. Keine Mindestlaufzeit.</p></details>
+      <details class="faq" data-animate="fade-up"><summary>Kann ich meinen Partner waehlen?</summary><p>Nach dem ersten Einsatz wird Ihnen ein fester Partner zugewiesen. Bei Wunsch koennen Sie diesen wechseln.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="section section--cta">
+  <div class="section__inner">
+    <div class="cta-block" data-animate="fade-up">
+      <h2>Bereit fuer<br/>makellose Sauberkeit?</h2>
+      <p>Buchen Sie jetzt oder kontaktieren Sie uns per WhatsApp.</p>
+      <div class="cta-block__actions">
+        <a href="#buchen" class="btn btn--white btn--xl">Online buchen</a>
+        <a href="https://wa.me/message/OVHQQCZT7WYAH1" class="btn btn--wa-outline btn--xl" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PARTNER / JOBS -->
+<section class="section section--partner" id="partner">
+  <div class="section__inner">
+    <div class="partner-grid">
+      <div class="partner-content" data-animate="fade-up">
+        <span class="label">Werde Teil von Fleckfrei</span>
+        <h2>Partner werden.</h2>
+        <p>Wir sind immer auf der Suche nach zuverlaessigen Partnern, die unser Netzwerk verstaerken. Ob Mini-Job, Teilzeit oder als selbstaendiger Partner — wir bieten flexible Moeglichkeiten.</p>
+        <div class="partner-cards">
+          <div class="partner-card">
+            <h4>Mini-Job</h4>
+            <p>Bis 556 EUR/Monat steuerfrei. Ideal als Nebenverdienst. Flexible Zeiten.</p>
+          </div>
+          <div class="partner-card">
+            <h4>Partner</h4>
+            <p>Selbstaendig mit eigenen Kunden. Wir vermitteln, Sie liefern. Faire Konditionen.</p>
+          </div>
+          <div class="partner-card">
+            <h4>Festanstellung</h4>
+            <p>Fester Vertrag, feste Kunden, faires Gehalt. Wir kuemmern uns um den Rest.</p>
+          </div>
+        </div>
+        <div class="partner-cta">
+          <a href="https://wa.me/message/OVHQQCZT7WYAH1?text=Hallo%2C%20ich%20interessiere%20mich%20als%20Partner" class="btn btn--cta btn--xl" target="_blank" rel="noopener noreferrer">Per WhatsApp bewerben</a>
+          <a href="mailto:info@fleckfrei.de?subject=Partner-Bewerbung" class="btn btn--ghost btn--xl">Per E-Mail bewerben</a>
+        </div>
+      </div>
+      <div class="partner-image" data-animate="fade-up" data-delay="100">
+        <img src="img/arbeit-2.jpg" alt="Fleckfrei Team bei der Arbeit" loading="lazy"/>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="footer__inner">
+    <div class="footer__brand">
+      <a href="/" class="logo">
+        <img src="img/logo/logo-footer.svg" alt="fleckfrei" class="logo__img" width="160" height="36"/>
+      </a>
+      <p>Smart Home Management Platform.<br/>Smarte Pflege fuer Berlin.</p>
+      <p class="footer__hours">Mo-Sa 06:00-22:00 | So 08:00-19:00</p>
+    </div>
+    <div class="footer__col">
+      <h5>Services</h5>
+      <a href="#leistungen">Home Care</a>
+      <a href="#leistungen">Short-Term Rental</a>
+      <a href="#leistungen">Business &amp; Office</a>
+      <a href="#preise">Preise</a>
+    </div>
+    <div class="footer__col">
+      <h5>Rechtliches</h5>
+      <a href="/impressum">Impressum</a>
+      <a href="/agb">AGB</a>
+      <a href="/datenschutz">Datenschutz</a>
+      <a href="/widerruf">Widerruf</a>
+    </div>
+    <div class="footer__col">
+      <h5>Kontakt</h5>
+      <a href="mailto:info@fleckfrei.de">info@fleckfrei.de</a>
+      <a href="https://wa.me/message/OVHQQCZT7WYAH1" target="_blank" rel="noopener noreferrer">WhatsApp Chat</a>
+      <a href="https://wa.me/message/OVHQQCZT7WYAH1" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+      <a href="https://app.fleckfrei.de" target="_blank" rel="noopener noreferrer">Kundenportal</a>
+    </div>
+  </div>
+  <div class="footer__bottom">
+    <p>Fleckfrei.de — Herzbergstr. 100, 10317 Berlin | USt-IdNr. DE301503988</p>
+    <p>&copy; 2026 Fleckfrei. Alle Rechte vorbehalten.</p>
+  </div>
+</footer>
+
+<!-- WhatsApp Float -->
+<a href="https://wa.me/message/OVHQQCZT7WYAH1" class="wa-float" target="_blank" aria-label="WhatsApp Chat">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.138.56 4.143 1.54 5.886L0 24l6.304-1.654A11.955 11.955 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-1.97 0-3.839-.53-5.455-1.45l-.39-.232-3.744.982.999-3.648-.254-.404A9.715 9.715 0 012.25 12 9.75 9.75 0 0112 2.25 9.75 9.75 0 0121.75 12 9.75 9.75 0 0112 21.75z"/></svg>
+</a>
+
+<!-- COOKIE BANNER (GDPR/DSGVO) -->
+<div class="cookie-banner" id="cookieBanner" role="dialog" aria-label="Cookie-Einstellungen" aria-modal="false">
+  <div class="cookie-banner__inner">
+    <div class="cookie-banner__text">
+      <h4>Cookie-Einstellungen</h4>
+      <p>Wir verwenden Cookies, um Ihnen die bestmoegliche Erfahrung zu bieten. Notwendige Cookies sind fuer die Funktion der Website erforderlich. Analyse-Cookies helfen uns, unsere Website zu verbessern. <a href="/datenschutz">Mehr erfahren</a></p>
+    </div>
+    <div class="cookie-banner__actions">
+      <button class="btn btn--cta" onclick="acceptCookies('all')" aria-label="Alle Cookies akzeptieren">Alle akzeptieren</button>
+      <button class="btn btn--ghost" onclick="acceptCookies('essential')" aria-label="Nur notwendige Cookies">Nur notwendige</button>
+      <button class="btn btn--ghost" onclick="openCookieSettings()" aria-label="Cookie-Einstellungen oeffnen">Einstellungen</button>
+    </div>
+  </div>
+  <div class="cookie-settings" id="cookieSettings" style="display:none">
+    <label class="cookie-toggle">
+      <input type="checkbox" checked disabled/> <strong>Notwendig</strong> — Fuer die Grundfunktionen der Website (immer aktiv)
+    </label>
+    <label class="cookie-toggle">
+      <input type="checkbox" id="cookieAnalytics"/> <strong>Analyse</strong> — Hilft uns zu verstehen, wie Besucher unsere Website nutzen
+    </label>
+    <label class="cookie-toggle">
+      <input type="checkbox" id="cookieMarketing"/> <strong>Marketing</strong> — Wird verwendet, um relevante Anzeigen zu schalten
+    </label>
+    <button class="btn btn--cta" onclick="saveCookieSettings()" style="margin-top:1rem">Einstellungen speichern</button>
+  </div>
+</div>
+
+<!-- ACCESSIBILITY WIDGET -->
+<button class="a11y-toggle" id="a11yToggle" aria-label="Barrierefreiheit-Einstellungen oeffnen" title="Barrierefreiheit">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a2 2 0 110 4 2 2 0 010-4zm8 7h-5V7.5a.5.5 0 00-.5-.5h-5a.5.5 0 00-.5.5V9H4a1 1 0 100 2h4v3l-2.5 5.5a1 1 0 101.82.82L9.5 15h5l2.18 5.32a1 1 0 101.82-.82L16 14v-3h4a1 1 0 100-2z"/></svg>
+</button>
+<div class="a11y-panel" id="a11yPanel" role="dialog" aria-label="Barrierefreiheit">
+  <h4>Barrierefreiheit</h4>
+  <button class="a11y-btn" onclick="a11yAction('fontSize','increase')">A+ Schrift vergroessern</button>
+  <button class="a11y-btn" onclick="a11yAction('fontSize','decrease')">A- Schrift verkleinern</button>
+  <button class="a11y-btn" onclick="a11yAction('fontSize','reset')">Schrift zuruecksetzen</button>
+  <button class="a11y-btn" onclick="a11yAction('contrast','toggle')">Hoher Kontrast</button>
+  <button class="a11y-btn" onclick="a11yAction('links','toggle')">Links hervorheben</button>
+  <button class="a11y-btn" onclick="a11yAction('readable','toggle')">Lesbare Schrift</button>
+  <button class="a11y-btn" onclick="a11yAction('animations','toggle')">Animationen aus</button>
+  <button class="a11y-btn" onclick="a11yAction('reset','all')">Alles zuruecksetzen</button>
+  <button class="a11y-close" onclick="document.getElementById('a11yPanel').classList.remove('open')" aria-label="Schliessen">Schliessen</button>
+</div>
+
+<!-- SKIP LINK (Accessibility) -->
+<a href="#leistungen" class="skip-link" tabindex="0">Zum Inhalt springen</a>
+
+<script src="js/pricing-engine.js"></script>
+<script src="js/fleckfrei.js"></script>
+<script src="js/gdpr.js"></script>
+</body>
+</html>

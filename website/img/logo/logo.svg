@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 44">
+  <!-- Mark: rounded square with home + sparkle icon -->
+  <rect x="0" y="2" width="40" height="40" rx="11" fill="#2E7D6B"/>
+  <!-- Home shape -->
+  <path d="M20 12l11 8v14a2 2 0 01-2 2H11a2 2 0 01-2-2V20l11-8z" fill="#fff" opacity=".92"/>
+  <!-- Door -->
+  <rect x="17" y="25" width="6" height="9" rx="1.2" fill="#2E7D6B"/>
+  <!-- Sparkles -->
+  <circle cx="9" cy="8" r="1.4" fill="#fff" opacity=".55"/>
+  <circle cx="6" cy="13" r=".8" fill="#fff" opacity=".35"/>
+  <circle cx="34" cy="6" r="1" fill="#fff" opacity=".4"/>
+  <!-- Wordmark: paths instead of text for cross-browser consistency -->
+  <!-- f -->
+  <path d="M52 14h3.5c2.8 0 4.2 1.2 4.2 3.2h-3c0-.7-.5-1-1.4-1H54v2.3h4.5v2.3H54V31h-3V14h1z" fill="#1a1a2e"/>
+  <!-- l -->
+  <rect x="62" y="14" width="3" height="17" rx=".5" fill="#1a1a2e"/>
+  <!-- e -->
+  <path d="M68 24.5c0-3.5 2.2-6 5.5-6s5.2 2.3 5.2 5.7v1H71c.3 1.7 1.4 2.5 3 2.5 1.2 0 2-.4 2.6-1.2l2 1.5c-1 1.5-2.7 2.3-4.8 2.3-3.5 0-5.8-2.3-5.8-5.8zm3-1.2h5c-.3-1.5-1.2-2.4-2.5-2.4s-2.2.9-2.5 2.4z" fill="#1a1a2e"/>
+  <!-- c -->
+  <path d="M81 24.5c0-3.5 2.2-5.8 5.5-5.8 1.8 0 3.2.7 4 2l-2 1.7c-.6-.8-1.3-1.2-2.2-1.2-1.6 0-2.6 1.3-2.6 3.3s1 3.3 2.6 3.3c.9 0 1.6-.4 2.2-1.2l2 1.7c-.8 1.3-2.2 2-4 2-3.3 0-5.5-2.3-5.5-5.8z" fill="#1a1a2e"/>
+  <!-- k -->
+  <path d="M92 14h3v10.5l4-5.5h3.5l-4.2 5.5L103 31h-3.6l-4.4-6.2V31h-3V14z" fill="#1a1a2e"/>
+  <!-- f -->
+  <path d="M105 14h3.5c2.8 0 4.2 1.2 4.2 3.2h-3c0-.7-.5-1-1.4-1H107v2.3h4.5v2.3H107V31h-3V14h1z" fill="#1a1a2e"/>
+  <!-- r -->
+  <path d="M114 19h3v2c.7-1.4 1.8-2.2 3.3-2.2v3.2c-2 0-3.3.8-3.3 2.8V31h-3V19z" fill="#1a1a2e"/>
+  <!-- e -->
+  <path d="M122 24.5c0-3.5 2.2-6 5.5-6s5.2 2.3 5.2 5.7v1h-7.7c.3 1.7 1.4 2.5 3 2.5 1.2 0 2-.4 2.6-1.2l2 1.5c-1 1.5-2.7 2.3-4.8 2.3-3.5 0-5.8-2.3-5.8-5.8zm3-1.2h5c-.3-1.5-1.2-2.4-2.5-2.4s-2.2.9-2.5 2.4z" fill="#1a1a2e"/>
+  <!-- i -->
+  <circle cx="136" cy="15.5" r="1.8" fill="#1a1a2e"/>
+  <rect x="134.5" y="19" width="3" height="12" rx=".5" fill="#1a1a2e"/>
+  <!-- Dot -->
+  <circle cx="143" cy="29.5" r="2.2" fill="#2E7D6B"/>
+</svg>
