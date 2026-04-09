@@ -290,17 +290,14 @@ function socialLinks($name, $email='', $phone='') {
   </form>
 </div>
 
-<!-- Deep Scan Button + Results -->
-<div class="mb-4">
-  <button onclick="startDeepScan()" id="deepScanBtn" class="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-700 text-white font-bold rounded-xl hover:opacity-90 flex items-center justify-center gap-2 <?= $scan ? '' : 'opacity-50' ?>">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-    Deep Scan — KI-Korrelation + Dark Web + Handelsregister + Telegram
-  </button>
-  <div id="deepScanProgress" class="hidden mt-2 p-3 bg-purple-50 rounded-lg text-sm text-purple-800">
-    <div class="flex items-center gap-2"><div class="animate-spin w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full"></div><span id="deepScanStatus">Scan läuft... 20+ Datenquellen werden abgefragt</span></div>
-  </div>
-  <div id="deepScanResults" class="hidden mt-3"></div>
+<!-- Deep Scan — auto-triggers after Quick Scan -->
+<div id="deepScanProgress" class="hidden mb-4 p-4 bg-white rounded-xl border">
+  <div class="flex items-center gap-3"><div class="animate-spin w-5 h-5 border-2 border-brand border-t-transparent rounded-full"></div><span class="text-sm font-medium text-gray-700" id="deepScanStatus">Deep Scan läuft... 20+ Quellen</span></div>
 </div>
+<div id="deepScanResults" class="hidden mb-4"></div>
+<?php if ($scan): ?>
+<script>document.addEventListener('DOMContentLoaded', () => setTimeout(startDeepScan, 300));</script>
+<?php endif; ?>
 
 <script>
 async function startDeepScan() {
@@ -342,132 +339,104 @@ async function startDeepScan() {
 
 function renderDeepResults(d, container) {
     let html = '';
+    const dos = d.dossier || {};
+    const vf = dos.verification || {};
+    const rc = {LOW:'green',MEDIUM:'yellow',HIGH:'red'}[dos.risk_level] || 'gray';
 
-    // Dossier + Verification
-    if (d.dossier) {
-        const dos = d.dossier;
-        const vf = dos.verification || {};
-        const riskColors = {LOW:'green',MEDIUM:'yellow',HIGH:'red'};
-        const rc = riskColors[dos.risk_level] || 'gray';
-        html += `<div class="bg-white rounded-xl border mb-3 overflow-hidden">
-            <div class="bg-gradient-to-r from-gray-800 to-gray-900 text-white p-4">
-                <div class="flex items-center justify-between">
-                    <h3 class="font-bold text-lg">Intelligence Dossier</h3>
-                    <div class="flex gap-3">
-                        <span class="px-3 py-1 rounded-full text-sm font-bold bg-${rc}-500/20 text-${rc}-300">Risiko: ${dos.risk_level}</span>
-                        ${vf.overall_confidence !== undefined ? `<span class="px-3 py-1 rounded-full text-sm font-bold bg-blue-500/20 text-blue-300">Verifikation: ${vf.overall_confidence}% (${vf.verified_count}/${vf.total_count} Module)</span>` : ''}
-                    </div>
-                </div>
-                <div class="text-gray-400 text-xs mt-1">${dos.data_sources?.length || 0} Datenquellen · ${d._meta?.scan_time_seconds || '?'}s · ${d._meta?.modules_run || '?'} Module</div>
-            </div>
-            <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><h4 class="font-semibold text-sm text-gray-600 mb-2">Erkenntnisse</h4>
-                    <ul class="text-sm space-y-1">${(dos.findings||[]).map(f=>'<li class="flex gap-1"><span class="text-green-500">&#10003;</span>'+f+'</li>').join('')}</ul></div>
-                <div><h4 class="font-semibold text-sm text-gray-600 mb-2">Risikofaktoren</h4>
-                    <ul class="text-sm space-y-1">${(dos.risk_factors||[]).map(f=>'<li class="flex gap-1"><span class="text-red-500">&#9888;</span>'+f+'</li>').join('')}</ul>
-                    ${vf.advice?.length ? '<div class="mt-3 text-xs text-gray-400"><b>Tipp:</b> '+vf.advice.join(' · ')+'</div>' : ''}</div>
-            </div>
-        </div>`;
+    // === TOP BAR: Risiko + Verifikation + Scan-Info ===
+    html += `<div class="bg-white rounded-xl border mb-3 p-4">
+        <div class="flex items-center gap-3 flex-wrap">
+            <span class="px-3 py-1.5 rounded-lg text-sm font-bold bg-${rc}-100 text-${rc}-800">Risiko: ${dos.risk_level||'?'}</span>
+            ${vf.overall_confidence !== undefined ? `<span class="px-3 py-1.5 rounded-lg text-sm font-bold bg-blue-100 text-blue-800">${vf.overall_confidence}% verifiziert</span>` : ''}
+            <span class="text-xs text-gray-400 ml-auto">${d._meta?.scan_time_seconds||'?'}s · ${d._meta?.modules_run||'?'} Module · ${dos.data_sources?.length||0} Quellen</span>
+        </div>
+    </div>`;
+
+    // === TABS ===
+    const tabs = ['Ergebnis','Funde','Suche','Details'];
+    html += `<div class="bg-white rounded-xl border mb-3 overflow-hidden">
+        <div class="flex border-b" id="dsTabs">
+            ${tabs.map((t,i)=>`<button onclick="dsTab(${i})" class="px-4 py-2.5 text-sm font-medium ${i===0?'text-brand border-b-2 border-brand':'text-gray-500 hover:text-gray-700'}" data-tab="${i}">${t}</button>`).join('')}
+        </div>
+        <div class="p-4">`;
+
+    // --- TAB 0: Ergebnis (Dossier summary) ---
+    html += '<div class="ds-panel" data-panel="0">';
+    if (dos.findings?.length || dos.risk_factors?.length) {
+        html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+        html += `<div><h4 class="font-semibold text-sm text-gray-600 mb-2">Erkenntnisse (${dos.findings?.length||0})</h4><ul class="text-sm space-y-1">${(dos.findings||[]).map(f=>`<li class="flex gap-1"><span class="text-green-500 shrink-0">&#10003;</span><span>${f}</span></li>`).join('')}</ul></div>`;
+        html += `<div><h4 class="font-semibold text-sm text-gray-600 mb-2">Risiken (${dos.risk_factors?.length||0})</h4><ul class="text-sm space-y-1">${(dos.risk_factors||[]).map(f=>`<li class="flex gap-1"><span class="text-red-500 shrink-0">&#9888;</span><span>${f}</span></li>`).join('')}</ul></div>`;
+        html += '</div>';
     }
-
-    // Correlation
-    if (d.correlation) {
-        const cor = d.correlation;
-        const confColors = {LOW:'gray',MEDIUM:'yellow',HIGH:'green'};
-        const cc = confColors[cor.confidence] || 'gray';
-        html += `<div class="bg-white rounded-xl border mb-3 p-4">
-            <h3 class="font-bold text-sm mb-2 flex items-center gap-2">Korrelations-Engine <span class="px-2 py-0.5 rounded text-xs bg-${cc}-100 text-${cc}-800">${cor.confidence} (Score: ${cor.score})</span> <span class="text-gray-400 text-xs">${cor.total_identifiers} Identifier</span></h3>
-            ${cor.connections?.length ? '<div class="space-y-1 mb-3">'+cor.connections.map(c=>`<div class="text-sm px-2 py-1 rounded ${c.type.includes('warning')||c.type.includes('exposure')?'bg-red-50 text-red-700':'bg-blue-50 text-blue-700'}">${c.detail}</div>`).join('')+'</div>' : ''}
-            ${cor.identity_graph?.length ? '<div class="text-xs text-gray-500"><b>Identity Graph:</b> '+cor.identity_graph.map(ig=>`<a href="${ig.url}" target="_blank" class="text-brand hover:underline">${ig.platform}:${ig.username}</a>`).join(' · ')+'</div>' : ''}
-        </div>`;
+    // Identity Graph (compact)
+    if (d.correlation?.identity_graph?.length) {
+        html += `<div class="mt-3 pt-3 border-t"><h4 class="font-semibold text-xs text-gray-500 mb-1">Verifizierte Accounts</h4><div class="flex flex-wrap gap-1">${d.correlation.identity_graph.map(ig=>`<a href="${ig.url}" target="_blank" class="px-2 py-0.5 bg-brand/10 text-brand rounded text-xs hover:underline">${ig.platform}</a>`).join('')}</div></div>`;
     }
+    html += '</div>';
 
-    // Deep Intel
-    if (d.deep_intel) {
-        const di = d.deep_intel;
-        html += '<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-3">Deep Intelligence</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
-        if (di.gravatar?.found) html += `<div class="p-3 bg-purple-50 rounded-lg"><b class="text-xs text-purple-700">Gravatar</b><div class="flex items-center gap-2 mt-1"><img src="${di.gravatar.avatar}" class="w-10 h-10 rounded-full"><div><div class="text-sm font-medium">${di.gravatar.display_name||'?'}</div><div class="text-xs text-gray-500">${di.gravatar.about||''} ${di.gravatar.location||''}</div></div></div>${di.gravatar.accounts?.length?'<div class="text-xs mt-1 text-gray-500">Accounts: '+di.gravatar.accounts.map(a=>`<a href="${a.url}" target="_blank" class="text-brand">${a.shortname}</a>`).join(', ')+'</div>':''}</div>`;
-        if (di.keybase?.found) html += `<div class="p-3 bg-green-50 rounded-lg"><b class="text-xs text-green-700">Keybase</b><div class="text-sm mt-1">${di.keybase.full_name||di.keybase.username} ${di.keybase.has_pgp?'<span class="text-xs bg-green-200 px-1 rounded">PGP</span>':''}</div><div class="text-xs text-gray-500">${di.keybase.bio||''}</div>${di.keybase.verified_proofs?.length?'<div class="text-xs mt-1">Proofs: '+di.keybase.verified_proofs.map(p=>`<a href="${p.url}" target="_blank" class="text-brand">${p.service}</a>`).join(', ')+'</div>':''}</div>`;
-        if (di.telegram_profiles?.length) html += `<div class="p-3 bg-blue-50 rounded-lg"><b class="text-xs text-blue-700">Telegram</b>${di.telegram_profiles.map(t=>`<div class="text-sm mt-1"><a href="${t.url}" target="_blank" class="text-brand">@${t.username}</a> ${t.display_name||''}</div>`).join('')}</div>`;
-        if (di.impressum_mentions) html += `<div class="p-3 bg-amber-50 rounded-lg"><b class="text-xs text-amber-700">Impressum (${di.impressum_mentions.count})</b>${di.impressum_mentions.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-brand hover:underline">${r.title}</a></div>`).join('')}</div>`;
-        if (di.paste_leaks) html += `<div class="p-3 bg-red-50 rounded-lg"><b class="text-xs text-red-700">Paste-Leaks (${di.paste_leaks.count})</b>${di.paste_leaks.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-red-600 hover:underline">${r.title}</a></div>`).join('')}</div>`;
-        if (di.insolvency) html += `<div class="p-3 bg-red-50 rounded-lg border border-red-200"><b class="text-xs text-red-700">INSOLVENZ (${di.insolvency.count})</b>${di.insolvency.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-red-600">${r.title}</a><div class="text-gray-500">${r.snippet?.substring(0,100)||''}</div></div>`).join('')}</div>`;
-        if (di.leaked_docs) html += `<div class="p-3 bg-orange-50 rounded-lg"><b class="text-xs text-orange-700">Dokument-Leaks (${di.leaked_docs.count})</b>${di.leaked_docs.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-brand">${r.title}</a></div>`).join('')}</div>`;
-        if (di.forum_mentions) html += `<div class="p-3 bg-gray-50 rounded-lg"><b class="text-xs text-gray-700">Forum-Erwähnungen (${di.forum_mentions.count})</b>${di.forum_mentions.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-brand">${r.title}</a></div>`).join('')}</div>`;
-        if (di.insolvency_links) html += `<div class="p-3 bg-gray-50 rounded-lg"><b class="text-xs text-gray-700">Register-Links</b><div class="text-xs mt-1 space-y-1">${Object.entries(di.insolvency_links).map(([k,v])=>`<a href="${v}" target="_blank" class="block text-brand hover:underline">${k}</a>`).join('')}</div></div>`;
-        html += '</div></div>';
-    }
-
-    // Verification Modules
-    if (d.dossier?.verification?.modules) {
-        const mods = d.dossier.verification.modules;
-        html += '<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Verifikation pro Modul</h3><div class="space-y-1">';
-        for (const [mod, info] of Object.entries(mods)) {
-            if (!info.confidence) continue;
-            const matchColors = {EXACT:'green',FUZZY:'yellow',HEURISTIC:'orange'};
-            const mc = matchColors[info.match] || 'gray';
-            html += `<div class="flex items-center gap-2 text-xs"><span class="w-32 font-medium">${mod}</span><div class="flex-1 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-${mc}-500" style="width:${info.confidence}%"></div></div><span class="w-10 text-right">${info.confidence}%</span><span class="px-1 py-0.5 rounded text-[10px] bg-${mc}-100 text-${mc}-800">${info.match}</span></div>`;
+    // --- TAB 1: Funde (Deep Intel, compact) ---
+    html += '<div class="ds-panel hidden" data-panel="1">';
+    const di = d.deep_intel || {};
+    const fundeItems = [];
+    if (di.gravatar?.found) fundeItems.push(`<div class="flex items-center gap-2 p-2 bg-purple-50 rounded"><img src="${di.gravatar.avatar}" class="w-8 h-8 rounded-full"><div><div class="text-sm font-medium">${di.gravatar.display_name||'Gravatar'}</div><div class="text-xs text-gray-500">${di.gravatar.about||di.gravatar.location||'Profil gefunden'}</div></div></div>`);
+    if (di.telegram_profiles?.length) fundeItems.push(...di.telegram_profiles.map(t=>`<div class="p-2 bg-blue-50 rounded"><a href="${t.url}" target="_blank" class="text-sm text-brand font-medium">Telegram: @${t.username}</a> <span class="text-xs text-gray-500">${t.display_name||''}</span></div>`));
+    if (di.impressum_mentions) fundeItems.push(...di.impressum_mentions.results.slice(0,3).map(r=>`<div class="p-2 bg-amber-50 rounded"><div class="text-xs font-semibold text-amber-700">Impressum</div><a href="${r.url}" target="_blank" class="text-sm text-brand hover:underline">${r.title}</a></div>`));
+    if (di.insolvency) fundeItems.push(...di.insolvency.results.slice(0,3).map(r=>`<div class="p-2 bg-red-50 rounded border border-red-200"><div class="text-xs font-semibold text-red-700">INSOLVENZ</div><a href="${r.url}" target="_blank" class="text-sm text-red-700">${r.title}</a></div>`));
+    if (di.paste_leaks) fundeItems.push(`<div class="p-2 bg-red-50 rounded"><div class="text-xs font-semibold text-red-700">Paste-Leaks (${di.paste_leaks.count})</div>${di.paste_leaks.results.slice(0,2).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-red-600 block">${r.title}</a>`).join('')}</div>`);
+    if (di.leaked_docs) fundeItems.push(`<div class="p-2 bg-orange-50 rounded"><div class="text-xs font-semibold text-orange-700">Dokumente (${di.leaked_docs.count})</div>${di.leaked_docs.results.slice(0,2).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block">${r.title}</a>`).join('')}</div>`);
+    if (d.handelsregister) fundeItems.push(...d.handelsregister.companies.slice(0,3).map(c=>`<div class="p-2 bg-gray-50 rounded"><div class="text-xs font-semibold text-gray-500">Handelsregister</div><div class="text-sm font-medium">${c.name}</div><div class="text-xs text-gray-400">${c.register_type} ${c.register_number} · ${c.register_court}</div></div>`));
+    if (d.registration_search) {
+        for (const [nr, data] of Object.entries(d.registration_search)) {
+            const nrType = data._type || 'Nummer';
+            const allHits = [...(data.google||[]),...(data.register||[]),...(data.legal||[])].slice(0,4);
+            if (allHits.length) fundeItems.push(`<div class="p-2 bg-indigo-50 rounded"><div class="text-xs font-semibold text-indigo-700">${nrType}: ${nr}</div>${allHits.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block hover:underline">${r.title}</a>`).join('')}</div>`);
         }
-        html += '</div></div>';
     }
+    if (d.correlation?.connections?.length) fundeItems.push(...d.correlation.connections.map(c=>`<div class="p-2 ${c.type.includes('warning')?'bg-red-50':'bg-blue-50'} rounded text-sm">${c.detail}</div>`));
+    html += fundeItems.length ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-2">${fundeItems.join('')}</div>` : '<div class="text-sm text-gray-400">Keine besonderen Funde</div>';
+    html += '</div>';
 
-    // Name Permutations + Search Results
+    // --- TAB 2: Suche (Permutationen + Usernames) ---
+    html += '<div class="ds-panel hidden" data-panel="2">';
     if (d.permutation_search) {
-        const ps = d.permutation_search;
-        const permKeys = Object.keys(ps);
-        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Name-Permutationen Suche (${permKeys.length} Varianten)</h3><div class="space-y-2">`;
-        for (const [perm, data] of Object.entries(ps)) {
-            html += `<details class="border rounded-lg"><summary class="px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 flex justify-between"><span class="font-medium">"${perm}"</span><span class="text-xs text-gray-400">${data.count} Treffer</span></summary><div class="px-3 pb-2 space-y-1">${data.results.map(r=>`<div class="text-xs"><a href="${r.url}" target="_blank" class="text-brand hover:underline">${r.title}</a><div class="text-gray-400">${r.snippet?.substring(0,120)||''}</div></div>`).join('')}</div></details>`;
-        }
-        html += '</div></div>';
-    }
-    if (d.name_permutations) {
-        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Alle Name-Variationen (${d.name_permutations.count})</h3><div class="flex flex-wrap gap-1">${d.name_permutations.variations.map(v=>`<span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs">"${v}"</span>`).join('')}</div></div>`;
-    }
-
-    // Generated Usernames
-    if (d.generated_usernames) {
-        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Generierte Usernames (${d.generated_usernames.count})</h3><div class="flex flex-wrap gap-1">${d.generated_usernames.usernames.map(u=>`<span class="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">${u}</span>`).join('')}</div></div>`;
-    }
-
-    // Self-Learning Algorithm
-    if (d.learning?.past_scans > 0) {
-        const l = d.learning;
-        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2 flex items-center gap-2">Selbstlernender Algorithmus <span class="text-xs text-gray-400">${l.past_scans} vergangene Scans analysiert</span></h3>`;
-        if (l.detected_person_type) html += `<div class="mb-2 px-3 py-2 bg-brand/5 rounded-lg text-sm"><b>Erkannter Typ:</b> ${l.detected_person_type} — ${l.type_advice||''}</div>`;
-        if (Object.keys(l.source_effectiveness||{}).length) {
-            html += '<div class="mb-2"><b class="text-xs text-gray-500">Quellen-Effektivität (gelernt):</b><div class="mt-1 space-y-1">';
-            for (const [mod, stats] of Object.entries(l.source_effectiveness)) {
-                const color = stats.hit_rate >= 70 ? 'green' : stats.hit_rate >= 40 ? 'yellow' : 'red';
-                html += `<div class="flex items-center gap-2 text-xs"><span class="w-36 font-mono">${mod}</span><div class="flex-1 bg-gray-100 rounded-full h-1.5"><div class="h-1.5 rounded-full bg-${color}-500" style="width:${stats.hit_rate}%"></div></div><span class="w-16 text-right">${stats.hit_rate}% (${stats.hits}/${stats.total})</span></div>`;
-            }
-            html += '</div></div>';
-        }
-        if (l.recommendations?.length) {
-            html += '<div class="text-xs text-gray-500 space-y-1">' + l.recommendations.map(r=>`<div>${r}</div>`).join('') + '</div>';
+        html += '<div class="space-y-1 mb-3">';
+        for (const [perm, data] of Object.entries(d.permutation_search)) {
+            html += `<details class="border rounded"><summary class="px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 flex justify-between"><span>"${perm}"</span><span class="text-xs text-gray-400">${data.count}</span></summary><div class="px-3 pb-2 text-xs space-y-1">${data.results.map(r=>`<div><a href="${r.url}" target="_blank" class="text-brand hover:underline">${r.title}</a></div>`).join('')}</div></details>`;
         }
         html += '</div>';
     }
+    if (d.generated_usernames) html += `<div class="flex flex-wrap gap-1">${d.generated_usernames.usernames.map(u=>`<span class="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">${u}</span>`).join('')}</div>`;
+    html += '</div>';
 
-    // Handelsregister
-    if (d.handelsregister) {
-        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Handelsregister (${d.handelsregister.count})</h3><div class="space-y-2">${d.handelsregister.companies.map(c=>`<div class="text-sm p-2 bg-gray-50 rounded"><b>${c.name}</b><div class="text-xs text-gray-500">${c.register_type} ${c.register_number} · ${c.register_court} · ${c.office} · ${c.status}</div></div>`).join('')}</div>${d.handelsregister.links?'<div class="mt-2 text-xs">'+Object.entries(d.handelsregister.links).map(([k,v])=>`<a href="${v}" target="_blank" class="text-brand hover:underline mr-3">${k}</a>`).join('')+'</div>':''}</div>`;
-    }
-
-    // BGP/ASN + DNS Services
-    if (d.bgp_asn || d.dns_services) {
-        html += '<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Netzwerk & Infrastruktur</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
-        if (d.bgp_asn) html += `<div class="p-2 bg-gray-50 rounded text-sm"><b>BGP/ASN:</b> AS${d.bgp_asn.asn} — ${d.bgp_asn.asn_name}<div class="text-xs text-gray-500">IP: ${d.bgp_asn.ip} · Prefix: ${d.bgp_asn.prefix} · Land: ${d.bgp_asn.country}</div></div>`;
-        if (d.dns_services?.detected_services?.length) html += `<div class="p-2 bg-gray-50 rounded text-sm"><b>Dienste:</b> ${d.dns_services.detected_services.join(', ')}<div class="text-xs text-gray-500">${d.dns_services.total_records} SRV-Records</div></div>`;
+    // --- TAB 3: Details (Verifikation, Netzwerk, Learning) ---
+    html += '<div class="ds-panel hidden" data-panel="3">';
+    if (vf.modules) {
+        html += '<div class="mb-3"><h4 class="text-xs font-semibold text-gray-500 mb-2">Verifikation</h4><div class="space-y-1">';
+        for (const [mod, info] of Object.entries(vf.modules)) {
+            if (!info.confidence) continue;
+            const mc = {EXACT:'green',FUZZY:'yellow',HEURISTIC:'orange'}[info.match]||'gray';
+            html += `<div class="flex items-center gap-2 text-xs"><span class="w-28 truncate">${mod}</span><div class="flex-1 bg-gray-100 rounded-full h-1.5"><div class="h-1.5 rounded-full bg-${mc}-500" style="width:${info.confidence}%"></div></div><span class="w-8 text-right">${info.confidence}%</span></div>`;
+        }
         html += '</div></div>';
     }
-
-    // Hard Identifiers
-    if (d.hard_identifiers?.count > 0) {
-        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Genutzte Identifier</h3><div class="flex flex-wrap gap-2">${d.hard_identifiers.provided.map(id=>`<span class="px-2 py-1 bg-brand/10 text-brand rounded text-xs font-medium">${id}</span>`).join('')}</div></div>`;
+    if (d.bgp_asn) html += `<div class="mb-3 p-2 bg-gray-50 rounded text-xs"><b>Netzwerk:</b> AS${d.bgp_asn.asn} ${d.bgp_asn.asn_name} · ${d.bgp_asn.ip} · ${d.bgp_asn.country}</div>`;
+    if (d.dns_services?.detected_services?.length) html += `<div class="mb-3 p-2 bg-gray-50 rounded text-xs"><b>Dienste:</b> ${d.dns_services.detected_services.join(', ')}</div>`;
+    if (d.learning?.past_scans > 0) {
+        html += `<div class="p-2 bg-gray-50 rounded text-xs"><b>KI-Algorithmus:</b> ${d.learning.past_scans} Scans analysiert · Typ: ${d.learning.detected_person_type||'?'}<div class="text-gray-400 mt-1">${d.learning.type_advice||''}</div></div>`;
     }
+    html += '</div>';
 
+    html += '</div></div>';
     container.innerHTML = html;
+}
+function dsTab(n) {
+    document.querySelectorAll('#dsTabs button').forEach((b,i) => {
+        b.classList.toggle('text-brand', i===n);
+        b.classList.toggle('border-b-2', i===n);
+        b.classList.toggle('border-brand', i===n);
+        b.classList.toggle('text-gray-500', i!==n);
+    });
+    document.querySelectorAll('.ds-panel').forEach((p,i) => p.classList.toggle('hidden', i!==n));
 }
 </script>
 

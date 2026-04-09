@@ -840,7 +840,65 @@ if ($domain) {
 }
 
 // ============================================================
-// 9e. GERMAN HANDELSREGISTER — Company Registry (FREE)
+// 9e. REGISTRATION NUMBER SEARCH — Steuernummer, Aktenzeichen, HRB
+// ============================================================
+$regNumbers = array_filter([$serialNr, $taxId, $idNumber, $passNumber]);
+if (!empty($regNumbers) || preg_match('/\d{2,}\/\d{2,}\/\d{2,}/', $name . ' ' . $address)) {
+    // Also detect registration numbers in name/address fields
+    if (preg_match('/(\d{2,}\/\d{2,}\/\d{2,})/', $name . ' ' . $address, $regMatch)) {
+        $regNumbers[] = $regMatch[1];
+    }
+    $regResults = [];
+    $mh = curl_multi_init();
+    $handles = [];
+    foreach (array_unique($regNumbers) as $idx => $regNr) {
+        if (!$regNr) continue;
+        $queries = [
+            'google' => 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $regNr . '"'),
+            'register' => 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $regNr . '" Handelsregister OR Amtsgericht OR Finanzamt OR Aktenzeichen'),
+            'legal' => 'https://html.duckduckgo.com/html/?q=' . urlencode('"' . $regNr . '" Insolvenz OR Vollstreckung OR Gericht OR Urteil'),
+        ];
+        foreach ($queries as $qType => $url) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+            curl_multi_add_handle($mh, $ch);
+            $handles[$regNr . '|' . $qType] = $ch;
+        }
+    }
+    $running = 0;
+    do { curl_multi_exec($mh, $running); curl_multi_select($mh, 0.3); } while ($running > 0);
+    foreach ($handles as $key => $ch) {
+        [$nr, $qType] = explode('|', $key, 2);
+        $html = curl_multi_getcontent($ch);
+        if ($html && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $html, $dm, PREG_SET_ORDER)) {
+            foreach (array_slice($dm, 0, 5) as $m) {
+                $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
+                $regResults[$nr][$qType][] = ['title' => trim(strip_tags($m[2])), 'url' => $rUrl, 'snippet' => trim(strip_tags($m[3]))];
+            }
+        }
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+    if (!empty($regResults)) {
+        $results['registration_search'] = $regResults;
+        // Detect number type
+        foreach ($regResults as $nr => $types) {
+            $allSnippets = '';
+            foreach ($types as $hits) foreach ($hits as $h) $allSnippets .= ' ' . ($h['snippet'] ?? '');
+            $nrType = 'Unbekannt';
+            if (preg_match('/Handelsregister|HRB|HRA/i', $allSnippets)) $nrType = 'Handelsregister';
+            elseif (preg_match('/Steuernummer|Finanzamt|USt/i', $allSnippets)) $nrType = 'Steuernummer';
+            elseif (preg_match('/Aktenzeichen|Gericht|Az\./i', $allSnippets)) $nrType = 'Aktenzeichen';
+            elseif (preg_match('/Insolvenz/i', $allSnippets)) $nrType = 'Insolvenz-Aktenzeichen';
+            elseif (preg_match('/Gewerbe/i', $allSnippets)) $nrType = 'Gewerbeschein';
+            $results['registration_search'][$nr]['_type'] = $nrType;
+        }
+    }
+}
+
+// ============================================================
+// 9e2. GERMAN HANDELSREGISTER — Company Registry (FREE)
 // ============================================================
 if ($name) {
     $hrUrl = 'https://db.offeneregister.de/openregister.json?sql=select+*+from+company+where+company_name+like+%27%25' . urlencode($name) . '%25%27+limit+10&_shape=objects';
