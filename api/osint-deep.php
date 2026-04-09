@@ -223,10 +223,8 @@ if ($email && strpos($email, '@') !== false) {
     $mh = curl_multi_init();
     $handles = [];
 
-    // crt.sh subdomains
-    $handles['crt'] = curl_init("https://crt.sh/?q=%25.{$domain}&output=json");
-    curl_setopt_array($handles['crt'], [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>15, CURLOPT_SSL_VERIFYPEER=>0]);
-    curl_multi_add_handle($mh, $handles['crt']);
+    // crt.sh subdomains (SKIP — blocked from Hostinger, HTTP 502)
+    // $handles['crt'] = curl_init("https://crt.sh/?q=%25.{$domain}&output=json");
 
     // WHOIS
     $handles['whois'] = curl_init("https://api.hackertarget.com/whois/?q={$domain}");
@@ -251,9 +249,9 @@ if ($email && strpos($email, '@') !== false) {
     $running = 0;
     do { curl_multi_exec($mh, $running); curl_multi_select($mh, 1); } while ($running > 0);
 
-    // Process crt.sh
-    $crtRaw = curl_multi_getcontent($handles['crt']);
-    $crtCode = curl_getinfo($handles['crt'], CURLINFO_HTTP_CODE);
+    // Process crt.sh (SKIPPED — blocked from Hostinger)
+    $crtRaw = '';
+    $crtCode = isset($handles['crt']) ? curl_getinfo($handles['crt'], CURLINFO_HTTP_CODE) : 0;
     if ($crtCode >= 200 && $crtCode < 400 && $crtRaw) {
         $certs = json_decode($crtRaw, true);
         if (is_array($certs) && !empty($certs)) {
@@ -310,13 +308,13 @@ if ($email && strpos($email, '@') !== false) {
     }
 
     // Cleanup
-    foreach ($handles as $h) { curl_multi_remove_handle($mh, $h); curl_close($h); }
+    foreach ($handles as $h) { if ($h) { curl_multi_remove_handle($mh, $h); curl_close($h); } }
     curl_multi_close($mh);
 
     // Domain recon (HTTP, SSL, tech)
     $domainRecon = [];
     $ctx = stream_context_create(['ssl' => ['capture_peer_cert' => true, 'verify_peer' => false]]);
-    $s = @stream_socket_client("ssl://{$domain}:443", $e, $es, 5, STREAM_CLIENT_CONNECT, $ctx);
+    $s = @stream_socket_client("ssl://{$domain}:443", $e, $es, 2, STREAM_CLIENT_CONNECT, $ctx);
     if ($s) {
         $c = openssl_x509_parse(stream_context_get_params($s)['options']['ssl']['peer_certificate']);
         $domainRecon['ssl'] = ['issuer' => $c['issuer']['O'] ?? '?', 'expires' => date('Y-m-d', $c['validTo_time_t']), 'days' => floor(($c['validTo_time_t'] - time()) / 86400)];
@@ -384,33 +382,18 @@ if ($name) {
         $last . $first,
     ]));
 
-    // Sherlock-style: check username across 20+ platforms via HTTP status
+    // Fast username check — only APIs that respond quickly from Hostinger
+    // Full Sherlock-scan moved to VPS Maigret (2500+ sites)
     $platforms = [
         'GitHub' => ['url' => 'https://api.github.com/users/{u}', 'check' => 'api', 'ua' => 'FleckfreiOSINT'],
-        'Instagram' => ['url' => 'https://www.instagram.com/{u}/', 'check' => 'status'],
-        'Twitter/X' => ['url' => 'https://x.com/{u}', 'check' => 'status'],
-        'TikTok' => ['url' => 'https://www.tiktok.com/@{u}', 'check' => 'status'],
-        'Reddit' => ['url' => 'https://www.reddit.com/user/{u}/about.json', 'check' => 'api'],
-        'Pinterest' => ['url' => 'https://www.pinterest.com/{u}/', 'check' => 'status'],
-        'LinkedIn' => ['url' => 'https://www.linkedin.com/in/{u}/', 'check' => 'status'],
-        'Medium' => ['url' => 'https://medium.com/@{u}', 'check' => 'status'],
-        'Telegram' => ['url' => 'https://t.me/{u}', 'check' => 'status'],
-        'YouTube' => ['url' => 'https://www.youtube.com/@{u}', 'check' => 'status'],
-        'Twitch' => ['url' => 'https://www.twitch.tv/{u}', 'check' => 'status'],
-        'SoundCloud' => ['url' => 'https://soundcloud.com/{u}', 'check' => 'status'],
-        'DeviantArt' => ['url' => 'https://www.deviantart.com/{u}', 'check' => 'status'],
-        'Flickr' => ['url' => 'https://www.flickr.com/people/{u}/', 'check' => 'status'],
-        'Vimeo' => ['url' => 'https://vimeo.com/{u}', 'check' => 'status'],
-        'Spotify' => ['url' => 'https://open.spotify.com/user/{u}', 'check' => 'status'],
-        'GitLab' => ['url' => 'https://gitlab.com/{u}', 'check' => 'status'],
-        'Bitbucket' => ['url' => 'https://bitbucket.org/{u}/', 'check' => 'status'],
         'HackerNews' => ['url' => 'https://hacker-news.firebaseio.com/v0/user/{u}.json', 'check' => 'api'],
+        'Telegram' => ['url' => 'https://t.me/{u}', 'check' => 'status'],
         'Keybase' => ['url' => 'https://keybase.io/{u}', 'check' => 'status'],
         'About.me' => ['url' => 'https://about.me/{u}', 'check' => 'status'],
     ];
 
-    // Check top 3 variations in parallel (more coverage, same time due to curl_multi)
-    $checkUsers = array_slice($variations, 0, 3);
+    // Check only first variation (VPS Maigret does the heavy lifting)
+    $checkUsers = array_slice($variations, 0, 1);
     $found = [];
 
     foreach ($checkUsers as $v) {
@@ -484,7 +467,7 @@ $vpsHeaders = ['X-API-Key: ' . API_KEY, 'Content-Type: application/json'];
 // VPS OSINT — single call runs ALL tools in parallel via /scan-all
 $vpsPayload = ['email' => $email, 'name' => $name, 'phone' => $phone, 'domain' => $domain];
 $ch = curl_init($vpsApi . '/scan-all');
-curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>20, CURLOPT_POST=>1,
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>12, CURLOPT_CONNECTTIMEOUT=>3, CURLOPT_POST=>1,
     CURLOPT_POSTFIELDS=>json_encode($vpsPayload), CURLOPT_HTTPHEADER=>$vpsHeaders]);
 $vpsRaw = curl_exec($ch); curl_close($ch);
 if ($vpsRaw) {
