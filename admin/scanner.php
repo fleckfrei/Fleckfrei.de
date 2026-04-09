@@ -522,6 +522,25 @@ function renderDeepResults(d, container) {
         const pi = d.phoneinfoga;
         fundeItems.push(`<div class="p-2 bg-teal-50 rounded"><div class="text-xs font-semibold text-teal-700">PhoneInfoga</div><div class="text-xs">Land: ${pi.country||'?'} · Carrier: ${pi.carrier||'?'} · Typ: ${pi.type||'?'}</div>${pi.international?`<div class="text-xs text-gray-500">${pi.international}</div>`:''}</div>`);
     }
+    // SearXNG — real search engine results
+    if (d.searxng) {
+        const sxLabels = {searx_person:'Person',searx_business:'Firma',searx_reviews:'Bewertungen',searx_email:'Email',searx_phone:'Telefon'};
+        for (const [sxKey, sx] of Object.entries(d.searxng)) {
+            if (!sx.results?.length) continue;
+            fundeItems.push(`<div class="p-3 bg-orange-50 rounded border border-orange-200"><div class="text-xs font-semibold text-orange-700 mb-1">SearXNG: ${sxLabels[sxKey]||sxKey} (${sx.count})</div>${sx.results.slice(0,4).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block hover:underline">${r.title}</a>${r.snippet?`<div class="text-[10px] text-gray-400 truncate">${r.snippet}</div>`:''}`).join('')}</div>`);
+        }
+    }
+    // GHunt — Google Account Intel
+    if (d.ghunt?.found) {
+        const gh = d.ghunt.data || {};
+        let ghHtml = `<div class="p-3 bg-blue-50 rounded border border-blue-200"><div class="text-xs font-semibold text-blue-700 mb-1">GHunt — Google Account</div>`;
+        if (gh.name) ghHtml += `<div class="text-xs">Name: <b>${gh.name}</b></div>`;
+        if (gh.last_edit) ghHtml += `<div class="text-xs">Letzte Änderung: ${gh.last_edit}</div>`;
+        if (gh.photo) ghHtml += `<a href="${gh.photo}" target="_blank" class="text-xs text-brand">Profilbild</a>`;
+        if (gh.maps) ghHtml += `<div class="text-xs">${gh.maps}</div>`;
+        ghHtml += '</div>';
+        fundeItems.push(ghHtml);
+    }
     // Airbnb
     if (d.airbnb_scan?.results) {
         const allAbnb = Object.values(d.airbnb_scan.results).flat().slice(0,4);
@@ -682,6 +701,27 @@ function renderDeepCards(data, container) {
         var iv = d.impressum_validation, ex = iv.extracted;
         var ivc = iv.valid ? 'green' : 'red';
         cards.push('<div class="bg-'+ivc+'-50 rounded-xl border border-'+ivc+'-200 p-4"><h4 class="font-bold text-sm mb-2 text-'+ivc+'-700">Impressum '+(iv.valid?'OK':'PROBLEM')+'</h4><div class="space-y-1 text-sm">'+(ex.owner?'<div>Inhaber: <b>'+ex.owner+'</b></div>':'')+(ex.hrb?'<div>HRB: '+ex.hrb+'</div>':'')+(ex.vat?'<div>USt: '+ex.vat+'</div>':'')+(ex.email?'<div>Email: '+ex.email+'</div>':'')+'</div>'+(iv.issues && iv.issues.length?'<div class="mt-1 text-xs text-red-600">'+iv.issues.join(' · ')+'</div>':'')+'</div>');
+    }
+    // SearXNG — real search results
+    if(d.searxng) {
+        var sxLabels = {searx_person:'Person',searx_business:'Firma',searx_reviews:'Bewertungen',searx_email:'Email',searx_phone:'Telefon'};
+        for (var sxKey in d.searxng) {
+            var sx = d.searxng[sxKey];
+            if (!sx.results || !sx.results.length) continue;
+            cards.push('<div class="bg-orange-50 rounded-xl border border-orange-200 p-4"><div class="flex items-center gap-2 mb-2"><svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg><h4 class="font-bold text-sm text-orange-700">SearXNG: '+(sxLabels[sxKey]||sxKey)+' ('+sx.count+')</h4></div><div class="space-y-1">'+sx.results.slice(0,5).map(function(r){return '<div><a href="'+r.url+'" target="_blank" class="text-sm text-brand font-medium hover:underline">'+r.title+'</a>'+(r.snippet?'<div class="text-xs text-gray-500 truncate">'+r.snippet+'</div>':'')+'</div>';}).join('')+'</div></div>');
+        }
+    }
+    // GHunt — Google Account Intel
+    if(d.ghunt && d.ghunt.found) {
+        var gh = d.ghunt.data || {};
+        var ghHtml = '<div class="bg-blue-50 rounded-xl border border-blue-200 p-4"><div class="flex items-center gap-2 mb-2"><svg class="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg><h4 class="font-bold text-sm text-blue-700">GHunt — Google Account</h4></div><div class="space-y-1 text-sm">';
+        if(gh.name) ghHtml += '<div class="flex justify-between"><span class="text-gray-500">Name</span><b>'+gh.name+'</b></div>';
+        if(gh.last_edit) ghHtml += '<div class="flex justify-between"><span class="text-gray-500">Letzte Änderung</span><span>'+gh.last_edit+'</span></div>';
+        if(gh.photo) ghHtml += '<div class="flex justify-between"><span class="text-gray-500">Profilbild</span><a href="'+gh.photo+'" target="_blank" class="text-brand">Ansehen</a></div>';
+        if(gh.maps) ghHtml += '<div class="flex justify-between"><span class="text-gray-500">Maps/Reviews</span><span>'+gh.maps+'</span></div>';
+        if(gh.youtube) ghHtml += '<div class="flex justify-between"><span class="text-gray-500">YouTube</span><span>'+gh.youtube+'</span></div>';
+        ghHtml += '</div></div>';
+        cards.push(ghHtml);
     }
     if (cards.length === 0) {
         container.innerHTML = '<div class="col-span-2 text-center text-gray-400 py-4">Scan läuft — Ergebnisse erscheinen hier</div>';

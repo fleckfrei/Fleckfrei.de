@@ -496,6 +496,61 @@ if ($vpsRaw) {
 }
 
 // ============================================================
+// 3c. SearXNG — Real search engine results via VPS
+// ============================================================
+if ($name || $email) {
+    $searchQueries = [];
+    if ($name) {
+        $searchQueries['searx_person'] = $name . ($address ? ' ' . explode(',', $address)[1] ?? '' : '');
+        $searchQueries['searx_business'] = $name . ' GmbH OR UG OR Firma OR Gewerbe';
+        $searchQueries['searx_reviews'] = $name . ' Bewertung OR Review OR Erfahrung';
+    }
+    if ($email) {
+        $searchQueries['searx_email'] = $email;
+    }
+    if ($phone) {
+        $searchQueries['searx_phone'] = $phone;
+    }
+    $mh = curl_multi_init();
+    $handles = [];
+    foreach ($searchQueries as $key => $q) {
+        $ch = curl_init($vpsApi . '/searxng');
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>12, CURLOPT_CONNECTTIMEOUT=>3, CURLOPT_POST=>1,
+            CURLOPT_POSTFIELDS=>json_encode(['query' => $q, 'limit' => 8]), CURLOPT_HTTPHEADER=>$vpsHeaders]);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$key] = $ch;
+    }
+    $running = null;
+    do { curl_multi_exec($mh, $running); curl_multi_select($mh, 0.1); } while ($running > 0);
+    $searxResults = [];
+    foreach ($handles as $key => $ch) {
+        $raw = curl_multi_getcontent($ch);
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+        if ($raw) {
+            $d = json_decode($raw, true);
+            if (!empty($d['results'])) $searxResults[$key] = $d;
+        }
+    }
+    curl_multi_close($mh);
+    if (!empty($searxResults)) $results['searxng'] = $searxResults;
+}
+
+// ============================================================
+// 3d. GHunt — Google Account Intelligence via VPS
+// ============================================================
+if ($email && strpos($email, 'gmail.com') !== false) {
+    $ch = curl_init($vpsApi . '/ghunt');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>35, CURLOPT_CONNECTTIMEOUT=>3, CURLOPT_POST=>1,
+        CURLOPT_POSTFIELDS=>json_encode(['email' => $email]), CURLOPT_HTTPHEADER=>$vpsHeaders]);
+    $ghRaw = curl_exec($ch); curl_close($ch);
+    if ($ghRaw) {
+        $gh = json_decode($ghRaw, true);
+        if (!empty($gh['found'])) $results['ghunt'] = $gh;
+    }
+}
+
+// ============================================================
 // 4. BREACH CHECK (HIBP k-Anonymity — FREE, no API key)
 // ============================================================
 if ($email) {
@@ -2055,6 +2110,17 @@ if (!empty($results['socialscan'])) {
 }
 if (!empty($results['whois_deep']['registrant'])) {
     $dossier['findings'][] = 'WHOIS: Registrant ' . $results['whois_deep']['registrant'] . ' ' . ($results['whois_deep']['org'] ?? '');
+}
+if (!empty($results['searxng'])) {
+    $sxTotal = array_sum(array_map(fn($s) => $s['count'] ?? 0, $results['searxng']));
+    $dossier['findings'][] = 'SearXNG: ' . $sxTotal . ' Suchergebnisse in ' . count($results['searxng']) . ' Kategorien';
+    $dossier['data_sources'][] = 'SearXNG';
+}
+if (!empty($results['ghunt']['found'])) {
+    $ghData = $results['ghunt']['data'] ?? [];
+    $ghInfo = $ghData['name'] ?? 'Google-Account gefunden';
+    $dossier['findings'][] = 'GHunt: ' . $ghInfo;
+    $dossier['data_sources'][] = 'GHunt';
 }
 if (!empty($results['vulture_stats'])) {
     $vs = $results['vulture_stats'];
