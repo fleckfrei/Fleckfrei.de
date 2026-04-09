@@ -18,6 +18,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <?php if (!empty($script)): ?><script><?= $script ?></script><?php endif; ?>
 <script>
+// Auto-cron ping (triggers iCal + Smoobu sync in background)
+new Image().src='/api/cron.php?t='+Date.now();
 // PWA Service Worker
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('/sw.js').then(function(reg){
