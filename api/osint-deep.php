@@ -884,16 +884,42 @@ if ($plate) {
     $platePrefix = strtoupper(explode('-', str_replace(' ', '-', $plateClean))[0] ?? '');
     $region = $regionMap[$platePrefix] ?? $platePrefix;
 
+    // Direct car data APIs (free/public)
+    $vehicleData = [];
+    // 1. AutoDNA — free VIN/plate history check
+    $adnaRaw = safeFetch('https://www.autodna.de/api/v1/search?plate=' . urlencode($plateNoSpace) . '&country=DE', 8);
+    if ($adnaRaw) { $adna = json_decode($adnaRaw, true); if (!empty($adna)) $vehicleData['autodna'] = $adna; }
+    // 2. NHTSA-style: try vin.guru for German plates
+    $vgRaw = safeFetch('https://www.vin.guru/api/plate/' . urlencode($plateNoSpace) . '?country=de', 5);
+    if ($vgRaw) { $vg = json_decode($vgRaw, true); if (!empty($vg['make'] ?? $vg['model'] ?? null)) $vehicleData['vin_guru'] = $vg; }
+    // 3. Scrape mobile.de search for this plate's region to find car listings
+    $mobileDe = safeFetch('https://suchen.mobile.de/fahrzeuge/search.html?isSearchRequest=true&q=' . urlencode($plateClean), 8);
+    if (!$mobileDe) {
+        $ch = curl_init('https://suchen.mobile.de/fahrzeuge/search.html?isSearchRequest=true&q=' . urlencode($plateClean));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        $mobileDe = curl_exec($ch); curl_close($ch);
+    }
+    if ($mobileDe && preg_match('/(\d+)\s*Ergebnis/', $mobileDe, $mrm)) {
+        $vehicleData['mobile_de_results'] = (int)$mrm[1];
+    }
+
     $results['plate_search'] = [
         'plate' => $plateClean,
         'region' => $region,
         'results' => $plateResults,
+        'vehicle_data' => $vehicleData,
         'links' => [
             'mobile_de' => 'https://suchen.mobile.de/fahrzeuge/search.html?q=' . urlencode($plateClean),
             'autoscout' => 'https://www.autoscout24.de/lst?query=' . urlencode($plateClean),
             'kleinanzeigen' => 'https://www.kleinanzeigen.de/s-' . urlencode($plateNoSpace) . '/k0',
+            'autodna' => 'https://www.autodna.de/kennzeichen/' . urlencode($plateNoSpace),
+            'wkda' => 'https://www.wirkaufendeinauto.de/kennzeichen/' . urlencode($plateNoSpace),
+            'carfax' => 'https://www.carfax.eu/de/fahrzeughistorie?registration=' . urlencode($plateNoSpace),
+            'adac_kosten' => 'https://www.adac.de/rund-ums-fahrzeug/auto-kaufen-verkaufen/autokosten/',
             'google' => 'https://www.google.com/search?q="' . urlencode($plateClean) . '"',
+            'halterabfrage' => 'https://www.google.com/search?q="' . urlencode($plateClean) . '"+Halter+OR+Eigentümer+OR+Zulassung',
         ],
+        'info' => 'Halterdaten (KBA) nur über Behörden/Anwalt zugänglich. Hier: öffentlich verfügbare Fahrzeugdaten + Listings.',
     ];
 }
 

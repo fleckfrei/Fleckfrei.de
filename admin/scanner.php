@@ -410,8 +410,20 @@ function renderDeepResults(d, container) {
     if (d.handelsregister) fundeItems.push(...d.handelsregister.companies.slice(0,3).map(c=>`<div class="p-2 bg-gray-50 rounded"><div class="text-xs font-semibold text-gray-500">Handelsregister</div><div class="text-sm font-medium">${c.name}</div><div class="text-xs text-gray-400">${c.register_type} ${c.register_number} · ${c.register_court}</div></div>`));
     if (d.plate_search) {
         const pl = d.plate_search;
-        const allPlateHits = Object.values(pl.results).flat().slice(0,5);
-        fundeItems.push(`<div class="p-2 bg-gray-800 text-white rounded"><div class="flex items-center gap-2 mb-1"><span class="px-2 py-0.5 bg-blue-600 rounded text-xs font-bold">D</span><span class="font-bold font-mono text-lg">${pl.plate}</span><span class="text-xs text-gray-400">${pl.region}</span></div>${allPlateHits.length?allPlateHits.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-blue-300 block hover:underline">${r.title}</a>`).join(''):'<div class="text-xs text-gray-400">Keine Treffer</div>'}${pl.links?'<div class="flex gap-2 mt-1">'+Object.entries(pl.links).map(([k,v])=>`<a href="${v}" target="_blank" class="text-[10px] text-gray-400 hover:text-white">${k}</a>`).join('')+'</div>':''}</div>`);
+        const allPlateHits = Object.values(pl.results||{}).flat().slice(0,5);
+        const vd = pl.vehicle_data||{};
+        let plateHtml = `<div class="p-3 bg-gray-800 text-white rounded-lg"><div class="flex items-center gap-2 mb-2"><span class="px-2 py-1 bg-blue-600 rounded text-sm font-bold">D</span><span class="font-bold font-mono text-xl tracking-wider">${pl.plate}</span><span class="text-xs text-gray-400">${pl.region}</span></div>`;
+        // Vehicle data from APIs
+        if (vd.autodna) plateHtml += `<div class="text-xs text-green-400 mb-1">AutoDNA: Fahrzeugdaten gefunden</div>`;
+        if (vd.vin_guru?.make) plateHtml += `<div class="text-xs text-green-400 mb-1">Fahrzeug: ${vd.vin_guru.make} ${vd.vin_guru.model||''} ${vd.vin_guru.year||''}</div>`;
+        if (vd.mobile_de_results) plateHtml += `<div class="text-xs text-yellow-400 mb-1">mobile.de: ${vd.mobile_de_results} Ergebnisse</div>`;
+        // Search results
+        if (allPlateHits.length) plateHtml += allPlateHits.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-blue-300 block hover:underline truncate">${r.title}</a>`).join('');
+        // Links
+        if (pl.links) plateHtml += `<div class="flex flex-wrap gap-2 mt-2 pt-2 border-t border-gray-600">${Object.entries(pl.links).map(([k,v])=>`<a href="${v}" target="_blank" class="text-[10px] px-1.5 py-0.5 bg-gray-700 rounded text-gray-300 hover:text-white hover:bg-gray-600">${k.replace('_',' ')}</a>`).join('')}</div>`;
+        if (pl.info) plateHtml += `<div class="text-[10px] text-gray-500 mt-1">${pl.info}</div>`;
+        plateHtml += '</div>';
+        fundeItems.push(plateHtml);
     }
     if (d.registration_search) {
         for (const [nr, data] of Object.entries(d.registration_search)) {
