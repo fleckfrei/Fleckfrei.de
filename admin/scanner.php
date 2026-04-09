@@ -65,9 +65,23 @@ $domainInfo = ($emailInfo && $emailInfo['business']) ? scanDomain($emailInfo['do
 // DB lookups — comprehensive cross-reference
 $dbCustomers = []; $dbEmployees = []; $dbStats = null; $dbServices = []; $dbInvoices = []; $dbJobs = []; $dbAddresses = []; $dbNotes = [];
 if ($scan) {
-    $like = '%'.($scanName ?: $scanEmail).'%';
-    $dbCustomers = all("SELECT c.*, COUNT(j.j_id) as jobs, MAX(j.j_date) as last_job FROM customer c LEFT JOIN jobs j ON j.customer_id_fk=c.customer_id AND j.status=1 WHERE c.email=? OR c.name LIKE ? OR c.phone LIKE ? GROUP BY c.customer_id LIMIT 10", [$scanEmail, $like, '%'.$scanPhone.'%']);
-    $dbEmployees = all("SELECT * FROM employee WHERE email=? OR phone LIKE ? LIMIT 5", [$scanEmail, '%'.$scanPhone.'%']);
+    // Build WHERE conditions only for provided fields (avoid empty LIKE '%%' matching everything)
+    $where = []; $params = [];
+    if ($scanEmail) { $where[] = 'c.email=?'; $params[] = $scanEmail; }
+    if ($scanName) { $where[] = 'c.name LIKE ?'; $params[] = '%'.$scanName.'%'; }
+    if ($scanPhone && strlen(preg_replace('/[^0-9]/', '', $scanPhone)) >= 8) {
+        $phoneClean = preg_replace('/[^0-9]/', '', $scanPhone);
+        $phoneLast = substr($phoneClean, -10); // Match last 10 digits
+        $where[] = 'c.phone LIKE ?'; $params[] = '%'.$phoneLast.'%';
+    }
+    $dbCustomers = [];
+    if (!empty($where)) {
+        $dbCustomers = all("SELECT c.*, COUNT(j.j_id) as jobs, MAX(j.j_date) as last_job FROM customer c LEFT JOIN jobs j ON j.customer_id_fk=c.customer_id AND j.status=1 WHERE " . implode(' OR ', $where) . " GROUP BY c.customer_id LIMIT 10", $params);
+    }
+    $empWhere = []; $empParams = [];
+    if ($scanEmail) { $empWhere[] = 'email=?'; $empParams[] = $scanEmail; }
+    if ($scanPhone && strlen(preg_replace('/[^0-9]/', '', $scanPhone)) >= 8) { $empWhere[] = 'phone LIKE ?'; $empParams[] = '%'.substr(preg_replace('/[^0-9]/', '', $scanPhone), -10).'%'; }
+    $dbEmployees = !empty($empWhere) ? all("SELECT * FROM employee WHERE " . implode(' OR ', $empWhere) . " LIMIT 5", $empParams) : [];
     if (!empty($dbCustomers)) {
         $cid = $dbCustomers[0]['customer_id'];
         $dbStats = one("SELECT
