@@ -518,6 +518,31 @@ if ($phone) {
     }
 }
 
+// Socialscan — check username/email availability across platforms
+if ($email || $name) {
+    $ssQuery = $email ?: strtolower(preg_replace('/[^a-z0-9]/i', '', $name));
+    $ch = curl_init($vpsApi . '/socialscan');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>10, CURLOPT_POST=>1,
+        CURLOPT_POSTFIELDS=>json_encode(['query'=>$ssQuery]), CURLOPT_HTTPHEADER=>$vpsHeaders]);
+    $ssRaw = curl_exec($ch); curl_close($ch);
+    if ($ssRaw) {
+        $ss = json_decode($ssRaw, true);
+        if (!empty($ss['platforms'])) $results['socialscan'] = $ss;
+    }
+}
+
+// VPS Whois — detailed domain whois (faster + more data than hackertarget)
+if ($domain && !in_array($domain, ['gmail.com','gmx.de','web.de','yahoo.com','hotmail.com','outlook.com','t-online.de'])) {
+    $ch = curl_init($vpsApi . '/whois');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_POST=>1,
+        CURLOPT_POSTFIELDS=>json_encode(['domain'=>$domain]), CURLOPT_HTTPHEADER=>$vpsHeaders]);
+    $whoisRaw = curl_exec($ch); curl_close($ch);
+    if ($whoisRaw) {
+        $whoisVps = json_decode($whoisRaw, true);
+        if (!empty($whoisVps['registrar']) || !empty($whoisVps['registrant'])) $results['whois_deep'] = $whoisVps;
+    }
+}
+
 // ============================================================
 // 4. BREACH CHECK (HIBP k-Anonymity — FREE, no API key)
 // ============================================================
@@ -2057,6 +2082,12 @@ if (!empty($results['maigret'])) {
 if (!empty($results['phoneinfoga'])) {
     $pi = $results['phoneinfoga'];
     $dossier['findings'][] = 'PhoneInfoga: ' . ($pi['country'] ?? '?') . ', ' . ($pi['carrier'] ?? '?') . ', ' . ($pi['type'] ?? '?');
+}
+if (!empty($results['socialscan'])) {
+    $dossier['findings'][] = 'SocialScan: Account existiert auf ' . $results['socialscan']['taken_on'] . ' Plattformen';
+}
+if (!empty($results['whois_deep']['registrant'])) {
+    $dossier['findings'][] = 'WHOIS: Registrant ' . $results['whois_deep']['registrant'] . ($results['whois_deep']['org'] ?? '');
 }
 if (!empty($results['airbnb_scan'])) {
     $totalAirbnb = array_sum(array_map('count', $results['airbnb_scan']['results']));

@@ -15,31 +15,6 @@ CACHE_DIR = "/tmp/osint-cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 class Handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        key = self.headers.get("X-API-Key", "")
-        if key != API_KEY:
-            self._respond(401, {"error": "Unauthorized"})
-            return
-        length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length)) if length else {}
-        path = self.path
-        result = {}
-        try:
-            if path == "/maigret":
-                result = self._maigret(body.get("username", ""))
-            elif path == "/phoneinfoga":
-                result = self._phoneinfoga(body.get("phone", ""))
-            elif path == "/holehe":
-                result = self._holehe(body.get("email", ""))
-            elif path == "/health":
-                result = {"status": "ok", "tools": ["maigret", "phoneinfoga", "holehe"]}
-            else:
-                result = {"error": "Use /maigret, /phoneinfoga, /holehe, /health"}
-        except subprocess.TimeoutExpired:
-            result = {"error": "Timeout"}
-        except Exception as e:
-            result = {"error": str(e)}
-        self._respond(200, result)
 
     def _respond(self, code, data):
         self.send_response(code)
@@ -110,7 +85,79 @@ class Handler(BaseHTTPRequestHandler):
         json.dump(result, open(path, "w"))
         return result
 
+    def _whois(self, domain):
+        if not domain: return {"error": "domain required"}
+        cached, path = self._cached("whois", domain)
+        if cached: return {**cached, "_cache": True}
+        out = subprocess.run(["whois", domain], capture_output=True, text=True, timeout=10)
+        data = {"domain": domain, "raw": out.stdout[:2000]}
+        # Parse key fields
+        for line in out.stdout.split("\n"):
+            line = line.strip()
+            if ":" not in line: continue
+            k, v = line.split(":", 1)
+            k, v = k.strip().lower(), v.strip()
+            if "registrar" in k and "registrar" not in data: data["registrar"] = v
+            elif "creation" in k or "created" in k: data["created"] = v
+            elif "expir" in k: data["expires"] = v
+            elif "registrant name" in k: data["registrant"] = v
+            elif "registrant org" in k: data["org"] = v
+            elif "registrant country" in k: data["country"] = v
+        # Remove raw if parsed ok
+        if len(data) > 3: del data["raw"]
+        json.dump(data, open(path, "w"))
+        return data
+
+    def _socialscan(self, query):
+        if not query: return {"error": "email or username required"}
+        cached, path = self._cached("socialscan", query)
+        if cached: return {**cached, "_cache": True}
+        out = subprocess.run(
+            ["socialscan", query, "--json"],
+            capture_output=True, text=True, timeout=30
+        )
+        results = []
+        for line in out.stdout.strip().split("\n"):
+            try:
+                d = json.loads(line)
+                if d.get("available") == False:  # Account EXISTS
+                    results.append({"platform": d.get("platform", ""), "username": d.get("query", ""), "available": False})
+            except: pass
+        result = {"query": query, "taken_on": len(results), "platforms": results[:30]}
+        json.dump(result, open(path, "w"))
+        return result
+
+    def do_POST(self):
+        key = self.headers.get("X-API-Key", "")
+        if key != API_KEY:
+            self._respond(401, {"error": "Unauthorized"})
+            return
+        length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(length)) if length else {}
+        path = self.path
+        result = {}
+        try:
+            if path == "/maigret":
+                result = self._maigret(body.get("username", ""))
+            elif path == "/phoneinfoga":
+                result = self._phoneinfoga(body.get("phone", ""))
+            elif path == "/holehe":
+                result = self._holehe(body.get("email", ""))
+            elif path == "/whois":
+                result = self._whois(body.get("domain", ""))
+            elif path == "/socialscan":
+                result = self._socialscan(body.get("query", ""))
+            elif path == "/health":
+                result = {"status": "ok", "tools": ["maigret", "phoneinfoga", "holehe", "whois", "socialscan"]}
+            else:
+                result = {"error": "Use /maigret, /phoneinfoga, /holehe, /whois, /socialscan"}
+        except subprocess.TimeoutExpired:
+            result = {"error": "Timeout"}
+        except Exception as e:
+            result = {"error": str(e)}
+        self._respond(200, result)
+
     def log_message(self, format, *args): pass
 
-print("OSINT API Proxy starting on :8900...")
+print("OSINT API Proxy v2 starting on :8900 — 5 tools active")
 HTTPServer(("0.0.0.0", 8900), Handler).serve_forever()

@@ -481,6 +481,15 @@ function renderDeepResults(d, container) {
     if (d.maigret?.profiles?.length) {
         fundeItems.push(`<div class="p-2 bg-emerald-50 rounded"><div class="text-xs font-semibold text-emerald-700">Maigret: ${d.maigret.found} Profile gefunden</div>${d.maigret.profiles.slice(0,8).map(p=>`<a href="${p.url}" target="_blank" class="text-xs text-brand block hover:underline">${p.site}</a>`).join('')}${d.maigret.found>8?`<div class="text-[10px] text-gray-400">+${d.maigret.found-8} weitere</div>`:''}</div>`);
     }
+    // SocialScan
+    if (d.socialscan?.platforms?.length) {
+        fundeItems.push(`<div class="p-2 bg-cyan-50 rounded"><div class="text-xs font-semibold text-cyan-700">SocialScan: ${d.socialscan.taken_on} Plattformen</div><div class="flex flex-wrap gap-1 mt-1">${d.socialscan.platforms.slice(0,15).map(p=>`<span class="px-1.5 py-0.5 bg-cyan-100 text-cyan-800 rounded text-[10px]">${p.platform}</span>`).join('')}</div></div>`);
+    }
+    // Whois Deep
+    if (d.whois_deep?.registrant || d.whois_deep?.org) {
+        const w = d.whois_deep;
+        fundeItems.push(`<div class="p-2 bg-gray-50 rounded"><div class="text-xs font-semibold text-gray-700">WHOIS Deep</div><div class="text-xs">${w.registrant?'Registrant: <b>'+w.registrant+'</b>':''}${w.org?' · Org: '+w.org:''}${w.registrar?' · '+w.registrar:''}${w.created?' · '+w.created:''}${w.expires?' · exp: '+w.expires:''}</div></div>`);
+    }
     // PhoneInfoga
     if (d.phoneinfoga?.country) {
         const pi = d.phoneinfoga;
