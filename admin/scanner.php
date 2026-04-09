@@ -473,6 +473,19 @@ function renderDeepResults(d, container) {
             if (allHits.length) fundeItems.push(`<div class="p-2 bg-indigo-50 rounded"><div class="text-xs font-semibold text-indigo-700">${nrType}: ${nr}</div>${allHits.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block hover:underline">${r.title}</a>`).join('')}</div>`);
         }
     }
+    // Holehe — email on 120+ sites
+    if (d.holehe?.registered_on?.length) {
+        fundeItems.push(`<div class="p-2 bg-violet-50 rounded"><div class="text-xs font-semibold text-violet-700">Holehe: Email auf ${d.holehe.count} Sites registriert</div><div class="flex flex-wrap gap-1 mt-1">${d.holehe.registered_on.map(s=>`<span class="px-1.5 py-0.5 bg-violet-100 text-violet-800 rounded text-[10px]">${s}</span>`).join('')}</div></div>`);
+    }
+    // Maigret — 2500+ sites username scan
+    if (d.maigret?.profiles?.length) {
+        fundeItems.push(`<div class="p-2 bg-emerald-50 rounded"><div class="text-xs font-semibold text-emerald-700">Maigret: ${d.maigret.found} Profile gefunden</div>${d.maigret.profiles.slice(0,8).map(p=>`<a href="${p.url}" target="_blank" class="text-xs text-brand block hover:underline">${p.site}</a>`).join('')}${d.maigret.found>8?`<div class="text-[10px] text-gray-400">+${d.maigret.found-8} weitere</div>`:''}</div>`);
+    }
+    // PhoneInfoga
+    if (d.phoneinfoga?.country) {
+        const pi = d.phoneinfoga;
+        fundeItems.push(`<div class="p-2 bg-teal-50 rounded"><div class="text-xs font-semibold text-teal-700">PhoneInfoga</div><div class="text-xs">Land: ${pi.country||'?'} · Carrier: ${pi.carrier||'?'} · Typ: ${pi.type||'?'}</div>${pi.international?`<div class="text-xs text-gray-500">${pi.international}</div>`:''}</div>`);
+    }
     // Airbnb
     if (d.airbnb_scan?.results) {
         const allAbnb = Object.values(d.airbnb_scan.results).flat().slice(0,4);
