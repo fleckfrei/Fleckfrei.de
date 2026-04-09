@@ -421,7 +421,19 @@ function renderDeepResults(d, container) {
         if (allPlateHits.length) plateHtml += allPlateHits.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-blue-300 block hover:underline truncate">${r.title}</a>`).join('');
         // Links
         if (pl.links) plateHtml += `<div class="flex flex-wrap gap-2 mt-2 pt-2 border-t border-gray-600">${Object.entries(pl.links).map(([k,v])=>`<a href="${v}" target="_blank" class="text-[10px] px-1.5 py-0.5 bg-gray-700 rounded text-gray-300 hover:text-white hover:bg-gray-600">${k.replace('_',' ')}</a>`).join('')}</div>`;
-        if (pl.info) plateHtml += `<div class="text-[10px] text-gray-500 mt-1">${pl.info}</div>`;
+        // Insurance data
+        if (pl.insurance?.gdv_api) plateHtml += `<div class="text-xs text-green-400 mt-1">Versicherung: ${JSON.stringify(pl.insurance.gdv_api).substring(0,150)}</div>`;
+        if (pl.insurance?.web_results?.length) plateHtml += pl.insurance.web_results.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-yellow-300 block hover:underline truncate">${r.title}</a>`).join('');
+        // Halter services
+        if (pl.halter_services?.length) {
+            plateHtml += '<div class="mt-2 pt-2 border-t border-gray-600 space-y-1">';
+            plateHtml += '<div class="text-[10px] text-gray-400 font-semibold">Halter ermitteln:</div>';
+            pl.halter_services.forEach(s => {
+                const badge = s.type==='free' ? '<span class="text-[9px] bg-green-700 px-1 rounded">GRATIS</span>' : '<span class="text-[9px] bg-yellow-700 px-1 rounded">KOSTENPFLICHTIG</span>';
+                plateHtml += `<a href="${s.url}" target="_blank" class="flex items-center gap-2 text-xs text-gray-300 hover:text-white">${badge} <span>${s.name}</span> <span class="text-gray-500">— ${s.info}</span></a>`;
+            });
+            plateHtml += '</div>';
+        }
         plateHtml += '</div>';
         fundeItems.push(plateHtml);
     }

@@ -903,23 +903,57 @@ if ($plate) {
         $vehicleData['mobile_de_results'] = (int)$mrm[1];
     }
 
+    // 4. GDV Zentralruf — Which insurance company covers this plate (FREE, LEGAL)
+    $insuranceInfo = [];
+    $gdvUrl = 'https://www.gdv-dl.de/zentralruf/kfz-versicherer-ermitteln';
+    // Try to scrape the GDV form result
+    $ch = curl_init('https://www.gdv-dl.de/zentralruf/api/vehicle?licensePlate=' . urlencode($plateNoSpace) . '&country=DE');
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0', CURLOPT_HTTPHEADER=>['Accept: application/json']]);
+    $gdvRaw = curl_exec($ch); $gdvCode = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    if ($gdvRaw && $gdvCode === 200) {
+        $gdvData = json_decode($gdvRaw, true);
+        if ($gdvData) $insuranceInfo['gdv_api'] = $gdvData;
+    }
+    // Also search for insurance info via web
+    $insSearch = safeFetch('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateClean . '" Versicherung OR versichert OR Haftpflicht OR Kfz-Versicherung'), 8);
+    if (!$insSearch) {
+        $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateClean . '" Versicherung OR Haftpflicht'));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        $insSearch = curl_exec($ch); curl_close($ch);
+    }
+    if ($insSearch && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $insSearch, $dm, PREG_SET_ORDER)) {
+        foreach (array_slice($dm, 0, 3) as $m) {
+            $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
+            $insuranceInfo['web_results'][] = ['title' => trim(strip_tags($m[2])), 'url' => $rUrl, 'snippet' => trim(strip_tags($m[3]))];
+        }
+    }
+
+    // 5. Halterabfrage Services (legal, kostenpflichtig)
+    $halterServices = [
+        ['name' => 'Zentralruf Autoversicherer', 'url' => 'https://www.gdv-dl.de/zentralruf/', 'info' => 'KOSTENLOS — Versicherung des KFZ ermitteln', 'type' => 'free'],
+        ['name' => 'Halterabfrage Online', 'url' => 'https://www.halterabfrage.de/', 'info' => 'Ab 7,90€ — offizieller Halter bei berechtigtem Interesse', 'type' => 'paid'],
+        ['name' => 'Ummelden.de', 'url' => 'https://www.ummelden.de/kfz/halterabfrage/', 'info' => 'Ab 9,90€ — Halter + Anschrift', 'type' => 'paid'],
+        ['name' => 'Kennzeichenking', 'url' => 'https://www.kennzeichenking.de/', 'info' => 'Kennzeichen-Infos + Region', 'type' => 'free'],
+        ['name' => 'Parkschaden melden', 'url' => 'https://www.unfallhelden.de/', 'info' => 'Unfallgegner ermitteln (kostenlos bei Schaden)', 'type' => 'free'],
+    ];
+
     $results['plate_search'] = [
         'plate' => $plateClean,
         'region' => $region,
         'results' => $plateResults,
         'vehicle_data' => $vehicleData,
+        'insurance' => $insuranceInfo,
+        'halter_services' => $halterServices,
         'links' => [
+            'gdv_zentralruf' => 'https://www.gdv-dl.de/zentralruf/',
+            'halterabfrage' => 'https://www.halterabfrage.de/',
             'mobile_de' => 'https://suchen.mobile.de/fahrzeuge/search.html?q=' . urlencode($plateClean),
             'autoscout' => 'https://www.autoscout24.de/lst?query=' . urlencode($plateClean),
             'kleinanzeigen' => 'https://www.kleinanzeigen.de/s-' . urlencode($plateNoSpace) . '/k0',
             'autodna' => 'https://www.autodna.de/kennzeichen/' . urlencode($plateNoSpace),
-            'wkda' => 'https://www.wirkaufendeinauto.de/kennzeichen/' . urlencode($plateNoSpace),
             'carfax' => 'https://www.carfax.eu/de/fahrzeughistorie?registration=' . urlencode($plateNoSpace),
-            'adac_kosten' => 'https://www.adac.de/rund-ums-fahrzeug/auto-kaufen-verkaufen/autokosten/',
             'google' => 'https://www.google.com/search?q="' . urlencode($plateClean) . '"',
-            'halterabfrage' => 'https://www.google.com/search?q="' . urlencode($plateClean) . '"+Halter+OR+Eigentümer+OR+Zulassung',
         ],
-        'info' => 'Halterdaten (KBA) nur über Behörden/Anwalt zugänglich. Hier: öffentlich verfügbare Fahrzeugdaten + Listings.',
     ];
 }
 
