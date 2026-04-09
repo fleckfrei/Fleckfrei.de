@@ -55,8 +55,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_POST['scan_id'])) {
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['scan_email'])) {
     if (!verifyCsrf()) { header('Location: /admin/scanner.php'); exit; }
     $scanEmail = trim($_POST['scan_email']??''); $scanName = trim($_POST['scan_name']??''); $scanPhone = trim($_POST['scan_phone']??''); $scanAddress = trim($_POST['scan_address']??'');
-    $scanDob = trim($_POST['scan_dob']??''); $scanIdNr = trim($_POST['scan_id_nr']??''); $scanPassport = trim($_POST['scan_passport']??''); $scanSerial = trim($_POST['scan_serial']??''); $scanTaxId = trim($_POST['scan_tax_id']??'');
-    $scan = true;
+    $scanSerial = trim($_POST['scan_serial']??''); $scanDob = trim($_POST['scan_dob']??''); $scanIdNr = trim($_POST['scan_id_nr']??''); $scanPassport = trim($_POST['scan_passport']??''); $scanTaxId = trim($_POST['scan_tax_id']??'');
+    $scan = ($scanEmail || $scanName || $scanPhone || $scanSerial || $scanTaxId) ? true : false;
 }
 
 $emailInfo = $scan ? analyzeEmail($scanEmail) : null;
@@ -258,7 +258,7 @@ function socialLinks($name, $email='', $phone='') {
 <div class="bg-white rounded-xl border mb-4">
   <form method="post" class="p-4" id="scanForm">
     <?= csrfField() ?>
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+    <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">E-Mail</label>
         <input type="text" name="scan_email" value="<?= e($scanEmail) ?>" placeholder="name@firma.de" class="w-full px-3 py-2.5 border rounded-lg" id="fEmail"/></div>
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">Name</label>
@@ -267,8 +267,10 @@ function socialLinks($name, $email='', $phone='') {
         <input type="text" name="scan_phone" value="<?= e($scanPhone) ?>" placeholder="+49..." class="w-full px-3 py-2.5 border rounded-lg" id="fPhone"/></div>
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">Adresse</label>
         <input type="text" name="scan_address" value="<?= e($scanAddress) ?>" placeholder="Straße Nr, PLZ Stadt" class="w-full px-3 py-2.5 border rounded-lg" id="fAddress"/></div>
+      <div><label class="block text-xs font-semibold text-gray-500 mb-1">Nummer (HRB/Steuer/Az)</label>
+        <input type="text" name="scan_serial" value="<?= e($scanSerial) ?>" placeholder="132/571/00584" class="w-full px-3 py-2.5 border rounded-lg" id="fSerial"/></div>
       <div class="flex items-end">
-        <button class="w-full px-4 py-2.5 bg-brand text-white font-medium rounded-lg">Quick Scan</button>
+        <button class="w-full px-4 py-2.5 bg-brand text-white font-medium rounded-lg">Scan</button>
       </div>
     </div>
     <!-- Extended identifiers (collapsible) -->
@@ -308,7 +310,9 @@ async function startDeepScan() {
     const name = document.getElementById('fName')?.value || '';
     const phone = document.getElementById('fPhone')?.value || '';
     const address = document.getElementById('fAddress')?.value || '';
-    if (!email && !name && !phone) { alert('Mindestens Email, Name oder Telefon eingeben'); return; }
+    const serial = document.getElementById('fSerial')?.value || '';
+    const taxid = document.getElementById('fTaxId')?.value || '';
+    if (!email && !name && !phone && !serial && !taxid) { alert('Mindestens ein Feld ausfüllen'); return; }
     btn.disabled = true; btn.classList.add('opacity-50');
     prog.classList.remove('hidden'); res.classList.add('hidden'); res.innerHTML = '';
 
@@ -582,82 +586,7 @@ function dsTab(n) {
   </div>
   <?php endif; ?>
 
-  <!-- Comprehensive DB Data -->
-  <?php if (!empty($dbCustomers)): ?>
-  <div class="bg-white rounded-xl border overflow-hidden lg:col-span-2">
-    <div class="px-4 py-2.5 border-b"><h4 class="font-semibold text-sm text-gray-900">Datenbank — Vollständige Übersicht</h4></div>
-    <div class="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <!-- Customer Info -->
-      <div>
-        <h5 class="text-xs font-semibold text-gray-500 uppercase mb-2">Kundendaten</h5>
-        <?php foreach ($dbCustomers as $dc): ?>
-        <div class="space-y-1 text-sm mb-3">
-          <div class="flex justify-between"><span class="text-gray-500">Name</span><a href="/admin/view-customer.php?id=<?= $dc['customer_id'] ?>" class="font-medium text-brand hover:underline"><?= e($dc['name']) ?></a></div>
-          <div class="flex justify-between"><span class="text-gray-500">Typ</span><span class="font-medium"><?= e($dc['customer_type']??'-') ?></span></div>
-          <div class="flex justify-between"><span class="text-gray-500">Email</span><span><?= e($dc['email']??'-') ?></span></div>
-          <div class="flex justify-between"><span class="text-gray-500">Telefon</span><span class="font-mono"><?= e($dc['phone']??'-') ?></span></div>
-          <div class="flex justify-between"><span class="text-gray-500">Status</span><span class="<?= $dc['status']?'text-green-600':'text-red-600' ?>"><?= $dc['status']?'Aktiv':'Inaktiv' ?></span></div>
-          <div class="flex justify-between"><span class="text-gray-500">Jobs</span><span class="font-medium"><?= $dc['jobs'] ?></span></div>
-          <div class="flex justify-between"><span class="text-gray-500">Letzter Job</span><span><?= $dc['last_job'] ? date('d.m.Y', strtotime($dc['last_job'])) : '-' ?></span></div>
-        </div>
-        <?php endforeach; ?>
-        <?php if (!empty($dbAddresses)): ?>
-        <h5 class="text-xs font-semibold text-gray-500 uppercase mb-1 mt-3">Adressen</h5>
-        <?php foreach ($dbAddresses as $a): ?>
-        <div class="text-xs text-gray-600 mb-1"><?= e($a['street'].' '.($a['number']??'').', '.($a['postal_code']??'').' '.($a['city']??'')) ?></div>
-        <?php endforeach; ?>
-        <?php endif; ?>
-      </div>
-      <!-- Services & Invoices -->
-      <div>
-        <?php if (!empty($dbServices)): ?>
-        <h5 class="text-xs font-semibold text-gray-500 uppercase mb-2">Services (<?= count($dbServices) ?>)</h5>
-        <div class="space-y-1 mb-3">
-          <?php foreach ($dbServices as $s): ?>
-          <div class="text-xs flex justify-between border-b border-gray-100 py-1">
-            <span class="truncate mr-2"><?= e($s['title']) ?></span>
-            <span class="text-brand font-medium whitespace-nowrap"><?= number_format($s['total_price'],2,',','.') ?> €</span>
-          </div>
-          <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-        <?php if (!empty($dbInvoices)): ?>
-        <h5 class="text-xs font-semibold text-gray-500 uppercase mb-2">Rechnungen (<?= count($dbInvoices) ?>)</h5>
-        <div class="space-y-1">
-          <?php foreach ($dbInvoices as $inv): ?>
-          <div class="text-xs flex justify-between border-b border-gray-100 py-1">
-            <span><a href="/admin/invoice-pdf.php?id=<?= $inv['inv_id'] ?>" class="text-brand hover:underline"><?= e($inv['invoice_number']) ?></a> <span class="text-gray-400"><?= date('d.m', strtotime($inv['issue_date'])) ?></span></span>
-            <span class="font-medium <?= $inv['invoice_paid']==='yes'?'text-green-600':'text-red-600' ?>"><?= number_format($inv['total_price'],2,',','.') ?> €</span>
-          </div>
-          <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-      </div>
-      <!-- Recent Jobs -->
-      <div>
-        <?php if (!empty($dbJobs)): ?>
-        <h5 class="text-xs font-semibold text-gray-500 uppercase mb-2">Letzte Jobs (<?= count($dbJobs) ?>)</h5>
-        <div class="space-y-1">
-          <?php foreach ($dbJobs as $j):
-            $sc = match($j['job_status']) { 'COMPLETED'=>'text-green-600', 'CANCELLED'=>'text-red-600', default=>'text-blue-600' };
-          ?>
-          <div class="text-xs flex justify-between border-b border-gray-100 py-1">
-            <span class="truncate mr-2"><?= date('d.m', strtotime($j['j_date'])) ?> <?= e($j['stitle']??'') ?></span>
-            <span class="<?= $sc ?> font-medium whitespace-nowrap"><?= $j['j_hours'] ?>h <?= e($j['ename']??'') ?></span>
-          </div>
-          <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-        <?php if (!empty($dbNotes)): ?>
-        <h5 class="text-xs font-semibold text-gray-500 uppercase mb-2 mt-3">Notizen</h5>
-        <?php foreach ($dbNotes as $n): ?>
-        <div class="text-xs text-gray-600 bg-gray-50 rounded-lg p-2 mb-1"><?= e($n['note']??$n['content']??'') ?> <span class="text-gray-400"><?= isset($n['created_at']) ? date('d.m.Y', strtotime($n['created_at'])) : '' ?></span></div>
-        <?php endforeach; ?>
-        <?php endif; ?>
-      </div>
-    </div>
-  </div>
-  <?php endif; ?>
+  <!-- DB data moved to Deep Scan dossier (not shown separately) -->
 
   <!-- Domain/Website -->
   <?php if ($domainInfo): ?>
