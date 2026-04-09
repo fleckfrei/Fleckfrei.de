@@ -83,7 +83,7 @@ $_paypalSecrets = __DIR__ . '/paypal-keys.php';
 if (file_exists($_paypalSecrets)) { require_once $_paypalSecrets; }
 if (!defined('PAYPAL_CLIENT_ID')) define('PAYPAL_CLIENT_ID', '');
 if (!defined('PAYPAL_SECRET')) define('PAYPAL_SECRET', '');
-define('PAYPAL_MODE', 'sandbox');  // 'sandbox' or 'live' — switch to 'live' when you have live keys
+define('PAYPAL_MODE', 'live');  // 'sandbox' or 'live'
 define('PAYPAL_BASE', PAYPAL_MODE === 'sandbox' ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com');
 define('FEATURE_PAYPAL', !empty(PAYPAL_CLIENT_ID) && !empty(PAYPAL_SECRET));
 

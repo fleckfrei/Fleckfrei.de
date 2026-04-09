@@ -37,6 +37,7 @@ function scanDomain($web) {
 }
 
 $scan = null; $scanEmail = ''; $scanName = ''; $scanPhone = ''; $scanAddress = '';
+$scanDob = ''; $scanIdNr = ''; $scanPassport = ''; $scanSerial = ''; $scanTaxId = '';
 
 // Scan by customer ID
 if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_POST['scan_id'])) {
@@ -53,7 +54,9 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_POST['scan_id'])) {
 // Scan manual
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['scan_email'])) {
     if (!verifyCsrf()) { header('Location: /admin/scanner.php'); exit; }
-    $scanEmail = trim($_POST['scan_email']??''); $scanName = trim($_POST['scan_name']??''); $scanPhone = trim($_POST['scan_phone']??''); $scanAddress = trim($_POST['scan_address']??''); $scan = true;
+    $scanEmail = trim($_POST['scan_email']??''); $scanName = trim($_POST['scan_name']??''); $scanPhone = trim($_POST['scan_phone']??''); $scanAddress = trim($_POST['scan_address']??'');
+    $scanDob = trim($_POST['scan_dob']??''); $scanIdNr = trim($_POST['scan_id_nr']??''); $scanPassport = trim($_POST['scan_passport']??''); $scanSerial = trim($_POST['scan_serial']??''); $scanTaxId = trim($_POST['scan_tax_id']??'');
+    $scan = true;
 }
 
 $emailInfo = $scan ? analyzeEmail($scanEmail) : null;
@@ -253,23 +256,220 @@ function socialLinks($name, $email='', $phone='') {
 
 <!-- Scan Form -->
 <div class="bg-white rounded-xl border mb-4">
-  <form method="post" class="p-4">
+  <form method="post" class="p-4" id="scanForm">
     <?= csrfField() ?>
     <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">E-Mail</label>
-        <input type="text" name="scan_email" value="<?= e($scanEmail) ?>" placeholder="name@firma.de" class="w-full px-3 py-2.5 border rounded-lg"/></div>
+        <input type="text" name="scan_email" value="<?= e($scanEmail) ?>" placeholder="name@firma.de" class="w-full px-3 py-2.5 border rounded-lg" id="fEmail"/></div>
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">Name</label>
-        <input type="text" name="scan_name" value="<?= e($scanName) ?>" placeholder="Max Mustermann" class="w-full px-3 py-2.5 border rounded-lg"/></div>
+        <input type="text" name="scan_name" value="<?= e($scanName) ?>" placeholder="Max Mustermann" class="w-full px-3 py-2.5 border rounded-lg" id="fName"/></div>
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">Telefon</label>
-        <input type="text" name="scan_phone" value="<?= e($scanPhone) ?>" placeholder="+49..." class="w-full px-3 py-2.5 border rounded-lg"/></div>
+        <input type="text" name="scan_phone" value="<?= e($scanPhone) ?>" placeholder="+49..." class="w-full px-3 py-2.5 border rounded-lg" id="fPhone"/></div>
       <div><label class="block text-xs font-semibold text-gray-500 mb-1">Adresse</label>
-        <input type="text" name="scan_address" value="<?= e($scanAddress) ?>" placeholder="Straße Nr, PLZ Stadt" class="w-full px-3 py-2.5 border rounded-lg"/></div>
+        <input type="text" name="scan_address" value="<?= e($scanAddress) ?>" placeholder="Straße Nr, PLZ Stadt" class="w-full px-3 py-2.5 border rounded-lg" id="fAddress"/></div>
       <div class="flex items-end">
-        <button class="w-full px-4 py-2.5 bg-brand text-white font-medium rounded-lg">Scan starten</button>
+        <button class="w-full px-4 py-2.5 bg-brand text-white font-medium rounded-lg">Quick Scan</button>
       </div>
     </div>
+    <!-- Extended identifiers (collapsible) -->
+    <details class="mt-3" id="extFields">
+      <summary class="text-xs font-semibold text-gray-500 cursor-pointer hover:text-brand">+ Erweiterte Identifier (Geburtsdatum, Ausweis, Steuer-Nr...)</summary>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-2">
+        <div><label class="block text-xs text-gray-400 mb-1">Geburtsdatum</label>
+          <input type="text" name="scan_dob" value="<?= e($scanDob) ?>" placeholder="TT.MM.JJJJ" class="w-full px-3 py-2 border rounded-lg text-sm" id="fDob"/></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Ausweis-Nr</label>
+          <input type="text" name="scan_id_nr" value="<?= e($scanIdNr) ?>" placeholder="T220001293" class="w-full px-3 py-2 border rounded-lg text-sm" id="fIdNr"/></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Reisepass-Nr</label>
+          <input type="text" name="scan_passport" value="<?= e($scanPassport) ?>" placeholder="C01X00T47" class="w-full px-3 py-2 border rounded-lg text-sm" id="fPassport"/></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Serien/Gewerbe-Nr</label>
+          <input type="text" name="scan_serial" value="<?= e($scanSerial) ?>" placeholder="GewA-2024-12345" class="w-full px-3 py-2 border rounded-lg text-sm" id="fSerial"/></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Steuer/USt-IdNr</label>
+          <input type="text" name="scan_tax_id" value="<?= e($scanTaxId) ?>" placeholder="DE123456789" class="w-full px-3 py-2 border rounded-lg text-sm" id="fTaxId"/></div>
+      </div>
+    </details>
   </form>
 </div>
+
+<!-- Deep Scan Button + Results -->
+<div class="mb-4">
+  <button onclick="startDeepScan()" id="deepScanBtn" class="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-700 text-white font-bold rounded-xl hover:opacity-90 flex items-center justify-center gap-2 <?= $scan ? '' : 'opacity-50' ?>">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+    Deep Scan — KI-Korrelation + Dark Web + Handelsregister + Telegram
+  </button>
+  <div id="deepScanProgress" class="hidden mt-2 p-3 bg-purple-50 rounded-lg text-sm text-purple-800">
+    <div class="flex items-center gap-2"><div class="animate-spin w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full"></div><span id="deepScanStatus">Scan läuft... 20+ Datenquellen werden abgefragt</span></div>
+  </div>
+  <div id="deepScanResults" class="hidden mt-3"></div>
+</div>
+
+<script>
+async function startDeepScan() {
+    const btn = document.getElementById('deepScanBtn');
+    const prog = document.getElementById('deepScanProgress');
+    const res = document.getElementById('deepScanResults');
+    const email = document.getElementById('fEmail')?.value || '';
+    const name = document.getElementById('fName')?.value || '';
+    const phone = document.getElementById('fPhone')?.value || '';
+    const address = document.getElementById('fAddress')?.value || '';
+    if (!email && !name && !phone) { alert('Mindestens Email, Name oder Telefon eingeben'); return; }
+    btn.disabled = true; btn.classList.add('opacity-50');
+    prog.classList.remove('hidden'); res.classList.add('hidden'); res.innerHTML = '';
+
+    try {
+        const resp = await fetch('/api/osint-deep.php', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                email, name, phone, address,
+                dob: document.getElementById('fDob')?.value || '',
+                id_number: document.getElementById('fIdNr')?.value || '',
+                passport: document.getElementById('fPassport')?.value || '',
+                serial: document.getElementById('fSerial')?.value || '',
+                tax_id: document.getElementById('fTaxId')?.value || '',
+            })
+        });
+        const data = await resp.json();
+        prog.classList.add('hidden');
+        if (data.success) renderDeepResults(data.data, res);
+        else res.innerHTML = '<div class="p-3 bg-red-50 text-red-700 rounded-lg">Fehler: '+(data.error||'Unbekannt')+'</div>';
+        res.classList.remove('hidden');
+    } catch(e) {
+        prog.classList.add('hidden');
+        res.innerHTML = '<div class="p-3 bg-red-50 text-red-700 rounded-lg">Netzwerkfehler: '+e.message+'</div>';
+        res.classList.remove('hidden');
+    }
+    btn.disabled = false; btn.classList.remove('opacity-50');
+}
+
+function renderDeepResults(d, container) {
+    let html = '';
+
+    // Dossier + Verification
+    if (d.dossier) {
+        const dos = d.dossier;
+        const vf = dos.verification || {};
+        const riskColors = {LOW:'green',MEDIUM:'yellow',HIGH:'red'};
+        const rc = riskColors[dos.risk_level] || 'gray';
+        html += `<div class="bg-white rounded-xl border mb-3 overflow-hidden">
+            <div class="bg-gradient-to-r from-gray-800 to-gray-900 text-white p-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-bold text-lg">Intelligence Dossier</h3>
+                    <div class="flex gap-3">
+                        <span class="px-3 py-1 rounded-full text-sm font-bold bg-${rc}-500/20 text-${rc}-300">Risiko: ${dos.risk_level}</span>
+                        ${vf.overall_confidence !== undefined ? `<span class="px-3 py-1 rounded-full text-sm font-bold bg-blue-500/20 text-blue-300">Verifikation: ${vf.overall_confidence}% (${vf.verified_count}/${vf.total_count} Module)</span>` : ''}
+                    </div>
+                </div>
+                <div class="text-gray-400 text-xs mt-1">${dos.data_sources?.length || 0} Datenquellen · ${d._meta?.scan_time_seconds || '?'}s · ${d._meta?.modules_run || '?'} Module</div>
+            </div>
+            <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><h4 class="font-semibold text-sm text-gray-600 mb-2">Erkenntnisse</h4>
+                    <ul class="text-sm space-y-1">${(dos.findings||[]).map(f=>'<li class="flex gap-1"><span class="text-green-500">&#10003;</span>'+f+'</li>').join('')}</ul></div>
+                <div><h4 class="font-semibold text-sm text-gray-600 mb-2">Risikofaktoren</h4>
+                    <ul class="text-sm space-y-1">${(dos.risk_factors||[]).map(f=>'<li class="flex gap-1"><span class="text-red-500">&#9888;</span>'+f+'</li>').join('')}</ul>
+                    ${vf.advice?.length ? '<div class="mt-3 text-xs text-gray-400"><b>Tipp:</b> '+vf.advice.join(' · ')+'</div>' : ''}</div>
+            </div>
+        </div>`;
+    }
+
+    // Correlation
+    if (d.correlation) {
+        const cor = d.correlation;
+        const confColors = {LOW:'gray',MEDIUM:'yellow',HIGH:'green'};
+        const cc = confColors[cor.confidence] || 'gray';
+        html += `<div class="bg-white rounded-xl border mb-3 p-4">
+            <h3 class="font-bold text-sm mb-2 flex items-center gap-2">Korrelations-Engine <span class="px-2 py-0.5 rounded text-xs bg-${cc}-100 text-${cc}-800">${cor.confidence} (Score: ${cor.score})</span> <span class="text-gray-400 text-xs">${cor.total_identifiers} Identifier</span></h3>
+            ${cor.connections?.length ? '<div class="space-y-1 mb-3">'+cor.connections.map(c=>`<div class="text-sm px-2 py-1 rounded ${c.type.includes('warning')||c.type.includes('exposure')?'bg-red-50 text-red-700':'bg-blue-50 text-blue-700'}">${c.detail}</div>`).join('')+'</div>' : ''}
+            ${cor.identity_graph?.length ? '<div class="text-xs text-gray-500"><b>Identity Graph:</b> '+cor.identity_graph.map(ig=>`<a href="${ig.url}" target="_blank" class="text-brand hover:underline">${ig.platform}:${ig.username}</a>`).join(' · ')+'</div>' : ''}
+        </div>`;
+    }
+
+    // Deep Intel
+    if (d.deep_intel) {
+        const di = d.deep_intel;
+        html += '<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-3">Deep Intelligence</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
+        if (di.gravatar?.found) html += `<div class="p-3 bg-purple-50 rounded-lg"><b class="text-xs text-purple-700">Gravatar</b><div class="flex items-center gap-2 mt-1"><img src="${di.gravatar.avatar}" class="w-10 h-10 rounded-full"><div><div class="text-sm font-medium">${di.gravatar.display_name||'?'}</div><div class="text-xs text-gray-500">${di.gravatar.about||''} ${di.gravatar.location||''}</div></div></div>${di.gravatar.accounts?.length?'<div class="text-xs mt-1 text-gray-500">Accounts: '+di.gravatar.accounts.map(a=>`<a href="${a.url}" target="_blank" class="text-brand">${a.shortname}</a>`).join(', ')+'</div>':''}</div>`;
+        if (di.keybase?.found) html += `<div class="p-3 bg-green-50 rounded-lg"><b class="text-xs text-green-700">Keybase</b><div class="text-sm mt-1">${di.keybase.full_name||di.keybase.username} ${di.keybase.has_pgp?'<span class="text-xs bg-green-200 px-1 rounded">PGP</span>':''}</div><div class="text-xs text-gray-500">${di.keybase.bio||''}</div>${di.keybase.verified_proofs?.length?'<div class="text-xs mt-1">Proofs: '+di.keybase.verified_proofs.map(p=>`<a href="${p.url}" target="_blank" class="text-brand">${p.service}</a>`).join(', ')+'</div>':''}</div>`;
+        if (di.telegram_profiles?.length) html += `<div class="p-3 bg-blue-50 rounded-lg"><b class="text-xs text-blue-700">Telegram</b>${di.telegram_profiles.map(t=>`<div class="text-sm mt-1"><a href="${t.url}" target="_blank" class="text-brand">@${t.username}</a> ${t.display_name||''}</div>`).join('')}</div>`;
+        if (di.impressum_mentions) html += `<div class="p-3 bg-amber-50 rounded-lg"><b class="text-xs text-amber-700">Impressum (${di.impressum_mentions.count})</b>${di.impressum_mentions.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-brand hover:underline">${r.title}</a></div>`).join('')}</div>`;
+        if (di.paste_leaks) html += `<div class="p-3 bg-red-50 rounded-lg"><b class="text-xs text-red-700">Paste-Leaks (${di.paste_leaks.count})</b>${di.paste_leaks.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-red-600 hover:underline">${r.title}</a></div>`).join('')}</div>`;
+        if (di.insolvency) html += `<div class="p-3 bg-red-50 rounded-lg border border-red-200"><b class="text-xs text-red-700">INSOLVENZ (${di.insolvency.count})</b>${di.insolvency.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-red-600">${r.title}</a><div class="text-gray-500">${r.snippet?.substring(0,100)||''}</div></div>`).join('')}</div>`;
+        if (di.leaked_docs) html += `<div class="p-3 bg-orange-50 rounded-lg"><b class="text-xs text-orange-700">Dokument-Leaks (${di.leaked_docs.count})</b>${di.leaked_docs.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-brand">${r.title}</a></div>`).join('')}</div>`;
+        if (di.forum_mentions) html += `<div class="p-3 bg-gray-50 rounded-lg"><b class="text-xs text-gray-700">Forum-Erwähnungen (${di.forum_mentions.count})</b>${di.forum_mentions.results.slice(0,3).map(r=>`<div class="text-xs mt-1"><a href="${r.url}" target="_blank" class="text-brand">${r.title}</a></div>`).join('')}</div>`;
+        if (di.insolvency_links) html += `<div class="p-3 bg-gray-50 rounded-lg"><b class="text-xs text-gray-700">Register-Links</b><div class="text-xs mt-1 space-y-1">${Object.entries(di.insolvency_links).map(([k,v])=>`<a href="${v}" target="_blank" class="block text-brand hover:underline">${k}</a>`).join('')}</div></div>`;
+        html += '</div></div>';
+    }
+
+    // Verification Modules
+    if (d.dossier?.verification?.modules) {
+        const mods = d.dossier.verification.modules;
+        html += '<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Verifikation pro Modul</h3><div class="space-y-1">';
+        for (const [mod, info] of Object.entries(mods)) {
+            if (!info.confidence) continue;
+            const matchColors = {EXACT:'green',FUZZY:'yellow',HEURISTIC:'orange'};
+            const mc = matchColors[info.match] || 'gray';
+            html += `<div class="flex items-center gap-2 text-xs"><span class="w-32 font-medium">${mod}</span><div class="flex-1 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-${mc}-500" style="width:${info.confidence}%"></div></div><span class="w-10 text-right">${info.confidence}%</span><span class="px-1 py-0.5 rounded text-[10px] bg-${mc}-100 text-${mc}-800">${info.match}</span></div>`;
+        }
+        html += '</div></div>';
+    }
+
+    // Name Permutations + Search Results
+    if (d.permutation_search) {
+        const ps = d.permutation_search;
+        const permKeys = Object.keys(ps);
+        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Name-Permutationen Suche (${permKeys.length} Varianten)</h3><div class="space-y-2">`;
+        for (const [perm, data] of Object.entries(ps)) {
+            html += `<details class="border rounded-lg"><summary class="px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 flex justify-between"><span class="font-medium">"${perm}"</span><span class="text-xs text-gray-400">${data.count} Treffer</span></summary><div class="px-3 pb-2 space-y-1">${data.results.map(r=>`<div class="text-xs"><a href="${r.url}" target="_blank" class="text-brand hover:underline">${r.title}</a><div class="text-gray-400">${r.snippet?.substring(0,120)||''}</div></div>`).join('')}</div></details>`;
+        }
+        html += '</div></div>';
+    }
+    if (d.name_permutations) {
+        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Alle Name-Variationen (${d.name_permutations.count})</h3><div class="flex flex-wrap gap-1">${d.name_permutations.variations.map(v=>`<span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs">"${v}"</span>`).join('')}</div></div>`;
+    }
+
+    // Generated Usernames
+    if (d.generated_usernames) {
+        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Generierte Usernames (${d.generated_usernames.count})</h3><div class="flex flex-wrap gap-1">${d.generated_usernames.usernames.map(u=>`<span class="px-2 py-0.5 bg-gray-100 rounded text-xs font-mono">${u}</span>`).join('')}</div></div>`;
+    }
+
+    // Self-Learning Algorithm
+    if (d.learning?.past_scans > 0) {
+        const l = d.learning;
+        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2 flex items-center gap-2">Selbstlernender Algorithmus <span class="text-xs text-gray-400">${l.past_scans} vergangene Scans analysiert</span></h3>`;
+        if (l.detected_person_type) html += `<div class="mb-2 px-3 py-2 bg-brand/5 rounded-lg text-sm"><b>Erkannter Typ:</b> ${l.detected_person_type} — ${l.type_advice||''}</div>`;
+        if (Object.keys(l.source_effectiveness||{}).length) {
+            html += '<div class="mb-2"><b class="text-xs text-gray-500">Quellen-Effektivität (gelernt):</b><div class="mt-1 space-y-1">';
+            for (const [mod, stats] of Object.entries(l.source_effectiveness)) {
+                const color = stats.hit_rate >= 70 ? 'green' : stats.hit_rate >= 40 ? 'yellow' : 'red';
+                html += `<div class="flex items-center gap-2 text-xs"><span class="w-36 font-mono">${mod}</span><div class="flex-1 bg-gray-100 rounded-full h-1.5"><div class="h-1.5 rounded-full bg-${color}-500" style="width:${stats.hit_rate}%"></div></div><span class="w-16 text-right">${stats.hit_rate}% (${stats.hits}/${stats.total})</span></div>`;
+            }
+            html += '</div></div>';
+        }
+        if (l.recommendations?.length) {
+            html += '<div class="text-xs text-gray-500 space-y-1">' + l.recommendations.map(r=>`<div>${r}</div>`).join('') + '</div>';
+        }
+        html += '</div>';
+    }
+
+    // Handelsregister
+    if (d.handelsregister) {
+        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Handelsregister (${d.handelsregister.count})</h3><div class="space-y-2">${d.handelsregister.companies.map(c=>`<div class="text-sm p-2 bg-gray-50 rounded"><b>${c.name}</b><div class="text-xs text-gray-500">${c.register_type} ${c.register_number} · ${c.register_court} · ${c.office} · ${c.status}</div></div>`).join('')}</div>${d.handelsregister.links?'<div class="mt-2 text-xs">'+Object.entries(d.handelsregister.links).map(([k,v])=>`<a href="${v}" target="_blank" class="text-brand hover:underline mr-3">${k}</a>`).join('')+'</div>':''}</div>`;
+    }
+
+    // BGP/ASN + DNS Services
+    if (d.bgp_asn || d.dns_services) {
+        html += '<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Netzwerk & Infrastruktur</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
+        if (d.bgp_asn) html += `<div class="p-2 bg-gray-50 rounded text-sm"><b>BGP/ASN:</b> AS${d.bgp_asn.asn} — ${d.bgp_asn.asn_name}<div class="text-xs text-gray-500">IP: ${d.bgp_asn.ip} · Prefix: ${d.bgp_asn.prefix} · Land: ${d.bgp_asn.country}</div></div>`;
+        if (d.dns_services?.detected_services?.length) html += `<div class="p-2 bg-gray-50 rounded text-sm"><b>Dienste:</b> ${d.dns_services.detected_services.join(', ')}<div class="text-xs text-gray-500">${d.dns_services.total_records} SRV-Records</div></div>`;
+        html += '</div></div>';
+    }
+
+    // Hard Identifiers
+    if (d.hard_identifiers?.count > 0) {
+        html += `<div class="bg-white rounded-xl border mb-3 p-4"><h3 class="font-bold text-sm mb-2">Genutzte Identifier</h3><div class="flex flex-wrap gap-2">${d.hard_identifiers.provided.map(id=>`<span class="px-2 py-1 bg-brand/10 text-brand rounded text-xs font-medium">${id}</span>`).join('')}</div></div>`;
+    }
+
+    container.innerHTML = html;
+}
+</script>
 
 <?php if ($scan): ?>
 <!-- Person Overview -->
