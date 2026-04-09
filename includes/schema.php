@@ -109,3 +109,51 @@ try {
     $cols = $db->query("SHOW COLUMNS FROM jobs LIKE 'ical_uid'")->fetchAll();
     if (empty($cols)) { $db->exec("ALTER TABLE jobs ADD COLUMN ical_uid VARCHAR(255) DEFAULT NULL, ADD INDEX idx_ical_uid (ical_uid)"); }
 } catch (Exception $e) {}
+
+// Dynamic Pricing — Self-Learning Algorithm
+$dbLocal->exec("CREATE TABLE IF NOT EXISTS pricing_rules (
+    pr_id INT AUTO_INCREMENT PRIMARY KEY,
+    rule_type ENUM('base','season','demand','weekend','special') DEFAULT 'base',
+    name VARCHAR(255) DEFAULT '',
+    multiplier DECIMAL(5,3) DEFAULT 1.000,
+    start_date DATE DEFAULT NULL,
+    end_date DATE DEFAULT NULL,
+    day_of_week VARCHAR(20) DEFAULT NULL,
+    min_occupancy INT DEFAULT NULL,
+    max_occupancy INT DEFAULT NULL,
+    active TINYINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$dbLocal->exec("CREATE TABLE IF NOT EXISTS pricing_history (
+    ph_id INT AUTO_INCREMENT PRIMARY KEY,
+    service_id INT DEFAULT NULL,
+    customer_id INT DEFAULT NULL,
+    base_price DECIMAL(10,2) DEFAULT 0,
+    final_price DECIMAL(10,2) DEFAULT 0,
+    multiplier DECIMAL(5,3) DEFAULT 1.000,
+    rules_applied TEXT DEFAULT NULL,
+    occupancy_pct INT DEFAULT 0,
+    job_date DATE DEFAULT NULL,
+    accepted TINYINT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_date (job_date),
+    INDEX idx_service (service_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Insert default pricing rules if empty
+try {
+    $prCount = $dbLocal->query("SELECT COUNT(*) FROM pricing_rules")->fetchColumn();
+    if (!$prCount) {
+        $dbLocal->exec("INSERT INTO pricing_rules (rule_type, name, multiplier) VALUES
+            ('base', 'Standard', 1.000),
+            ('weekend', 'Wochenende +15%', 1.150),
+            ('season', 'Sommer (Jun-Aug) +10%', 1.100),
+            ('season', 'Weihnachten (Dez) +25%', 1.250),
+            ('demand', 'Hohe Auslastung >80% +20%', 1.200),
+            ('demand', 'Niedrige Auslastung <30% -10%', 0.900),
+            ('special', 'Neukunde -5%', 0.950),
+            ('special', 'Stammkunde >10 Jobs -3%', 0.970)
+        ");
+    }
+} catch (Exception $e) {}
