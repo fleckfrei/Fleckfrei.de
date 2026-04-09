@@ -650,16 +650,28 @@ function dsTab(n) {
   <?php endif; ?>
 
   <!-- Phone Intelligence -->
-  <?php if ($scanPhone): $ph = preg_replace('/[^+0-9]/','',$scanPhone); $isDE = str_starts_with($ph,'+49')||str_starts_with($ph,'049')||str_starts_with($ph,'0'); ?>
+  <?php if ($scanPhone):
+    $ph = preg_replace('/[^+0-9]/','',$scanPhone);
+    // Normalize: 4915... → +4915..., 015... → +4915...
+    if (!str_starts_with($ph, '+') && str_starts_with($ph, '00')) $ph = '+' . substr($ph, 2);
+    elseif (!str_starts_with($ph, '+') && str_starts_with($ph, '0')) $ph = '+49' . substr($ph, 1);
+    elseif (!str_starts_with($ph, '+') && strlen($ph) > 10) $ph = '+' . $ph;
+    // Country detection
+    $phCountries = ['+49'=>'Deutschland','+40'=>'Rumänien','+373'=>'Moldawien','+41'=>'Schweiz','+43'=>'Österreich','+48'=>'Polen','+420'=>'Tschechien','+36'=>'Ungarn','+31'=>'Niederlande','+33'=>'Frankreich','+39'=>'Italien','+34'=>'Spanien','+44'=>'UK','+1'=>'USA/Kanada','+90'=>'Türkei','+380'=>'Ukraine','+7'=>'Russland'];
+    $phCountry = 'International'; $phCC = '';
+    foreach ($phCountries as $pfx => $cname) { if (str_starts_with($ph, $pfx)) { $phCountry = $cname; $phCC = $pfx; break; } }
+    $isDE = ($phCC === '+49'); $isRO = ($phCC === '+40');
+    $phLocal = $isDE ? '0' . substr($ph, 3) : $ph;
+    $phInt = ltrim($ph, '+');
+  ?>
   <div class="bg-white rounded-xl border overflow-hidden">
     <div class="px-4 py-2.5 border-b"><h4 class="font-semibold text-sm text-gray-900">Telefon-Analyse</h4></div>
     <div class="p-4 space-y-2 text-sm">
-      <div class="flex justify-between"><span class="text-gray-500">Nummer</span><span class="font-mono font-medium"><?= e($scanPhone) ?></span></div>
-      <div class="flex justify-between"><span class="text-gray-500">Format</span><span><?= $isDE?'Deutschland (+49)':'International' ?></span></div>
-      <?php $phLocal = str_replace('+49','0',$ph); ?>
+      <div class="flex justify-between"><span class="text-gray-500">Nummer</span><span class="font-mono font-medium"><?= e($ph) ?></span></div>
+      <div class="flex justify-between"><span class="text-gray-500">Land</span><span class="font-medium"><?= $phCountry ?> (<?= $phCC ?>)</span></div>
       <div class="grid grid-cols-4 gap-2 mt-3">
-        <a href="https://wa.me/<?= ltrim($ph,'+') ?>" target="_blank" class="px-3 py-2 border border-gray-200 rounded-lg text-xs font-medium text-center text-gray-700 hover:bg-gray-50">WhatsApp</a>
-        <a href="https://t.me/+<?= ltrim($ph,'+') ?>" target="_blank" class="px-3 py-2 border border-gray-200 rounded-lg text-xs font-medium text-center text-gray-700 hover:bg-gray-50">Telegram</a>
+        <a href="https://wa.me/<?= $phInt ?>" target="_blank" class="px-3 py-2 border border-gray-200 rounded-lg text-xs font-medium text-center text-gray-700 hover:bg-gray-50">WhatsApp</a>
+        <a href="https://t.me/+<?= $phInt ?>" target="_blank" class="px-3 py-2 border border-gray-200 rounded-lg text-xs font-medium text-center text-gray-700 hover:bg-gray-50">Telegram</a>
         <a href="sms:<?= $ph ?>" class="px-3 py-2 border border-gray-200 rounded-lg text-xs font-medium text-center text-gray-700 hover:bg-gray-50">SMS</a>
         <a href="tel:<?= $ph ?>" class="px-3 py-2 bg-brand text-white rounded-lg text-xs font-medium text-center">Anrufen</a>
       </div>
@@ -667,16 +679,14 @@ function dsTab(n) {
         <?php if ($isDE): ?>
         <a href="https://www.dasoertliche.de/Themen/R%C3%BCckw%C3%A4rtssuche/<?= urlencode($phLocal) ?>" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Das Örtliche</a>
         <a href="https://www.11880.com/suche/<?= urlencode($phLocal) ?>/bundesweit" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">11880</a>
+        <?php elseif ($isRO): ?>
+        <a href="https://www.paginiaurii.ro/cautare/<?= urlencode($phInt) ?>" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Pagini Aurii</a>
+        <a href="https://www.olx.ro/oferte/q-<?= urlencode($ph) ?>/" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">OLX.ro</a>
         <?php endif; ?>
-        <a href="https://www.tellows.de/num/<?= urlencode($phLocal) ?>" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Tellows</a>
-        <a href="https://www.google.com/search?q=<?= urlencode($ph) ?>" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Google Nr.</a>
-        <a href="https://www.google.com/search?q=<?= urlencode($phLocal) ?>" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Google Lokal</a>
-        <a href="https://www.google.com/search?q=<?= urlencode($ph) ?>+OR+<?= urlencode($phLocal) ?>+Bewertung+OR+Spam" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Bewertung</a>
-      </div>
-      <!-- WhatsApp OSINT Check -->
-      <div class="mt-3 border-t pt-3">
-        <button onclick="checkWhatsApp('<?= ltrim($ph,'+') ?>')" class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50" id="waCheckBtn">WhatsApp Profil prüfen</button>
-        <div id="waResult" class="hidden mt-2 p-3 bg-gray-50 rounded-lg text-xs"></div>
+        <a href="https://www.tellows.de/num/<?= urlencode($ph) ?>" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Tellows</a>
+        <a href="https://www.google.com/search?q=%22<?= urlencode($ph) ?>%22" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Google</a>
+        <a href="https://sync.me/search/?number=<?= urlencode($ph) ?>" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Sync.me</a>
+        <a href="https://www.truecaller.com/search/<?= $isDE?'de':($isRO?'ro':'de') ?>/<?= urlencode($phInt) ?>" target="_blank" class="px-2 py-1.5 border border-gray-200 rounded-lg text-xs text-center text-gray-600 hover:bg-gray-50">Truecaller</a>
       </div>
     </div>
   </div>
