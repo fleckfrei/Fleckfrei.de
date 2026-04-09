@@ -370,7 +370,16 @@ async function startDeepScan() {
         document.getElementById('deepScanBar').style.width = '100%';
         document.getElementById('deepScanStatus').textContent = 'Fertig!';
         setTimeout(() => prog.classList.add('hidden'), 500);
-        if (data.success) renderDeepResults(data.data, res);
+        if (data.success) {
+            renderDeepResults(data.data, res);
+            // Also populate the main deep results section
+            var mainRes = document.getElementById('deepResults');
+            var mainCards = document.getElementById('deepCards');
+            if (mainRes && mainCards) {
+                renderDeepCards(data.data, mainCards);
+                mainRes.classList.remove('hidden');
+            }
+        }
         else res.innerHTML = '<div class="p-3 bg-red-50 text-red-700 rounded-lg">Fehler: '+(data.error||'Unbekannt')+'</div>';
         res.classList.remove('hidden');
     } catch(e) {
@@ -388,13 +397,17 @@ function renderDeepResults(d, container) {
     const vf = dos.verification || {};
     const rc = {LOW:'green',MEDIUM:'yellow',HIGH:'red'}[dos.risk_level] || 'gray';
 
-    // === TOP BAR: Risiko + Verifikation + Scan-Info ===
+    // === TOP BAR: Risiko + Verifikation + Scan-Info + Quick Actions ===
+    const totalFindings = (dos.findings?.length||0) + (d.holehe?.count||0) + (d.maigret?.found||0) + (d.socialscan?.taken_on||0);
     html += `<div class="bg-white rounded-xl border mb-3 p-4">
         <div class="flex items-center gap-3 flex-wrap">
             <span class="px-3 py-1.5 rounded-lg text-sm font-bold bg-${rc}-100 text-${rc}-800">Risiko: ${dos.risk_level||'?'}</span>
             ${vf.overall_confidence !== undefined ? `<span class="px-3 py-1.5 rounded-lg text-sm font-bold bg-blue-100 text-blue-800">${vf.overall_confidence}% verifiziert</span>` : ''}
+            ${totalFindings > 0 ? `<span class="px-3 py-1.5 rounded-lg text-sm font-bold bg-green-100 text-green-800">${totalFindings} Treffer</span>` : ''}
             <span class="text-xs text-gray-400 ml-auto">${d._meta?.scan_time_seconds||'?'}s · ${d._meta?.modules_run||'?'} Module · ${dos.data_sources?.length||0} Quellen</span>
         </div>
+        ${dos.findings?.length ? `<div class="mt-3 pt-3 border-t"><div class="grid grid-cols-1 sm:grid-cols-2 gap-1">${dos.findings.slice(0,6).map(f=>`<div class="flex items-start gap-1.5 text-sm"><span class="text-green-500 shrink-0 mt-0.5">&#10003;</span><span>${f}</span></div>`).join('')}</div></div>` : ''}
+        ${dos.risk_factors?.length ? `<div class="mt-2"><div class="grid grid-cols-1 sm:grid-cols-2 gap-1">${dos.risk_factors.map(f=>`<div class="flex items-start gap-1.5 text-sm text-red-700"><span class="shrink-0 mt-0.5">&#9888;</span><span>${f}</span></div>`).join('')}</div></div>` : ''}
     </div>`;
 
     // === TABS ===
@@ -576,7 +589,16 @@ function renderDeepResults(d, container) {
             fundeItems.push(`<div class="p-2 ${isRisk?'bg-red-50 border border-red-200':'bg-gray-50'} rounded"><div class="text-xs font-semibold ${isRisk?'text-red-700':'text-gray-700'}">${label} (${data.count})</div>${data.results.slice(0,3).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block hover:underline truncate">${r.title}</a>`).join('')}</div>`);
         }
     }
-    html += fundeItems.length ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-2">${fundeItems.join('')}</div>` : '<div class="text-sm text-gray-400">Keine besonderen Funde</div>';
+    // Prioritize items with actual data (not just links)
+    const dataItems = fundeItems.filter(f => !f.includes('hover:underline') || f.includes('bg-red-900') || f.includes('bg-indigo-50') || f.includes('Holehe') || f.includes('Maigret') || f.includes('PhoneInfoga') || f.includes('Gravatar') || f.includes('Telegram') || f.includes('WHOIS') || f.includes('Impressum'));
+    const linkItems = fundeItems.filter(f => !dataItems.includes(f));
+    if (dataItems.length) {
+        html += `<div class="mb-3"><h4 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Verifizierte Funde (${dataItems.length})</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-2">${dataItems.join('')}</div></div>`;
+    }
+    if (linkItems.length) {
+        html += `<details class="mt-2"><summary class="text-xs font-semibold text-gray-400 cursor-pointer hover:text-gray-600">+ ${linkItems.length} weitere Suchergebnisse</summary><div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">${linkItems.join('')}</div></details>`;
+    }
+    if (!fundeItems.length) html += '<div class="text-sm text-gray-400">Keine besonderen Funde</div>';
     html += '</div>';
 
     // --- TAB 2: Suche (Permutationen + Usernames) ---
@@ -620,6 +642,52 @@ function dsTab(n) {
         b.classList.toggle('text-gray-500', i!==n);
     });
     document.querySelectorAll('.ds-panel').forEach((p,i) => p.classList.toggle('hidden', i!==n));
+}
+function renderDeepCards(data, container) {
+    container.innerHTML = '';
+    var d = data;
+    var cards = [];
+    if(d.holehe && d.holehe.registered_on && d.holehe.registered_on.length) {
+        cards.push('<div class="bg-violet-50 rounded-xl border border-violet-200 p-4"><h4 class="font-bold text-sm mb-2 text-violet-700">Email registriert auf '+d.holehe.count+' Sites</h4><div class="flex flex-wrap gap-1">'+d.holehe.registered_on.map(function(s){return '<span class="px-2 py-0.5 bg-violet-100 text-violet-800 rounded text-xs font-medium">'+s+'</span>';}).join('')+'</div></div>');
+    }
+    if(d.maigret && d.maigret.profiles && d.maigret.profiles.length) {
+        cards.push('<div class="bg-emerald-50 rounded-xl border border-emerald-200 p-4"><h4 class="font-bold text-sm mb-2 text-emerald-700">Social Profile: '+d.maigret.found+' gefunden</h4><div class="space-y-1">'+d.maigret.profiles.slice(0,10).map(function(p){return '<a href="'+p.url+'" target="_blank" class="flex items-center justify-between text-sm py-0.5 hover:bg-emerald-100 px-1 rounded"><span class="font-medium">'+p.site+'</span><span class="text-xs text-emerald-600">'+p.url.split('/').pop()+'</span></a>';}).join('')+(d.maigret.found>10?'<div class="text-xs text-gray-400 mt-1">+'+(d.maigret.found-10)+' weitere</div>':'')+'</div></div>');
+    }
+    if(d.phoneinfoga && d.phoneinfoga.country) {
+        var pi = d.phoneinfoga;
+        cards.push('<div class="bg-teal-50 rounded-xl border border-teal-200 p-4"><h4 class="font-bold text-sm mb-2 text-teal-700">Telefon-Analyse (VPS)</h4><div class="space-y-1 text-sm"><div class="flex justify-between"><span class="text-gray-500">Land</span><span class="font-medium">'+pi.country+'</span></div><div class="flex justify-between"><span class="text-gray-500">Carrier</span><span>'+(pi.carrier||'?')+'</span></div><div class="flex justify-between"><span class="text-gray-500">Typ</span><span>'+(pi.type||'?')+'</span></div>'+(pi.international?'<div class="text-xs text-gray-400">'+pi.international+'</div>':'')+'</div></div>');
+    }
+    if(d.socialscan && d.socialscan.platforms && d.socialscan.platforms.length) {
+        cards.push('<div class="bg-cyan-50 rounded-xl border border-cyan-200 p-4"><h4 class="font-bold text-sm mb-2 text-cyan-700">SocialScan: '+d.socialscan.taken_on+' Plattformen</h4><div class="flex flex-wrap gap-1">'+d.socialscan.platforms.slice(0,20).map(function(p){return '<span class="px-2 py-0.5 '+(p.taken?'bg-green-100 text-green-800':'bg-gray-100 text-gray-500')+' rounded text-xs">'+p.platform+(p.taken?' ✓':'')+'</span>';}).join('')+'</div></div>');
+    }
+    if(d.vulture_web) {
+        for (var vkey in d.vulture_web) {
+            var vdata = d.vulture_web[vkey];
+            if (vkey.indexOf('intelx_')===0 && vdata.results && vdata.results.length) {
+                cards.push('<div class="bg-red-900 text-white rounded-xl p-4"><h4 class="font-bold text-sm mb-2 text-red-300">Intelligence X: '+vdata.count+' Treffer</h4><div class="space-y-0.5">'+vdata.results.slice(0,5).map(function(r){return '<div class="text-xs"><span class="text-red-400">'+r.type+':</span> '+r.value+'</div>';}).join('')+'</div></div>');
+            }
+            if (vdata.answer) {
+                cards.push('<div class="bg-indigo-50 rounded-xl border border-indigo-200 p-4"><h4 class="font-bold text-sm mb-2 text-indigo-700">AI Recherche</h4><div class="text-sm text-gray-700 whitespace-pre-line">'+vdata.answer.substring(0,300)+(vdata.answer.length>300?'...':'')+'</div>'+(vdata.citations && vdata.citations.length?'<div class="mt-2 text-xs text-gray-400">'+vdata.citations.slice(0,3).map(function(c,i){return '<a href="'+c+'" target="_blank" class="text-brand hover:underline">['+(i+1)+']</a>';}).join(' ')+'</div>':'')+'</div>');
+            }
+        }
+    }
+    if(d.whois_deep && d.whois_deep.registrant) {
+        var w = d.whois_deep;
+        cards.push('<div class="bg-gray-50 rounded-xl border p-4"><h4 class="font-bold text-sm mb-2 text-gray-700">WHOIS</h4><div class="space-y-1 text-sm">'+(w.registrant?'<div class="flex justify-between"><span class="text-gray-500">Registrant</span><b>'+w.registrant+'</b></div>':'')+(w.org?'<div class="flex justify-between"><span class="text-gray-500">Org</span><span>'+w.org+'</span></div>':'')+(w.registrar?'<div class="flex justify-between"><span class="text-gray-500">Registrar</span><span>'+w.registrar+'</span></div>':'')+(w.created?'<div class="flex justify-between"><span class="text-gray-500">Erstellt</span><span>'+w.created+'</span></div>':'')+'</div></div>');
+    }
+    if(d.correlation && d.correlation.identity_graph && d.correlation.identity_graph.length) {
+        cards.push('<div class="rounded-xl border p-4" style="background:rgba(46,125,107,0.05);border-color:rgba(46,125,107,0.2)"><h4 class="font-bold text-sm mb-2" style="color:#2E7D6B">Verifizierte Accounts ('+d.correlation.identity_graph.length+')</h4><div class="flex flex-wrap gap-1.5">'+d.correlation.identity_graph.map(function(ig){return '<a href="'+ig.url+'" target="_blank" class="px-2.5 py-1 rounded-lg text-xs font-medium hover:opacity-80" style="background:rgba(46,125,107,0.1);color:#2E7D6B">'+ig.platform+'</a>';}).join('')+'</div></div>');
+    }
+    if(d.impressum_validation && d.impressum_validation.extracted && d.impressum_validation.extracted.owner) {
+        var iv = d.impressum_validation, ex = iv.extracted;
+        var ivc = iv.valid ? 'green' : 'red';
+        cards.push('<div class="bg-'+ivc+'-50 rounded-xl border border-'+ivc+'-200 p-4"><h4 class="font-bold text-sm mb-2 text-'+ivc+'-700">Impressum '+(iv.valid?'OK':'PROBLEM')+'</h4><div class="space-y-1 text-sm">'+(ex.owner?'<div>Inhaber: <b>'+ex.owner+'</b></div>':'')+(ex.hrb?'<div>HRB: '+ex.hrb+'</div>':'')+(ex.vat?'<div>USt: '+ex.vat+'</div>':'')+(ex.email?'<div>Email: '+ex.email+'</div>':'')+'</div>'+(iv.issues && iv.issues.length?'<div class="mt-1 text-xs text-red-600">'+iv.issues.join(' · ')+'</div>':'')+'</div>');
+    }
+    if (cards.length === 0) {
+        container.innerHTML = '<div class="col-span-2 text-center text-gray-400 py-4">Scan läuft — Ergebnisse erscheinen hier</div>';
+    } else {
+        container.innerHTML = cards.join('');
+    }
 }
 </script>
 
@@ -820,13 +888,37 @@ function dsTab(n) {
   <?php endif; ?>
 </div>
 
-<!-- Recherche Links -->
-<?php if ($scanName): ?>
+<!-- Deep Scan (auto-starts on scan) — PROMINENT -->
 <div class="bg-white rounded-xl border mb-4 overflow-hidden">
-  <div class="px-5 py-3 border-b flex items-center justify-between">
-    <h3 class="font-semibold text-gray-900">Recherche-Links</h3>
-    <button onclick="saveScan()" class="px-4 py-1.5 bg-brand text-white rounded-lg text-xs font-medium" id="saveScanBtn">Ergebnis speichern</button>
+  <div class="px-5 py-3 border-b flex items-center justify-between bg-gradient-to-r from-brand/5 to-transparent">
+    <div class="flex items-center gap-2">
+      <svg class="w-5 h-5 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+      <h3 class="font-semibold text-gray-900">Deep Scan Ergebnisse</h3>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="saveScan()" class="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50" id="saveScanBtn">Speichern</button>
+      <button onclick="runDeepScan()" id="deepScanBtn" class="px-4 py-1.5 bg-brand text-white rounded-lg text-xs font-medium">Erneut scannen</button>
+    </div>
   </div>
+  <div id="deepResults" class="p-4 hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="deepCards"></div>
+  </div>
+  <div id="deepLoading" class="p-8 text-center text-gray-400 hidden">
+    <div class="inline-block w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin mb-2"></div>
+    <div>Scanne externe Quellen...</div>
+  </div>
+</div>
+
+<!-- Recherche Links (collapsible) -->
+<?php if ($scanName): ?>
+<details class="bg-white rounded-xl border mb-4 overflow-hidden group">
+  <summary class="px-5 py-3 border-b flex items-center justify-between cursor-pointer hover:bg-gray-50">
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4 text-gray-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      <h3 class="font-semibold text-gray-900">Manuelle Recherche-Links</h3>
+      <span class="text-xs text-gray-400">(<?= array_sum(array_map('count', socialLinks($scanName, $scanEmail, $scanPhone))) ?> Links)</span>
+    </div>
+  </summary>
   <div class="p-5 space-y-5">
     <?php foreach (socialLinks($scanName, $scanEmail, $scanPhone) as $group => $links): ?>
     <div>
@@ -840,23 +932,8 @@ function dsTab(n) {
     </div>
     <?php endforeach; ?>
   </div>
-</div>
+</details>
 <?php endif; ?>
-
-<!-- Deep Scan (auto-starts on scan) -->
-<div class="bg-white rounded-xl border mb-4 overflow-hidden">
-  <div class="px-5 py-3 border-b flex items-center justify-between">
-    <h3 class="font-semibold text-gray-900">Deep Scan</h3>
-    <button onclick="runDeepScan()" id="deepScanBtn" class="px-4 py-1.5 bg-brand text-white rounded-lg text-xs font-medium">Erneut scannen</button>
-  </div>
-  <div id="deepResults" class="p-4 hidden">
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="deepCards"></div>
-  </div>
-  <div id="deepLoading" class="p-8 text-center text-gray-400 hidden">
-    <div class="inline-block w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin mb-2"></div>
-    <div>Scanne externe Quellen...</div>
-  </div>
-</div>
 
 <!-- Report Generator -->
 <div class="bg-white rounded-xl border mb-4 overflow-hidden" id="reportSection">
@@ -1033,6 +1110,12 @@ function runDeepScan(){
         var cards = document.getElementById('deepCards');
         cards.innerHTML = '';
         var data = d.data;
+        renderDeepCards(data, cards);
+        var detailCards = document.createElement('div');
+        detailCards.className = 'col-span-2 mt-4 pt-4 border-t';
+        detailCards.innerHTML = '<h4 class="font-semibold text-sm text-gray-500 mb-3">Detaillierte Ergebnisse</h4><div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="detailGrid"></div>';
+        cards.parentNode.appendChild(detailCards);
+        cards = document.getElementById('detailGrid');
 
         // WHOIS
         if(data.whois){
