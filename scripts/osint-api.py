@@ -12,7 +12,18 @@ import json, subprocess, os, hashlib, time
 
 API_KEY = "***REDACTED***"
 CACHE_DIR = "/tmp/osint-cache"
+TOR_PROXY = "socks5://127.0.0.1:9050"
 os.makedirs(CACHE_DIR, exist_ok=True)
+
+def tor_rotate():
+    """Request new Tor circuit for fresh IP"""
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(("127.0.0.1", 9051))
+        s.send(b'AUTHENTICATE ""\r\nSIGNAL NEWNYM\r\nQUIT\r\n')
+        s.close()
+    except: pass
 
 class Handler(BaseHTTPRequestHandler):
 
@@ -33,8 +44,10 @@ class Handler(BaseHTTPRequestHandler):
         if not username: return {"error": "username required"}
         cached, path = self._cached("maigret", username)
         if cached: return {**cached, "_cache": True}
+        tor_rotate()  # Fresh IP for each scan
         out = subprocess.run(
-            ["docker", "run", "--rm", "ghcr.io/soxoj/maigret:latest", username, "--json", "notype", "--timeout", "5", "--no-color"],
+            ["docker", "run", "--rm", "--network=host", "ghcr.io/soxoj/maigret:latest", username,
+             "--json", "notype", "--timeout", "5", "--no-color", "--proxy", TOR_PROXY],
             capture_output=True, text=True, timeout=45
         )
         found = []
@@ -147,8 +160,30 @@ class Handler(BaseHTTPRequestHandler):
                 result = self._whois(body.get("domain", ""))
             elif path == "/socialscan":
                 result = self._socialscan(body.get("query", ""))
+            elif path == "/scan-all":
+                # Combined scan — runs all applicable tools
+                import concurrent.futures
+                results = {}
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+                    futures = {}
+                    if body.get("email"):
+                        futures["holehe"] = pool.submit(self._holehe, body["email"])
+                        futures["socialscan_email"] = pool.submit(self._socialscan, body["email"])
+                    if body.get("username"):
+                        futures["maigret"] = pool.submit(self._maigret, body["username"])
+                    elif body.get("name"):
+                        uname = body["name"].lower().replace(" ", "")
+                        futures["maigret"] = pool.submit(self._maigret, uname)
+                    if body.get("phone"):
+                        futures["phoneinfoga"] = pool.submit(self._phoneinfoga, body["phone"])
+                    if body.get("domain"):
+                        futures["whois"] = pool.submit(self._whois, body["domain"])
+                    for key, future in futures.items():
+                        try: results[key] = future.result(timeout=30)
+                        except: results[key] = {"error": "timeout"}
+                result = {"scan_all": True, "tools_run": len(results), "results": results}
             elif path == "/health":
-                result = {"status": "ok", "tools": ["maigret", "phoneinfoga", "holehe", "whois", "socialscan"]}
+                result = {"status": "ok", "tools": ["maigret", "phoneinfoga", "holehe", "whois", "socialscan", "scan-all"], "tor": True}
             else:
                 result = {"error": "Use /maigret, /phoneinfoga, /holehe, /whois, /socialscan"}
         except subprocess.TimeoutExpired:

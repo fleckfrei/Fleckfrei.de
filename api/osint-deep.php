@@ -481,66 +481,20 @@ if ($name) {
 $vpsApi = 'http://89.116.22.185:8900';
 $vpsHeaders = ['X-API-Key: ' . API_KEY, 'Content-Type: application/json'];
 
-// Holehe — check email on 120+ sites (invisible, no notification)
-if ($email) {
-    $ch = curl_init($vpsApi . '/holehe');
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>15, CURLOPT_POST=>1,
-        CURLOPT_POSTFIELDS=>json_encode(['email'=>$email]), CURLOPT_HTTPHEADER=>$vpsHeaders]);
-    $holeheRaw = curl_exec($ch); curl_close($ch);
-    if ($holeheRaw) {
-        $holehe = json_decode($holeheRaw, true);
-        if (!empty($holehe['registered_on'])) $results['holehe'] = $holehe;
-    }
-}
-
-// Maigret — scan username across 2500+ sites
-if ($name) {
-    $mainUser = strtolower(preg_replace('/[^a-z0-9]/i', '', $name));
-    $ch = curl_init($vpsApi . '/maigret');
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>15, CURLOPT_POST=>1,
-        CURLOPT_POSTFIELDS=>json_encode(['username'=>$mainUser]), CURLOPT_HTTPHEADER=>$vpsHeaders]);
-    $maigretRaw = curl_exec($ch); curl_close($ch);
-    if ($maigretRaw) {
-        $maigret = json_decode($maigretRaw, true);
-        if (!empty($maigret['profiles'])) $results['maigret'] = $maigret;
-    }
-}
-
-// PhoneInfoga — phone number intelligence
-if ($phone) {
-    $ch = curl_init($vpsApi . '/phoneinfoga');
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>10, CURLOPT_POST=>1,
-        CURLOPT_POSTFIELDS=>json_encode(['phone'=>$phone]), CURLOPT_HTTPHEADER=>$vpsHeaders]);
-    $piRaw = curl_exec($ch); curl_close($ch);
-    if ($piRaw) {
-        $pi = json_decode($piRaw, true);
-        if (!empty($pi['country']) || !empty($pi['carrier'])) $results['phoneinfoga'] = $pi;
-    }
-}
-
-// Socialscan — check username/email availability across platforms
-if ($email || $name) {
-    $ssQuery = $email ?: strtolower(preg_replace('/[^a-z0-9]/i', '', $name));
-    $ch = curl_init($vpsApi . '/socialscan');
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>10, CURLOPT_POST=>1,
-        CURLOPT_POSTFIELDS=>json_encode(['query'=>$ssQuery]), CURLOPT_HTTPHEADER=>$vpsHeaders]);
-    $ssRaw = curl_exec($ch); curl_close($ch);
-    if ($ssRaw) {
-        $ss = json_decode($ssRaw, true);
-        if (!empty($ss['platforms'])) $results['socialscan'] = $ss;
-    }
-}
-
-// VPS Whois — detailed domain whois (faster + more data than hackertarget)
-if ($domain && !in_array($domain, ['gmail.com','gmx.de','web.de','yahoo.com','hotmail.com','outlook.com','t-online.de'])) {
-    $ch = curl_init($vpsApi . '/whois');
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>8, CURLOPT_POST=>1,
-        CURLOPT_POSTFIELDS=>json_encode(['domain'=>$domain]), CURLOPT_HTTPHEADER=>$vpsHeaders]);
-    $whoisRaw = curl_exec($ch); curl_close($ch);
-    if ($whoisRaw) {
-        $whoisVps = json_decode($whoisRaw, true);
-        if (!empty($whoisVps['registrar']) || !empty($whoisVps['registrant'])) $results['whois_deep'] = $whoisVps;
-    }
+// VPS OSINT — single call runs ALL tools in parallel via /scan-all
+$vpsPayload = ['email' => $email, 'name' => $name, 'phone' => $phone, 'domain' => $domain];
+$ch = curl_init($vpsApi . '/scan-all');
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>20, CURLOPT_POST=>1,
+    CURLOPT_POSTFIELDS=>json_encode($vpsPayload), CURLOPT_HTTPHEADER=>$vpsHeaders]);
+$vpsRaw = curl_exec($ch); curl_close($ch);
+if ($vpsRaw) {
+    $vps = json_decode($vpsRaw, true);
+    $vpsResults = $vps['results'] ?? [];
+    if (!empty($vpsResults['holehe']['registered_on'])) $results['holehe'] = $vpsResults['holehe'];
+    if (!empty($vpsResults['maigret']['profiles'])) $results['maigret'] = $vpsResults['maigret'];
+    if (!empty($vpsResults['phoneinfoga']['country'])) $results['phoneinfoga'] = $vpsResults['phoneinfoga'];
+    if (!empty($vpsResults['socialscan_email']['platforms'])) $results['socialscan'] = $vpsResults['socialscan_email'];
+    if (!empty($vpsResults['whois']['registrar'])) $results['whois_deep'] = $vpsResults['whois'];
 }
 
 // ============================================================
