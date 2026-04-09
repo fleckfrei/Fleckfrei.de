@@ -70,7 +70,13 @@ if ($scan) {
     $dbEmployees = all("SELECT * FROM employee WHERE email=? OR phone LIKE ? LIMIT 5", [$scanEmail, '%'.$scanPhone.'%']);
     if (!empty($dbCustomers)) {
         $cid = $dbCustomers[0]['customer_id'];
-        $dbStats = one("SELECT COUNT(j.j_id) as total_jobs, SUM(CASE WHEN j.job_status='COMPLETED' THEN 1 ELSE 0 END) as done, SUM(CASE WHEN j.job_status='CANCELLED' THEN 1 ELSE 0 END) as cancelled, COALESCE(SUM(DISTINCT i.total_price),0) as inv_total, COALESCE(SUM(DISTINCT i.remaining_price),0) as inv_open FROM customer c LEFT JOIN jobs j ON j.customer_id_fk=c.customer_id AND j.status=1 LEFT JOIN invoices i ON i.customer_id_fk=c.customer_id WHERE c.customer_id=?", [$cid]);
+        $dbStats = one("SELECT
+            (SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1) as total_jobs,
+            (SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED') as done,
+            (SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='CANCELLED') as cancelled,
+            (SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE customer_id_fk=?) as inv_total,
+            (SELECT COALESCE(SUM(remaining_price),0) FROM invoices WHERE customer_id_fk=?) as inv_open",
+            [$cid, $cid, $cid, $cid, $cid]);
         $dbServices = all("SELECT s.s_id, s.title, s.price, s.total_price, s.street, s.city FROM services s WHERE s.customer_id_fk=? AND s.status=1", [$cid]);
         $dbInvoices = all("SELECT inv_id, invoice_number, issue_date, total_price, remaining_price, invoice_paid FROM invoices WHERE customer_id_fk=? ORDER BY issue_date DESC LIMIT 10", [$cid]);
         $dbJobs = all("SELECT j.j_id, j.j_date, j.j_time, j.job_status, j.j_hours, s.title as stitle, e.name as ename FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id WHERE j.customer_id_fk=? AND j.status=1 ORDER BY j.j_date DESC LIMIT 15", [$cid]);
@@ -388,6 +394,15 @@ function renderDeepResults(d, container) {
     const fundeItems = [];
     if (di.gravatar?.found) fundeItems.push(`<div class="flex items-center gap-2 p-2 bg-purple-50 rounded"><img src="${di.gravatar.avatar}" class="w-8 h-8 rounded-full"><div><div class="text-sm font-medium">${di.gravatar.display_name||'Gravatar'}</div><div class="text-xs text-gray-500">${di.gravatar.about||di.gravatar.location||'Profil gefunden'}</div></div></div>`);
     if (di.telegram_profiles?.length) fundeItems.push(...di.telegram_profiles.map(t=>`<div class="p-2 bg-blue-50 rounded"><a href="${t.url}" target="_blank" class="text-sm text-brand font-medium">Telegram: @${t.username}</a> <span class="text-xs text-gray-500">${t.display_name||''}</span></div>`));
+    if (di.social_deep) {
+        const sdLabels = {instagram_profile:'Instagram',instagram_tagged:'Insta Tagged',linkedin_profile:'LinkedIn',linkedin_company:'LinkedIn Firma',xing_profile:'XING',facebook_profile:'Facebook',tiktok_profile:'TikTok',social_email:'Social (Email)'};
+        const sdColors = {instagram_profile:'#e1306c',linkedin_profile:'#0a66c2',facebook_profile:'#1877f2',tiktok_profile:'#000',xing_profile:'#006567'};
+        for (const [key, hits] of Object.entries(di.social_deep)) {
+            if (!Array.isArray(hits) || !hits.length) continue;
+            const color = sdColors[key] || '#666';
+            fundeItems.push(`<div class="p-2 rounded" style="background:${color}11;border:1px solid ${color}33"><div class="text-xs font-semibold" style="color:${color}">${sdLabels[key]||key} (${hits.length})</div>${hits.slice(0,3).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block hover:underline truncate">${r.title}</a>`).join('')}</div>`);
+        }
+    }
     if (di.impressum_mentions) fundeItems.push(...di.impressum_mentions.results.slice(0,3).map(r=>`<div class="p-2 bg-amber-50 rounded"><div class="text-xs font-semibold text-amber-700">Impressum</div><a href="${r.url}" target="_blank" class="text-sm text-brand hover:underline">${r.title}</a></div>`));
     if (di.insolvency) fundeItems.push(...di.insolvency.results.slice(0,3).map(r=>`<div class="p-2 bg-red-50 rounded border border-red-200"><div class="text-xs font-semibold text-red-700">INSOLVENZ</div><a href="${r.url}" target="_blank" class="text-sm text-red-700">${r.title}</a></div>`));
     if (di.paste_leaks) fundeItems.push(`<div class="p-2 bg-red-50 rounded"><div class="text-xs font-semibold text-red-700">Paste-Leaks (${di.paste_leaks.count})</div>${di.paste_leaks.results.slice(0,2).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-red-600 block">${r.title}</a>`).join('')}</div>`);

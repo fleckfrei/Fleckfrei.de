@@ -1437,6 +1437,46 @@ if ($name) {
     ];
 }
 
+// 6b. INSTAGRAM + LINKEDIN DEEP SCAN
+if ($name) {
+    $socialDeep = [];
+    $mh = curl_multi_init();
+    $handles = [];
+    $socialQueries = [
+        'instagram_profile' => 'site:instagram.com "' . $name . '"',
+        'instagram_tagged' => 'site:instagram.com "' . $name . '" tagged OR getaggt OR erwähnt',
+        'linkedin_profile' => 'site:linkedin.com/in "' . $name . '"',
+        'linkedin_company' => 'site:linkedin.com/company "' . $name . '"',
+        'xing_profile' => 'site:xing.com "' . $name . '"',
+        'facebook_profile' => 'site:facebook.com "' . $name . '"',
+        'tiktok_profile' => 'site:tiktok.com "' . $name . '"',
+    ];
+    if ($email) {
+        $socialQueries['social_email'] = '"' . $email . '" site:instagram.com OR site:linkedin.com OR site:facebook.com OR site:twitter.com';
+    }
+    foreach ($socialQueries as $qType => $query) {
+        $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>6, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$qType] = $ch;
+    }
+    $running = 0;
+    do { curl_multi_exec($mh, $running); curl_multi_select($mh, 0.3); } while ($running > 0);
+    foreach ($handles as $qType => $ch) {
+        $html = curl_multi_getcontent($ch);
+        if ($html && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $html, $dm, PREG_SET_ORDER)) {
+            foreach (array_slice($dm, 0, 5) as $m) {
+                $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
+                $socialDeep[$qType][] = ['title' => trim(strip_tags($m[2])), 'url' => $rUrl, 'snippet' => trim(strip_tags($m[3]))];
+            }
+        }
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+    if (!empty($socialDeep)) $darkIntel['social_deep'] = $socialDeep;
+}
+
 // 7. Document & File Leak Search
 if ($name || $email) {
     $q = $email ?: $name;
