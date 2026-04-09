@@ -538,6 +538,16 @@ function renderDeepResults(d, container) {
         }
     }
     if (d.correlation?.connections?.length) fundeItems.push(...d.correlation.connections.map(c=>`<div class="p-2 ${c.type.includes('warning')?'bg-red-50':'bg-blue-50'} rounded text-sm">${c.detail}</div>`));
+    // Vulture Web Search Results
+    if (d.vulture_web) {
+        const vLabels = {gelbe_seiten:'Gelbe Seiten',das_oertliche:'Das Örtliche',pagini_aurii:'Pagini Aurii (RO)',northdata:'NorthData',bundesanzeiger:'Bundesanzeiger',firmenwissen:'Firmenwissen',insolvenz:'Insolvenz',impressum:'Impressum',airbnb:'Airbnb',booking:'Booking.com',kleinanzeigen:'Kleinanzeigen',social:'Social Media',bewertungen:'Bewertungen',gericht:'Gericht/Polizei',dokumente:'Dokumente',email_trace:'Email Spur',email_social:'Email Social',email_paste:'Email Leaks',phone_trace:'Telefon Spur',phone_tellows:'Tellows',plate_exact:'Kennzeichen',plate_auto:'KFZ',address_immo:'Immobilien','11880':'11880'};
+        for (const [key, data] of Object.entries(d.vulture_web)) {
+            if (!data.results?.length) continue;
+            const label = vLabels[key] || key;
+            const isRisk = ['insolvenz','gericht','email_paste'].includes(key);
+            fundeItems.push(`<div class="p-2 ${isRisk?'bg-red-50 border border-red-200':'bg-gray-50'} rounded"><div class="text-xs font-semibold ${isRisk?'text-red-700':'text-gray-700'}">${label} (${data.count})</div>${data.results.slice(0,3).map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-brand block hover:underline truncate">${r.title}</a>`).join('')}</div>`);
+        }
+    }
     html += fundeItems.length ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-2">${fundeItems.join('')}</div>` : '<div class="text-sm text-gray-400">Keine besonderen Funde</div>';
     html += '</div>';
 

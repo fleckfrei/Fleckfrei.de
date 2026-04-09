@@ -47,8 +47,8 @@ class Handler(BaseHTTPRequestHandler):
         tor_rotate()  # Fresh IP for each scan
         out = subprocess.run(
             ["docker", "run", "--rm", "--network=host", "ghcr.io/soxoj/maigret:latest", username,
-             "--json", "notype", "--timeout", "5", "--no-color", "--proxy", TOR_PROXY],
-            capture_output=True, text=True, timeout=45
+             "--json", "notype", "--timeout", "3", "--no-color", "--top-sites", "100"],
+            capture_output=True, text=True, timeout=15
         )
         found = []
         for line in out.stdout.strip().split("\n"):
@@ -84,7 +84,7 @@ class Handler(BaseHTTPRequestHandler):
         if cached: return {**cached, "_cache": True}
         out = subprocess.run(
             ["holehe", email, "--no-color", "--only-used"],
-            capture_output=True, text=True, timeout=60
+            capture_output=True, text=True, timeout=15
         )
         sites = []
         for line in out.stdout.split("\n"):
@@ -160,6 +160,16 @@ class Handler(BaseHTTPRequestHandler):
                 result = self._whois(body.get("domain", ""))
             elif path == "/socialscan":
                 result = self._socialscan(body.get("query", ""))
+            elif path == "/websearch":
+                # Scrape DuckDuckGo from VPS (not blocked here!)
+                query = body.get("query", "")
+                if query:
+                    result = self._websearch(query)
+                else:
+                    result = {"error": "query required"}
+            elif path == "/vulture":
+                # THE VULTURE — deep multi-source scan
+                result = self._vulture(body)
             elif path == "/scan-all":
                 # Combined scan — runs all applicable tools
                 import concurrent.futures
@@ -191,6 +201,108 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             result = {"error": str(e)}
         self._respond(200, result)
+
+    def _websearch(self, query, limit=5):
+        """Scrape DuckDuckGo from VPS (not blocked here)"""
+        import urllib.request, urllib.parse, re
+        url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query)
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"})
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+            results = []
+            for m in re.finditer(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</span>', html, re.DOTALL):
+                rurl = m.group(1)
+                um = re.search(r'uddg=([^&]+)', rurl)
+                if um: rurl = urllib.parse.unquote(um.group(1))
+                title = re.sub(r'<[^>]+>', '', m.group(2)).strip()
+                snippet = re.sub(r'<[^>]+>', '', m.group(3)).strip()
+                if title: results.append({"title": title, "url": rurl, "snippet": snippet})
+                if len(results) >= limit: break
+            return {"query": query, "count": len(results), "results": results}
+        except Exception as e:
+            return {"query": query, "count": 0, "results": [], "error": str(e)}
+
+    def _vulture(self, body):
+        """THE VULTURE — Deep multi-source intelligence scan"""
+        import concurrent.futures
+        name = body.get("name", "")
+        email = body.get("email", "")
+        phone = body.get("phone", "")
+        address = body.get("address", "")
+        plate = body.get("plate", "")
+        domain = body.get("domain", "")
+
+        results = {}
+        searches = {}
+
+        # Build search queries
+        if name:
+            ne = f'"{name}"'
+            searches["gelbe_seiten"] = f'site:gelbeseiten.de {ne}'
+            searches["das_oertliche"] = f'site:dasoertliche.de {ne}'
+            searches["pagini_aurii"] = f'site:paginiaurii.ro {ne}'
+            searches["11880"] = f'site:11880.com {ne}'
+            searches["northdata"] = f'site:northdata.de {ne}'
+            searches["bundesanzeiger"] = f'site:bundesanzeiger.de {ne}'
+            searches["firmenwissen"] = f'site:firmenwissen.de {ne}'
+            searches["insolvenz"] = f'{ne} Insolvenz OR insolvent OR Vollstreckung'
+            searches["impressum"] = f'{ne} Impressum Geschäftsführer OR Inhaber'
+            searches["airbnb"] = f'site:airbnb.de OR site:airbnb.com {ne}'
+            searches["booking"] = f'site:booking.com {ne}'
+            searches["kleinanzeigen"] = f'site:kleinanzeigen.de {ne}'
+            searches["social"] = f'{ne} site:instagram.com OR site:linkedin.com OR site:facebook.com'
+            searches["bewertungen"] = f'{ne} Bewertung OR Review site:google.com OR site:trustpilot.com'
+            searches["gericht"] = f'{ne} Gericht OR Urteil OR Klage OR Polizei'
+            searches["dokumente"] = f'{ne} filetype:pdf OR filetype:xlsx OR filetype:doc'
+        if email:
+            searches["email_trace"] = f'"{email}"'
+            searches["email_social"] = f'"{email}" site:instagram.com OR site:linkedin.com OR site:facebook.com'
+            searches["email_paste"] = f'"{email}" site:pastebin.com OR site:gist.github.com'
+        if phone:
+            ph = ''.join(c for c in phone if c in '+0123456789')
+            searches["phone_trace"] = f'"{ph}"'
+            searches["phone_tellows"] = f'site:tellows.de "{ph}"'
+        if plate:
+            searches["plate_exact"] = f'"{plate}"'
+            searches["plate_auto"] = f'"{plate}" auto OR Werkstatt OR Unfall'
+        if address:
+            searches["address_immo"] = f'"{address}" site:immobilienscout24.de OR site:immowelt.de'
+
+        # Run ALL searches in parallel via ThreadPool
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            futures = {key: pool.submit(self._websearch, query, 5) for key, query in searches.items()}
+            for key, future in futures.items():
+                try:
+                    res = future.result(timeout=10)
+                    if res.get("count", 0) > 0:
+                        results[key] = res
+                except: pass
+
+        # Also run tool scans
+        tool_results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            tool_futures = {}
+            if email:
+                tool_futures["holehe"] = pool.submit(self._holehe, email)
+            if name:
+                tool_futures["maigret"] = pool.submit(self._maigret, name.lower().replace(" ", ""))
+            if phone:
+                tool_futures["phoneinfoga"] = pool.submit(self._phoneinfoga, phone)
+            if domain:
+                tool_futures["whois"] = pool.submit(self._whois, domain)
+            for key, future in tool_futures.items():
+                try: tool_results[key] = future.result(timeout=20)
+                except: pass
+
+        return {
+            "vulture": True,
+            "target": name or email or phone or plate,
+            "web_searches": results,
+            "web_search_count": len(results),
+            "tool_results": tool_results,
+            "total_hits": sum(r.get("count", 0) for r in results.values()),
+        }
 
     def log_message(self, format, *args): pass
 

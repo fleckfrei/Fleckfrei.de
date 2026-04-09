@@ -464,20 +464,26 @@ if ($name) {
 $vpsApi = 'http://89.116.22.185:8900';
 $vpsHeaders = ['X-API-Key: ' . API_KEY, 'Content-Type: application/json'];
 
-// VPS OSINT — single call runs ALL tools in parallel via /scan-all
-$vpsPayload = ['email' => $email, 'name' => $name, 'phone' => $phone, 'domain' => $domain];
-$ch = curl_init($vpsApi . '/scan-all');
-curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>12, CURLOPT_CONNECTTIMEOUT=>3, CURLOPT_POST=>1,
+// VPS VULTURE — full deep scan via VPS (DDG works from VPS, not Hostinger)
+$vpsPayload = ['email' => $email, 'name' => $name, 'phone' => $phone, 'domain' => $domain, 'address' => $address, 'plate' => $plate];
+$ch = curl_init($vpsApi . '/vulture');
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>15, CURLOPT_CONNECTTIMEOUT=>3, CURLOPT_POST=>1,
     CURLOPT_POSTFIELDS=>json_encode($vpsPayload), CURLOPT_HTTPHEADER=>$vpsHeaders]);
 $vpsRaw = curl_exec($ch); curl_close($ch);
 if ($vpsRaw) {
     $vps = json_decode($vpsRaw, true);
-    $vpsResults = $vps['results'] ?? [];
-    if (!empty($vpsResults['holehe']['registered_on'])) $results['holehe'] = $vpsResults['holehe'];
-    if (!empty($vpsResults['maigret']['profiles'])) $results['maigret'] = $vpsResults['maigret'];
-    if (!empty($vpsResults['phoneinfoga']['country'])) $results['phoneinfoga'] = $vpsResults['phoneinfoga'];
-    if (!empty($vpsResults['socialscan_email']['platforms'])) $results['socialscan'] = $vpsResults['socialscan_email'];
-    if (!empty($vpsResults['whois']['registrar'])) $results['whois_deep'] = $vpsResults['whois'];
+    // Tool results
+    $vpsTools = $vps['tool_results'] ?? [];
+    if (!empty($vpsTools['holehe']['registered_on'])) $results['holehe'] = $vpsTools['holehe'];
+    if (!empty($vpsTools['maigret']['profiles'])) $results['maigret'] = $vpsTools['maigret'];
+    if (!empty($vpsTools['phoneinfoga']['country'])) $results['phoneinfoga'] = $vpsTools['phoneinfoga'];
+    if (!empty($vpsTools['whois']['registrar'])) $results['whois_deep'] = $vpsTools['whois'];
+    // Web search results (scraped from VPS via DDG)
+    $vpsWeb = $vps['web_searches'] ?? [];
+    if (!empty($vpsWeb)) {
+        $results['vulture_web'] = $vpsWeb;
+        $results['vulture_stats'] = ['total_hits' => $vps['total_hits'] ?? 0, 'searches_with_results' => count($vpsWeb)];
+    }
 }
 
 // ============================================================
@@ -2024,7 +2030,18 @@ if (!empty($results['socialscan'])) {
     $dossier['findings'][] = 'SocialScan: Account existiert auf ' . $results['socialscan']['taken_on'] . ' Plattformen';
 }
 if (!empty($results['whois_deep']['registrant'])) {
-    $dossier['findings'][] = 'WHOIS: Registrant ' . $results['whois_deep']['registrant'] . ($results['whois_deep']['org'] ?? '');
+    $dossier['findings'][] = 'WHOIS: Registrant ' . $results['whois_deep']['registrant'] . ' ' . ($results['whois_deep']['org'] ?? '');
+}
+if (!empty($results['vulture_stats'])) {
+    $vs = $results['vulture_stats'];
+    $dossier['findings'][] = 'Vulture: ' . $vs['total_hits'] . ' Treffer in ' . $vs['searches_with_results'] . ' Quellen (Gelbe Seiten, NorthData, Kleinanzeigen, etc.)';
+}
+if (!empty($results['vulture_web']['insolvenz'])) {
+    $dossier['risk_factors'][] = 'INSOLVENZ-Treffer in Web-Suche: ' . $results['vulture_web']['insolvenz']['count'] . ' Ergebnisse';
+    $dossier['risk_level'] = 'HIGH';
+}
+if (!empty($results['vulture_web']['gericht'])) {
+    $dossier['risk_factors'][] = 'Gericht/Polizei-Treffer: ' . $results['vulture_web']['gericht']['count'] . ' Ergebnisse';
 }
 if (!empty($results['airbnb_scan'])) {
     $totalAirbnb = array_sum(array_map('count', $results['airbnb_scan']['results']));
