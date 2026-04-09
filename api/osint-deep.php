@@ -524,44 +524,73 @@ if ($email) {
 // ============================================================
 if ($phone) {
     $clean = preg_replace('/[^+0-9]/', '', $phone);
-    $isDE = str_starts_with($clean, '+49') || str_starts_with($clean, '0049') || (str_starts_with($clean, '0') && strlen($clean) >= 10 && !str_starts_with($clean, '00'));
+    // Country detection from prefix
+    $countryMap = [
+        '+49'=>['Deutschland','DE'], '+40'=>['Rumänien','RO'], '+373'=>['Moldawien','MD'],
+        '+41'=>['Schweiz','CH'], '+43'=>['Österreich','AT'], '+48'=>['Polen','PL'],
+        '+420'=>['Tschechien','CZ'], '+36'=>['Ungarn','HU'], '+31'=>['Niederlande','NL'],
+        '+33'=>['Frankreich','FR'], '+39'=>['Italien','IT'], '+34'=>['Spanien','ES'],
+        '+44'=>['Großbritannien','UK'], '+45'=>['Dänemark','DK'], '+46'=>['Schweden','SE'],
+        '+47'=>['Norwegen','NO'], '+32'=>['Belgien','BE'], '+30'=>['Griechenland','GR'],
+        '+359'=>['Bulgarien','BG'], '+385'=>['Kroatien','HR'], '+381'=>['Serbien','RS'],
+        '+380'=>['Ukraine','UA'], '+7'=>['Russland','RU'], '+90'=>['Türkei','TR'],
+        '+1'=>['USA/Kanada','US'], '+55'=>['Brasilien','BR'], '+91'=>['Indien','IN'],
+    ];
+    $phoneCountry = 'Unbekannt'; $phoneCC = '??';
+    foreach ($countryMap as $prefix => $info) {
+        if (str_starts_with($clean, $prefix)) { $phoneCountry = $info[0]; $phoneCC = $info[1]; break; }
+    }
+    $isDE = ($phoneCC === 'DE');
+    $isRO = ($phoneCC === 'RO');
     $national = $clean;
     if (str_starts_with($clean, '+49')) $national = '0' . substr($clean, 3);
     elseif (str_starts_with($clean, '0049')) $national = '0' . substr($clean, 4);
 
-    // Detect carrier from prefix (German mobile)
-    $carrier = null; $type = 'Unbekannt';
+    // Carrier detection
+    $carrier = null; $type = 'Mobil';
     if ($isDE && strlen($national) >= 4) {
         $prefix3 = substr($national, 0, 4);
-        $mobileMap = ['0151'=>'Telekom','0152'=>'Vodafone','0157'=>'E-Plus/o2','0159'=>'o2','0160'=>'Telekom','0162'=>'Vodafone','0163'=>'E-Plus/o2','0170'=>'Telekom','0171'=>'Telekom','0172'=>'Vodafone','0173'=>'Vodafone','0174'=>'Vodafone','0175'=>'Telekom','0176'=>'o2','0177'=>'E-Plus/o2','0178'=>'E-Plus/o2','0179'=>'o2','0155'=>'Congstar','0156'=>'Mobilcom'];
+        $mobileMap = ['0151'=>'Telekom','0152'=>'Vodafone','0157'=>'E-Plus/o2','0159'=>'o2','0160'=>'Telekom','0162'=>'Vodafone','0163'=>'E-Plus/o2','0170'=>'Telekom','0171'=>'Telekom','0172'=>'Vodafone','0173'=>'Vodafone','0174'=>'Vodafone','0175'=>'Telekom','0176'=>'o2','0177'=>'E-Plus/o2','0178'=>'E-Plus/o2','0179'=>'o2'];
         $carrier = $mobileMap[$prefix3] ?? null;
-        if ($carrier) $type = 'Mobil';
-        elseif (str_starts_with($national, '030')) { $type = 'Festnetz Berlin'; $carrier = 'Festnetz'; }
-        elseif (str_starts_with($national, '040')) { $type = 'Festnetz Hamburg'; $carrier = 'Festnetz'; }
-        elseif (str_starts_with($national, '089')) { $type = 'Festnetz München'; $carrier = 'Festnetz'; }
-        elseif (str_starts_with($national, '069')) { $type = 'Festnetz Frankfurt'; $carrier = 'Festnetz'; }
-        elseif (str_starts_with($national, '0800')) { $type = 'Kostenlose Hotline'; }
-        elseif (str_starts_with($national, '0900')) { $type = 'Premium-Dienst (kostenpflichtig)'; }
+        if (!$carrier && str_starts_with($national, '03')) { $type = 'Festnetz'; $carrier = 'Festnetz'; }
+    } elseif ($isRO) {
+        $roPrefix = substr($clean, 3, 2);
+        $roMap = ['72'=>'Vodafone RO','73'=>'Vodafone RO','74'=>'Vodafone RO','75'=>'Orange RO','76'=>'Orange RO','77'=>'Orange RO','78'=>'Telekom RO','71'=>'Digi RO','21'=>'Festnetz Bukarest','26'=>'Festnetz Cluj'];
+        $carrier = $roMap[$roPrefix] ?? null;
+    }
+
+    // Country-specific search links
+    $searchLinks = [
+        'Google' => 'https://www.google.com/search?q="' . urlencode($clean) . '"',
+        'Sync.me' => 'https://sync.me/search/?number=' . urlencode($clean),
+        'Truecaller' => 'https://www.truecaller.com/search/' . strtolower($phoneCC) . '/' . urlencode(ltrim($clean, '+')),
+        'WhatsApp' => 'https://wa.me/' . ltrim($clean, '+'),
+        'Telegram' => 'https://t.me/+' . ltrim($clean, '+'),
+    ];
+    if ($isDE) {
+        $searchLinks['Tellows'] = 'https://www.tellows.de/num/' . urlencode($national);
+        $searchLinks['Das Örtliche'] = 'https://www.dasoertliche.de/Themen/Rückwärtssuche/' . urlencode($national);
+        $searchLinks['11880'] = 'https://www.11880.com/suche/' . urlencode($national);
+    } elseif ($isRO) {
+        $searchLinks['Pagini Aurii'] = 'https://www.paginiaurii.ro/cautare/' . urlencode(ltrim($clean, '+'));
+        $searchLinks['OLX.ro'] = 'https://www.olx.ro/oferte/q-' . urlencode($clean) . '/';
+        $searchLinks['Google RO'] = 'https://www.google.ro/search?q="' . urlencode($clean) . '"';
+    } elseif ($phoneCC === 'CH') {
+        $searchLinks['local.ch'] = 'https://tel.local.ch/de/' . urlencode($clean);
+        $searchLinks['search.ch'] = 'https://tel.search.ch/?tel=' . urlencode($clean);
+    } elseif ($phoneCC === 'AT') {
+        $searchLinks['Herold.at'] = 'https://www.herold.at/telefonbuch/was_' . urlencode($clean);
     }
 
     $results['phone_osint'] = [
         'formatted' => $clean,
         'national' => $national,
-        'country' => $isDE ? 'Deutschland (+49)' : 'International',
+        'country' => $phoneCountry . ' (+' . ltrim(array_search([$phoneCountry, $phoneCC], $countryMap) ?: '', '+') . ')',
+        'country_code' => $phoneCC,
         'type' => $type,
         'carrier' => $carrier,
-        'search_links' => [
-            'Tellows' => 'https://www.tellows.de/num/' . urlencode($national),
-            'Das Örtliche' => $isDE ? 'https://www.dasoertliche.de/Themen/Rückwärtssuche/' . urlencode($national) : null,
-            'Google' => 'https://www.google.com/search?q="' . urlencode($clean) . '"',
-            'Sync.me' => 'https://sync.me/search/?number=' . urlencode($clean),
-            'Truecaller' => 'https://www.truecaller.com/search/de/' . urlencode(ltrim($national, '0')),
-            'WhatsApp' => 'https://wa.me/' . ltrim($clean, '+'),
-            'Telegram' => 'https://t.me/+' . ltrim($clean, '+'),
-        ],
+        'search_links' => $searchLinks,
     ];
-    // Remove null links
-    $results['phone_osint']['search_links'] = array_filter($results['phone_osint']['search_links']);
 }
 
 // ============================================================
