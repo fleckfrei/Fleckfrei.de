@@ -552,6 +552,13 @@ function renderDeepResults(d, container) {
         }
     }
     if (d.correlation?.connections?.length) fundeItems.push(...d.correlation.connections.map(c=>`<div class="p-2 ${c.type.includes('warning')?'bg-red-50':'bg-blue-50'} rounded text-sm">${c.detail}</div>`));
+    // IntelX — Leaked Data / Dark Web
+    if (d.vulture_web) {
+        for (const [key, data] of Object.entries(d.vulture_web)) {
+            if (!key.startsWith('intelx_') || !data.results?.length) continue;
+            fundeItems.push(`<div class="p-3 bg-red-900 text-white rounded"><div class="text-xs font-bold text-red-300 mb-1">Intelligence X: ${data.query} (${data.count} Treffer)</div><div class="space-y-0.5">${data.results.slice(0,8).map(r=>`<div class="text-xs"><span class="text-red-400">${r.type}:</span> ${r.value} <span class="text-red-500 text-[10px]">${r.source}</span></div>`).join('')}</div>${data.total>8?`<div class="text-[10px] text-red-400 mt-1">+${data.total-8} weitere in IntelX</div>`:''}</div>`);
+        }
+    }
     // Perplexity AI Search Results (from Vulture)
     if (d.vulture_web) {
         for (const [key, data] of Object.entries(d.vulture_web)) {

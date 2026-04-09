@@ -160,6 +160,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self._whois(body.get("domain", ""))
             elif path == "/socialscan":
                 result = self._socialscan(body.get("query", ""))
+            elif path == "/intelx":
+                result = self._intelx(body.get("query", ""))
             elif path == "/perplexity":
                 result = self._perplexity(body.get("query", ""))
             elif path == "/websearch":
@@ -203,6 +205,36 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             result = {"error": str(e)}
         self._respond(200, result)
+
+    def _intelx(self, query):
+        """Intelligence X — search leaked data, dark web, pastes"""
+        import urllib.request
+        if not query: return {"error": "query required"}
+        cached, path = self._cached("intelx", query)
+        if cached: return {**cached, "_cache": True}
+        INTELX_KEY = os.environ.get("INTELX_KEY", "3101fc86-9b9d-4bd3-96b2-e457e8e222f4")
+        # Step 1: Start search
+        data = json.dumps({"term": query, "buckets": [], "lookuplevel": 0, "maxresults": 20, "timeout": 10, "sort": 2, "media": 0, "terminate": []}).encode()
+        req = urllib.request.Request("https://2.intelx.io/phonebook/search", data=data, headers={"x-key": INTELX_KEY, "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                search = json.loads(resp.read().decode())
+            search_id = search.get("id", "")
+            if not search_id: return {"query": query, "results": [], "count": 0}
+            # Step 2: Get results
+            import time; time.sleep(2)
+            req2 = urllib.request.Request(f"https://2.intelx.io/phonebook/search/result?id={search_id}&limit=20", headers={"x-key": INTELX_KEY})
+            with urllib.request.urlopen(req2, timeout=10) as resp2:
+                results = json.loads(resp2.read().decode())
+            selectors = results.get("selectors", [])
+            found = []
+            for s in selectors[:30]:
+                found.append({"value": s.get("selectorvalue", ""), "type": s.get("selectortypeh", ""), "source": s.get("mediah", "")})
+            output = {"query": query, "count": len(found), "results": found, "total": results.get("statistics", {}).get("total", 0)}
+            json.dump(output, open(path, "w"))
+            return output
+        except Exception as e:
+            return {"query": query, "error": str(e), "results": []}
 
     def _perplexity(self, query):
         """Search via Perplexity Sonar AI — real web search with citations"""
@@ -322,6 +354,20 @@ class Handler(BaseHTTPRequestHandler):
                     res = future.result(timeout=10)
                     if res.get("count", 0) > 0:
                         results[key] = res
+                except: pass
+
+        # IntelX — leaked data search
+        intelx_queries = []
+        if email: intelx_queries.append(email)
+        if phone: intelx_queries.append(phone)
+        if name: intelx_queries.append(name)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            ix_futures = {q: pool.submit(self._intelx, q) for q in intelx_queries[:3]}
+            for q, future in ix_futures.items():
+                try:
+                    res = future.result(timeout=15)
+                    if res.get("count", 0) > 0:
+                        results[f"intelx_{q[:20]}"] = res
                 except: pass
 
         # Also run tool scans
