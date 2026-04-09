@@ -417,8 +417,20 @@ function renderDeepResults(d, container) {
         if (vd.autodna) plateHtml += `<div class="text-xs text-green-400 mb-1">AutoDNA: Fahrzeugdaten gefunden</div>`;
         if (vd.vin_guru?.make) plateHtml += `<div class="text-xs text-green-400 mb-1">Fahrzeug: ${vd.vin_guru.make} ${vd.vin_guru.model||''} ${vd.vin_guru.year||''}</div>`;
         if (vd.mobile_de_results) plateHtml += `<div class="text-xs text-yellow-400 mb-1">mobile.de: ${vd.mobile_de_results} Ergebnisse</div>`;
-        // Search results
-        if (allPlateHits.length) plateHtml += allPlateHits.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-blue-300 block hover:underline truncate">${r.title}</a>`).join('');
+        // Country detection
+        if (pl.country) plateHtml = plateHtml.replace('>D<', `>${pl.country}<`);
+        // EU search results
+        const euHits = Object.entries(pl.eu_searches||{}).filter(([k,v])=>Array.isArray(v)&&v.length);
+        const euLabels = {eu_exact:'Exakt',eu_car:'Auto',eu_images:'Bilder',eu_forums:'Foren',eu_repair:'Werkstatt',eu_accident:'Unfall',eu_sale:'Verkauf',eu_social:'Social',ro_olx:'OLX.ro',md_search:'999.md',ch_search:'AutoScout CH',pl_search:'OtoMoto PL',at_search:'willhaben AT',ro_registrul:'ONRC RO',ch_strassenverkehr:'SVA CH',pl_history:'CEPiK PL'};
+        if (euHits.length) {
+            plateHtml += '<div class="mt-1 space-y-0.5">';
+            euHits.forEach(([k,hits])=>{ plateHtml += `<details class=""><summary class="text-xs text-gray-400 cursor-pointer hover:text-white">${euLabels[k]||k} (${hits.length})</summary>${hits.slice(0,3).map(r=>`<a href="${r.url}" target="_blank" class="text-[11px] text-blue-300 block hover:underline truncate pl-2">${r.title}</a>`).join('')}</details>`; });
+            plateHtml += '</div>';
+        }
+        // Image results
+        if (pl.plate_images?.length) plateHtml += `<div class="text-xs text-purple-300 mt-1">Bilder gefunden: ${pl.plate_images.map(r=>`<a href="${r.url}" target="_blank" class="hover:underline">${r.title}</a>`).join(', ')}</div>`;
+        // Search results fallback
+        if (!euHits.length && allPlateHits.length) plateHtml += allPlateHits.map(r=>`<a href="${r.url}" target="_blank" class="text-xs text-blue-300 block hover:underline truncate">${r.title}</a>`).join('');
         // Links
         if (pl.links) plateHtml += `<div class="flex flex-wrap gap-2 mt-2 pt-2 border-t border-gray-600">${Object.entries(pl.links).map(([k,v])=>`<a href="${v}" target="_blank" class="text-[10px] px-1.5 py-0.5 bg-gray-700 rounded text-gray-300 hover:text-white hover:bg-gray-600">${k.replace('_',' ')}</a>`).join('')}</div>`;
         // Insurance data

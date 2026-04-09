@@ -928,30 +928,129 @@ if ($plate) {
         }
     }
 
-    // 5. Halterabfrage Services (legal, kostenpflichtig)
-    $halterServices = [
-        ['name' => 'Zentralruf Autoversicherer', 'url' => 'https://www.gdv-dl.de/zentralruf/', 'info' => 'KOSTENLOS — Versicherung des KFZ ermitteln', 'type' => 'free'],
-        ['name' => 'Halterabfrage Online', 'url' => 'https://www.halterabfrage.de/', 'info' => 'Ab 7,90€ — offizieller Halter bei berechtigtem Interesse', 'type' => 'paid'],
-        ['name' => 'Ummelden.de', 'url' => 'https://www.ummelden.de/kfz/halterabfrage/', 'info' => 'Ab 9,90€ — Halter + Anschrift', 'type' => 'paid'],
-        ['name' => 'Kennzeichenking', 'url' => 'https://www.kennzeichenking.de/', 'info' => 'Kennzeichen-Infos + Region', 'type' => 'free'],
-        ['name' => 'Parkschaden melden', 'url' => 'https://www.unfallhelden.de/', 'info' => 'Unfallgegner ermitteln (kostenlos bei Schaden)', 'type' => 'free'],
+    // 5. Pan-European plate search — every country, every free source
+    // Detect country from plate format
+    $plateCountry = 'DE';
+    $plateFormats = [
+        'RO' => '/^(B|CJ|TM|IS|CT|SB|BV|MM|HD|BC|MS|AG|DJ|GL|HR|IL|OT|PH|SV|VL)\s?\d{2,3}\s?[A-Z]{3}$/i',
+        'MD' => '/^(C|KH|AN|BA|BD|BR|CH|CL|CM|CS|CT|DR|DN|ED|FL|GL|HI|IA|NH|OR|RS|SI|SN|SO|ST|TA|UG|UN)\s?\d{3}\s?[A-Z]{3}$/i',
+        'CH' => '/^(ZH|BE|LU|UR|SZ|OW|NW|GL|ZG|FR|SO|BS|BL|SH|AR|AI|SG|GR|AG|TG|TI|VD|VS|NE|GE|JU)\s?\d+$/i',
+        'AT' => '/^[A-Z]{1,2}\s?\d{1,5}\s?[A-Z]{1,3}$/i',
+        'PL' => '/^[A-Z]{2,3}\s?\d{3,5}[A-Z]{0,2}$/i',
+        'CZ' => '/^\d[A-Z]\d\s?\d{4}$/i',
+        'HU' => '/^[A-Z]{3}\s?\d{3}$/i',
+        'NL' => '/^\d{1,2}-[A-Z]{2,3}-\d{1,2}$/i',
+        'FR' => '/^[A-Z]{2}-\d{3}-[A-Z]{2}$/i',
+        'IT' => '/^[A-Z]{2}\s?\d{3}\s?[A-Z]{2}$/i',
+        'ES' => '/^\d{4}\s?[A-Z]{3}$/i',
+        'UK' => '/^[A-Z]{2}\d{2}\s?[A-Z]{3}$/i',
     ];
+    foreach ($plateFormats as $cc => $regex) {
+        if (preg_match($regex, $plateNoSpace) || preg_match($regex, $plateClean)) { $plateCountry = $cc; break; }
+    }
+
+    // EU-wide free searches
+    $euSearches = [];
+    $mhEU = curl_multi_init();
+    $hEU = [];
+    $euQueries = [
+        'eu_exact' => '"' . $plateClean . '"',
+        'eu_car' => '"' . $plateClean . '" car OR auto OR vehicle OR masina OR voiture',
+        'eu_images' => '"' . $plateClean . '" site:flickr.com OR site:imgur.com OR site:photobucket.com',
+        'eu_forums' => '"' . $plateClean . '" forum OR community OR club',
+        'eu_repair' => '"' . $plateClean . '" Werkstatt OR repair OR reparatur OR service OR TÜV OR MOT',
+        'eu_accident' => '"' . $plateClean . '" accident OR Unfall OR crash OR collision',
+        'eu_sale' => '"' . $plateClean . '" sale OR verkauf OR vanzare OR prodej',
+        'eu_social' => '"' . $plateClean . '" site:facebook.com OR site:instagram.com OR site:youtube.com',
+    ];
+    // Country-specific searches
+    if ($plateCountry === 'RO') {
+        $euQueries['ro_olx'] = '"' . $plateClean . '" site:olx.ro OR site:autovit.ro OR site:mobile.de';
+        $euQueries['ro_registrul'] = '"' . $plateClean . '" ONRC OR "Registrul Comertului" OR CUI';
+    } elseif ($plateCountry === 'MD') {
+        $euQueries['md_search'] = '"' . $plateClean . '" site:999.md OR site:makler.md OR site:point.md';
+    } elseif ($plateCountry === 'CH') {
+        $euQueries['ch_search'] = '"' . $plateClean . '" site:autoscout24.ch OR site:car4you.ch OR site:tutti.ch';
+        $euQueries['ch_strassenverkehr'] = '"' . $plateClean . '" Strassenverkehrsamt OR Fahrzeugausweis';
+    } elseif ($plateCountry === 'AT') {
+        $euQueries['at_search'] = '"' . $plateClean . '" site:willhaben.at OR site:autoscout24.at';
+    } elseif ($plateCountry === 'PL') {
+        $euQueries['pl_search'] = '"' . $plateClean . '" site:otomoto.pl OR site:olx.pl';
+        $euQueries['pl_history'] = '"' . $plateClean . '" historiapojazdu OR CEPiK';
+    }
+    foreach ($euQueries as $qType => $query) {
+        $ch = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode($query));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>6, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36']);
+        curl_multi_add_handle($mhEU, $ch);
+        $hEU[$qType] = $ch;
+    }
+    $running = 0;
+    do { curl_multi_exec($mhEU, $running); curl_multi_select($mhEU, 0.3); } while ($running > 0);
+    foreach ($hEU as $qType => $ch) {
+        $html = curl_multi_getcontent($ch);
+        if ($html && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>.*?class="result__snippet"[^>]*>(.*?)<\/span>/s', $html, $dm, PREG_SET_ORDER)) {
+            foreach (array_slice($dm, 0, 5) as $m) {
+                $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
+                $euSearches[$qType][] = ['title' => trim(strip_tags($m[2])), 'url' => $rUrl, 'snippet' => trim(strip_tags($m[3]))];
+            }
+        }
+        curl_multi_remove_handle($mhEU, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mhEU);
+
+    // Free EU vehicle APIs
+    // EUCARIS-light: check if plate image appears anywhere (Google Images reverse)
+    $plateImageSearch = [];
+    $imgCh = curl_init('https://html.duckduckgo.com/html/?q=' . urlencode('"' . $plateNoSpace . '" OR "' . $plateClean . '" filetype:jpg OR filetype:png'));
+    curl_setopt_array($imgCh, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>6, CURLOPT_FOLLOWLOCATION=>1, CURLOPT_SSL_VERIFYPEER=>0, CURLOPT_USERAGENT=>'Mozilla/5.0']);
+    $imgHtml = curl_exec($imgCh); curl_close($imgCh);
+    if ($imgHtml && preg_match_all('/class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/s', $imgHtml, $dm, PREG_SET_ORDER)) {
+        foreach (array_slice($dm, 0, 5) as $m) {
+            $rUrl = $m[1]; if (preg_match('/uddg=([^&]+)/', $rUrl, $u)) $rUrl = urldecode($u[1]);
+            $plateImageSearch[] = ['title' => trim(strip_tags($m[2])), 'url' => $rUrl];
+        }
+    }
+
+    $halterServices = [
+        ['name' => 'GDV Zentralruf (DE)', 'url' => 'https://www.gdv-dl.de/zentralruf/', 'info' => 'Versicherung ermitteln', 'type' => 'free'],
+        ['name' => 'Unfallhelden (DE)', 'url' => 'https://www.unfallhelden.de/', 'info' => 'Unfallgegner bei Schaden', 'type' => 'free'],
+        ['name' => 'AutoDNA (EU)', 'url' => 'https://www.autodna.de/kennzeichen/' . urlencode($plateNoSpace), 'info' => 'Fahrzeughistorie EU-weit', 'type' => 'free'],
+        ['name' => 'Carfax EU', 'url' => 'https://www.carfax.eu/de/fahrzeughistorie?registration=' . urlencode($plateNoSpace), 'info' => 'Internationale Historie', 'type' => 'free'],
+        ['name' => 'CarVertical (EU)', 'url' => 'https://www.carvertical.com/de/prufung/' . urlencode($plateNoSpace), 'info' => 'VIN + Historie', 'type' => 'free'],
+    ];
+    if ($plateCountry === 'RO') {
+        $halterServices[] = ['name' => 'RAR.ro (RO)', 'url' => 'https://pro.rarom.ro/istoric_vehicul/', 'info' => 'Fahrzeughistorie Rumänien', 'type' => 'free'];
+        $halterServices[] = ['name' => 'ONRC (RO)', 'url' => 'https://www.onrc.ro/index.php/en/', 'info' => 'Handelsregister Rumänien', 'type' => 'free'];
+    }
+    if ($plateCountry === 'CH') {
+        $halterServices[] = ['name' => 'ASTRA (CH)', 'url' => 'https://www.astra.admin.ch/', 'info' => 'Strassenverkehrsamt Schweiz', 'type' => 'free'];
+        $halterServices[] = ['name' => 'AutoScout CH', 'url' => 'https://www.autoscout24.ch/de/auto?vehtyp=10&q=' . urlencode($plateClean), 'info' => 'Fahrzeugsuche Schweiz', 'type' => 'free'];
+    }
+    if ($plateCountry === 'PL') {
+        $halterServices[] = ['name' => 'HistoriaPojazdu (PL)', 'url' => 'https://historiapojazdu.gov.pl/', 'info' => 'Offizielle Fahrzeughistorie PL', 'type' => 'free'];
+    }
+    if ($plateCountry === 'AT') {
+        $halterServices[] = ['name' => 'Eurotax (AT)', 'url' => 'https://www.eurotaxglass.at/', 'info' => 'Fahrzeugbewertung AT', 'type' => 'free'];
+    }
 
     $results['plate_search'] = [
         'plate' => $plateClean,
         'region' => $region,
+        'country' => $plateCountry,
         'results' => $plateResults,
+        'eu_searches' => $euSearches,
+        'plate_images' => $plateImageSearch,
         'vehicle_data' => $vehicleData,
         'insurance' => $insuranceInfo,
         'halter_services' => $halterServices,
         'links' => [
             'gdv_zentralruf' => 'https://www.gdv-dl.de/zentralruf/',
-            'halterabfrage' => 'https://www.halterabfrage.de/',
             'mobile_de' => 'https://suchen.mobile.de/fahrzeuge/search.html?q=' . urlencode($plateClean),
             'autoscout' => 'https://www.autoscout24.de/lst?query=' . urlencode($plateClean),
-            'kleinanzeigen' => 'https://www.kleinanzeigen.de/s-' . urlencode($plateNoSpace) . '/k0',
             'autodna' => 'https://www.autodna.de/kennzeichen/' . urlencode($plateNoSpace),
-            'carfax' => 'https://www.carfax.eu/de/fahrzeughistorie?registration=' . urlencode($plateNoSpace),
+            'carvertical' => 'https://www.carvertical.com/de/prufung/' . urlencode($plateNoSpace),
+            'google_img' => 'https://www.google.com/search?q="' . urlencode($plateClean) . '"&tbm=isch',
             'google' => 'https://www.google.com/search?q="' . urlencode($plateClean) . '"',
         ],
     ];
