@@ -194,6 +194,24 @@ $dbLocal->exec("CREATE TABLE IF NOT EXISTS ontology_events (
     INDEX idx_type (event_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// ============================================================
+// Watchlist — named targets that trigger Telegram alerts when
+// a new scan mentions them. Checked by api/cron.php hourly.
+// ============================================================
+$dbLocal->exec("CREATE TABLE IF NOT EXISTS ontology_watchlist (
+    watch_id INT AUTO_INCREMENT PRIMARY KEY,
+    label VARCHAR(255) NOT NULL,
+    query VARCHAR(255) NOT NULL,
+    query_type VARCHAR(24) DEFAULT 'any',
+    last_checked DATETIME DEFAULT NULL,
+    last_hit_count INT DEFAULT 0,
+    notify_telegram TINYINT(1) DEFAULT 1,
+    active TINYINT(1) DEFAULT 1,
+    created_by INT DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_active (active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // Insert default pricing rules if empty
 try {
     $prCount = $dbLocal->query("SELECT COUNT(*) FROM pricing_rules")->fetchColumn();

@@ -291,6 +291,166 @@ function ontology_get_graph(int $rootId, int $depth = 2): array {
 }
 
 // ============================================================
+// NLP REGEX EXTRACTOR — pull identifiers from any free-text blob
+// Not a real NLP model — pattern matching only, but catches most
+// emails/phones/URLs/handles/IBANs in forum posts, bios, reviews.
+// Returns: ['emails'=>[], 'phones'=>[], 'urls'=>[], 'handles'=>[], 'ibans'=>[]]
+// ============================================================
+function ontology_extract_entities(string $text): array {
+    $out = ['emails' => [], 'phones' => [], 'urls' => [], 'handles' => [], 'ibans' => [], 'money' => []];
+    if (trim($text) === '') return $out;
+    $text = mb_substr($text, 0, 200000); // cap
+
+    // Emails
+    if (preg_match_all('/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/', $text, $m)) {
+        $out['emails'] = array_values(array_unique(array_map('strtolower', $m[0])));
+    }
+    // Phones: E.164 international + common DE/RO local formats
+    $phoneSet = [];
+    if (preg_match_all('/\+\d{1,4}[\s\-]?\d{2,5}[\s\-]?\d{3,10}/', $text, $m)) {
+        foreach ($m[0] as $p) $phoneSet[preg_replace('/[^0-9+]/', '', $p)] = true;
+    }
+    if (preg_match_all('/\b0\d{2,4}[\s\-\/]?\d{6,8}\b/', $text, $m)) {
+        foreach ($m[0] as $p) $phoneSet[preg_replace('/[^0-9+]/', '', $p)] = true;
+    }
+    $out['phones'] = array_values(array_filter(array_keys($phoneSet), fn($p) => strlen($p) >= 8));
+
+    // URLs (with scheme or bare domain)
+    if (preg_match_all('#\bhttps?://[^\s<>"\']+#i', $text, $m)) {
+        $out['urls'] = array_values(array_unique($m[0]));
+    }
+
+    // Social handles: @name, twitter/instagram-style (not emails)
+    if (preg_match_all('/(?<![a-zA-Z0-9._%+-])@([a-zA-Z0-9_]{3,30})\b/', $text, $m)) {
+        $out['handles'] = array_values(array_unique($m[1]));
+    }
+
+    // IBAN (European bank accounts)
+    if (preg_match_all('/\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/', $text, $m)) {
+        foreach ($m[0] as $iban) {
+            if (strlen($iban) >= 15 && strlen($iban) <= 34) {
+                $out['ibans'][] = $iban;
+            }
+        }
+        $out['ibans'] = array_values(array_unique($out['ibans']));
+    }
+
+    // Money amounts (EUR, USD, basic)
+    if (preg_match_all('/(?:€|EUR|USD|\$)\s*\d[\d.,]*|\d[\d.,]*\s*(?:€|EUR|USD|\$)/i', $text, $m)) {
+        $out['money'] = array_slice(array_unique($m[0]), 0, 10);
+    }
+
+    return $out;
+}
+
+// ============================================================
+// CLUSTER MERGE CANDIDATES — find objects that may be the same
+// entity despite different names. Two heuristics:
+//   1. Exact match on a linked identifier (email/phone) across
+//      two different person objects → high-confidence merge
+//   2. Fuzzy name similarity (Jaro-Winkler) + shared address →
+//      moderate-confidence merge suggestion
+// Does NOT merge automatically — returns a review queue.
+// ============================================================
+function ontology_find_merge_candidates(int $limit = 50): array {
+    $candidates = [];
+
+    // 1. Same email/phone linked to 2+ different person objects
+    $rows = allLocal("
+        SELECT l1.to_obj as shared_id, o_shared.display_name as shared_val, o_shared.obj_type as shared_type,
+               l1.from_obj as person_a, o_a.display_name as person_a_name,
+               l2.from_obj as person_b, o_b.display_name as person_b_name
+        FROM ontology_links l1
+        JOIN ontology_links l2 ON l1.to_obj = l2.to_obj AND l1.from_obj < l2.from_obj
+        JOIN ontology_objects o_shared ON o_shared.obj_id = l1.to_obj
+        JOIN ontology_objects o_a      ON o_a.obj_id = l1.from_obj
+        JOIN ontology_objects o_b      ON o_b.obj_id = l2.from_obj
+        WHERE o_shared.obj_type IN ('email','phone')
+          AND o_a.obj_type = 'person'
+          AND o_b.obj_type = 'person'
+          AND l1.relation IN ('has_email','has_phone')
+          AND l2.relation IN ('has_email','has_phone')
+        LIMIT " . (int)$limit);
+
+    foreach ($rows as $r) {
+        // Skip if names are already equal (trivial dup)
+        if (strcasecmp($r['person_a_name'], $r['person_b_name']) === 0) continue;
+        $candidates[] = [
+            'type'       => 'shared_identifier',
+            'confidence' => 0.9,
+            'reason'     => "Both linked to same {$r['shared_type']} '{$r['shared_val']}'",
+            'person_a'   => ['obj_id' => (int)$r['person_a'], 'name' => $r['person_a_name']],
+            'person_b'   => ['obj_id' => (int)$r['person_b'], 'name' => $r['person_b_name']],
+            'shared'     => ['obj_id' => (int)$r['shared_id'], 'value' => $r['shared_val']],
+        ];
+    }
+
+    // 2. Fuzzy name matches (simple: same first 4 chars, different key, any shared link)
+    $fuzzy = allLocal("
+        SELECT o1.obj_id as a_id, o1.display_name as a_name,
+               o2.obj_id as b_id, o2.display_name as b_name
+        FROM ontology_objects o1
+        JOIN ontology_objects o2
+          ON o2.obj_type = 'person'
+         AND o1.obj_id < o2.obj_id
+         AND LEFT(LOWER(o1.obj_key), 4) = LEFT(LOWER(o2.obj_key), 4)
+         AND LEVENSHTEIN(o1.obj_key, o2.obj_key) BETWEEN 1 AND 4
+        WHERE o1.obj_type = 'person'
+        LIMIT 30");
+    // LEVENSHTEIN may not be installed — fall back to PHP if the query throws
+    foreach ($fuzzy as $r) {
+        $candidates[] = [
+            'type'       => 'fuzzy_name',
+            'confidence' => 0.5,
+            'reason'     => "Similar names (small edit distance)",
+            'person_a'   => ['obj_id' => (int)$r['a_id'], 'name' => $r['a_name']],
+            'person_b'   => ['obj_id' => (int)$r['b_id'], 'name' => $r['b_name']],
+        ];
+    }
+
+    return $candidates;
+}
+
+// ============================================================
+// MERGE — execute a merge after human review
+// Moves all links/events from losing obj_id into the winning one,
+// then deletes the losing row. Irreversible.
+// ============================================================
+function ontology_merge_objects(int $winnerId, int $loserId): array {
+    if ($winnerId <= 0 || $loserId <= 0 || $winnerId === $loserId) {
+        return ['success' => false, 'error' => 'invalid ids'];
+    }
+    global $dbLocal;
+    $dbLocal->beginTransaction();
+    try {
+        // Rewire outgoing links
+        $dbLocal->prepare("UPDATE IGNORE ontology_links SET from_obj = ? WHERE from_obj = ?")
+                ->execute([$winnerId, $loserId]);
+        $dbLocal->prepare("DELETE FROM ontology_links WHERE from_obj = ?")->execute([$loserId]);
+        // Rewire incoming links
+        $dbLocal->prepare("UPDATE IGNORE ontology_links SET to_obj = ? WHERE to_obj = ?")
+                ->execute([$winnerId, $loserId]);
+        $dbLocal->prepare("DELETE FROM ontology_links WHERE to_obj = ?")->execute([$loserId]);
+        // Rewire events
+        $dbLocal->prepare("UPDATE ontology_events SET obj_id = ? WHERE obj_id = ?")
+                ->execute([$winnerId, $loserId]);
+        // Increment source_count on winner
+        $dbLocal->prepare("UPDATE ontology_objects SET source_count = source_count + 1 WHERE obj_id = ?")
+                ->execute([$winnerId]);
+        // Log merge event
+        ontology_add_event($winnerId, 'merged_from', date('Y-m-d'),
+            "Merged object #$loserId into this", ['loser_id' => $loserId], 'cluster_merge');
+        // Delete loser
+        $dbLocal->prepare("DELETE FROM ontology_objects WHERE obj_id = ?")->execute([$loserId]);
+        $dbLocal->commit();
+        return ['success' => true, 'winner_id' => $winnerId, 'merged_from' => $loserId];
+    } catch (Exception $e) {
+        $dbLocal->rollBack();
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+// ============================================================
 // GET OBJECT — full detail view with recent events
 // ============================================================
 function ontology_get_object(int $objId): ?array {

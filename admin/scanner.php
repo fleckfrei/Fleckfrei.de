@@ -1074,17 +1074,16 @@ function renderDeepCards(data, container) {
 <script>
 const ONTO = { query:'', typeFilter:'all', currentObjId:null, cy:null, debounce:null };
 
-// Load stats on page load
-fetch('/api/gotham-search.php', {
-  method:'POST', headers:{'Content-Type':'application/json'},
-  body: JSON.stringify({query:'a', type_filter:'all'})
-}).then(r=>r.json()).then(j=>{
+// Load stats on page load — dedicated endpoint, no query needed
+fetch('/api/gotham-search.php?action=stats').then(r=>r.json()).then(j=>{
   if (j && j.success) {
-    const c = j.data.counts;
+    const d = j.data;
     document.getElementById('ontoStatsMini').textContent =
-      c.ontology + ' Objects · ' + c.scans + ' Scans indiziert';
+      `${d.total_objects} Objects · ${d.verified} verified · ${d.total_links} Links · ${d.total_scans} Scans`;
+  } else {
+    document.getElementById('ontoStatsMini').textContent = 'Stats unavailable';
   }
-}).catch(()=>{});
+}).catch(()=>{ document.getElementById('ontoStatsMini').textContent = 'Stats offline'; });
 
 document.querySelectorAll('#ontoChips span').forEach(chip => {
   chip.onclick = () => {
@@ -1102,18 +1101,29 @@ document.querySelectorAll('#ontoChips span').forEach(chip => {
 document.getElementById('ontoQuery').addEventListener('input', e => {
   clearTimeout(ONTO.debounce);
   const v = e.target.value.trim();
-  if (v.length < 2) return;
+  if (v.length === 1) return; // wait for 2nd char
   ONTO.debounce = setTimeout(ontoSearch, 350);
 });
+
+// Auto-load recent objects on first interaction with the section
+setTimeout(() => {
+  if (!ONTO.query && document.getElementById('ontoQuery').value === '') {
+    ontoSearch();
+  }
+}, 600);
 document.getElementById('ontoQuery').addEventListener('keydown', e => {
   if (e.key === 'Enter') { clearTimeout(ONTO.debounce); ontoSearch(); }
 });
 
 async function ontoSearch() {
   const q = document.getElementById('ontoQuery').value.trim();
-  if (q.length < 2) return;
+  // Empty query = browse mode (most recent objects + scans)
+  if (q.length === 1) {
+    document.getElementById('ontoResults').innerHTML = '<div class="text-xs text-amber-600 py-4 text-center">Bitte mindestens 2 Zeichen eingeben.</div>';
+    return;
+  }
   ONTO.query = q;
-  document.getElementById('ontoResults').innerHTML = '<div class="text-xs text-gray-400 py-4 text-center">suche…</div>';
+  document.getElementById('ontoResults').innerHTML = '<div class="text-xs text-gray-400 py-4 text-center">' + (q ? 'suche…' : 'lade zuletzt hinzugefügte…') + '</div>';
   try {
     const r = await fetch('/api/gotham-search.php', {
       method:'POST', headers:{'Content-Type':'application/json'},

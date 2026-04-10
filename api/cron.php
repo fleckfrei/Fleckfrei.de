@@ -109,3 +109,17 @@ if (defined('FEATURE_SMOOBU') && FEATURE_SMOOBU && shouldRun('smoobu_sync', 30))
     curl_exec($ch);
     curl_close($ch);
 }
+
+// === TASK 5: Gotham Watchlist Check (every 60 min) ===
+if (shouldRun('gotham_watchlist', 60)) {
+    $url = 'https://app.' . SITE_DOMAIN . '/api/gotham-watchlist.php?action=check_all';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => ['X-API-Key: ' . API_KEY],
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
+}
