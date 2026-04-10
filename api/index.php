@@ -1881,6 +1881,87 @@ try {
             return $stmt->fetchAll();
         })(),
 
+        // ============================================================
+        // RATINGS — Customer rates partner after job
+        // ============================================================
+        $action === 'ratings/submit' && $method === 'POST' => (function() use ($body) {
+            $jid = (int)($body['j_id'] ?? 0);
+            $stars = max(1, min(5, (int)($body['stars'] ?? 5)));
+            $comment = trim($body['comment'] ?? '');
+            $job = one("SELECT j.*, e.name as ename, c.name as cname FROM jobs j LEFT JOIN employee e ON j.emp_id_fk=e.emp_id LEFT JOIN customer c ON j.customer_id_fk=c.customer_id WHERE j.j_id=?", [$jid]);
+            if (!$job) throw new Exception('Job not found');
+            if ($job['job_status'] !== 'COMPLETED') throw new Exception('Job not completed');
+            global $dbLocal;
+            $dbLocal->exec("CREATE TABLE IF NOT EXISTS job_ratings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, j_id INTEGER NOT NULL, emp_id INTEGER,
+                customer_id INTEGER, stars INTEGER NOT NULL, comment TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(j_id)
+            )");
+            $dbLocal->prepare("INSERT OR REPLACE INTO job_ratings (j_id, emp_id, customer_id, stars, comment) VALUES (?,?,?,?,?)")
+                ->execute([$jid, $job['emp_id_fk'], $job['customer_id_fk'], $stars, $comment]);
+            $starEmoji = str_repeat('*', $stars) . str_repeat('.', 5-$stars);
+            telegramNotify("⭐ <b>Bewertung</b>\n\n👤 {$job['cname']} → 👷 {$job['ename']}\n⭐ {$starEmoji} ({$stars}/5)\n💬 " . ($comment ?: '—'));
+            return ['rated' => true, 'stars' => $stars];
+        })(),
+
+        $action === 'ratings/partner' && $method === 'GET' => (function() {
+            $empId = (int)($_GET['emp_id'] ?? 0);
+            if (!$empId) throw new Exception('emp_id required');
+            global $dbLocal;
+            try {
+                $avg = $dbLocal->prepare("SELECT AVG(stars) as avg_stars, COUNT(*) as total FROM job_ratings WHERE emp_id=?");
+                $avg->execute([$empId]);
+                $stats = $avg->fetch(PDO::FETCH_ASSOC);
+                $recent = $dbLocal->prepare("SELECT r.*, c.name as customer_name FROM job_ratings r LEFT JOIN customer c ON r.customer_id=c.customer_id WHERE r.emp_id=? ORDER BY r.created_at DESC LIMIT 10");
+                $recent->execute([$empId]);
+                return ['emp_id'=>$empId, 'avg_stars'=>round($stats['avg_stars']??0, 1), 'total_ratings'=>(int)($stats['total']??0), 'recent'=>$recent->fetchAll(PDO::FETCH_ASSOC)];
+            } catch (Exception $e) { return ['emp_id'=>$empId, 'avg_stars'=>0, 'total_ratings'=>0, 'recent'=>[]]; }
+        })(),
+
+        // ============================================================
+        // RECURRING JOBS — Auto-create from templates
+        // ============================================================
+        $action === 'recurring/process' && $method === 'POST' => (function() {
+            $today = date('Y-m-d');
+            $tomorrow = date('Y-m-d', strtotime('+1 day'));
+            $created = 0;
+            // Find recurring groups that need next job
+            $templates = all("SELECT j.*, j.recurring_group as rg, s.title as stitle FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.recurring_group IS NOT NULL AND j.recurring_group != '' AND j.job_for IS NOT NULL AND j.job_for != '' AND j.status=1 AND j.j_date = (SELECT MAX(j2.j_date) FROM jobs j2 WHERE j2.recurring_group=j.recurring_group AND j2.status=1) GROUP BY j.recurring_group");
+            foreach ($templates as $t) {
+                $lastDate = $t['j_date'];
+                $freq = strtolower($t['job_for']);
+                $nextDate = match(true) {
+                    str_contains($freq, 'week') || str_contains($freq, 'woche') => date('Y-m-d', strtotime($lastDate . ' +7 days')),
+                    str_contains($freq, '2 week') || str_contains($freq, '14') => date('Y-m-d', strtotime($lastDate . ' +14 days')),
+                    str_contains($freq, 'month') || str_contains($freq, 'monat') => date('Y-m-d', strtotime($lastDate . ' +1 month')),
+                    default => null
+                };
+                if (!$nextDate || $nextDate > $tomorrow) continue;
+                // Check if already exists
+                $exists = one("SELECT j_id FROM jobs WHERE recurring_group=? AND j_date=? AND status=1", [$t['rg'], $nextDate]);
+                if ($exists) continue;
+                q("INSERT INTO jobs (customer_id_fk, s_id_fk, j_date, j_time, j_hours, job_for, address, emp_id_fk, no_people, code_door, status, job_status, platform, recurring_group) VALUES (?,?,?,?,?,?,?,?,?,?,1,'PENDING',?,?)",
+                    [$t['customer_id_fk'], $t['s_id_fk'], $nextDate, $t['j_time'], $t['j_hours'], $t['job_for'], $t['address'], $t['emp_id_fk'], $t['no_people'], $t['code_door'], $t['platform'], $t['rg']]);
+                $created++;
+            }
+            if ($created > 0) {
+                telegramNotify("🔄 <b>Recurring Jobs</b>\n\n$created Job(s) automatisch erstellt für morgen");
+                audit('auto_create', 'recurring', 0, "$created jobs created");
+            }
+            return ['created' => $created, 'templates_checked' => count($templates)];
+        })(),
+
+        // ============================================================
+        // EMAIL SYNC — Trigger from cron
+        // ============================================================
+        $action === 'email/sync' && $method === 'POST' => (function() {
+            // Redirect to email-inbox sync logic
+            $_POST['action'] = 'sync';
+            $_POST['csrf_token'] = ''; // Skip CSRF for API call
+            $url = 'https://app.' . SITE_DOMAIN . '/admin/email-inbox.php';
+            return ['synced' => 0, 'message' => 'Use admin/email-inbox.php directly'];
+        })(),
+
         default => throw new Exception("Unknown: $action")
     };
     echo json_encode(['success'=>true, 'data'=>$result]);

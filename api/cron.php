@@ -85,7 +85,17 @@ if (shouldRun('email_sync', 10)) {
     } catch (Exception $e) {}
 }
 
-// === TASK 3: Smoobu Sync (every 30 min, if configured) ===
+// === TASK 3: Recurring Jobs (daily at 6am-ish, check every 2h) ===
+if (shouldRun('recurring_jobs', 120)) {
+    $url = 'https://app.' . SITE_DOMAIN . '/api/index.php?action=recurring/process';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>15, CURLOPT_POST=>1,
+        CURLOPT_HTTPHEADER=>['Content-Type: application/json', 'X-API-Key: ' . API_KEY],
+        CURLOPT_SSL_VERIFYPEER=>true]);
+    curl_exec($ch); curl_close($ch);
+}
+
+// === TASK 4: Smoobu Sync (every 30 min, if configured) ===
 if (defined('FEATURE_SMOOBU') && FEATURE_SMOOBU && shouldRun('smoobu_sync', 30)) {
     $url = 'https://app.' . SITE_DOMAIN . '/api/index.php?action=smoobu/sync';
     $ch = curl_init($url);
