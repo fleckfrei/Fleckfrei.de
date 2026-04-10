@@ -118,8 +118,8 @@ require_once __DIR__ . '/includes/config.php';
 
 <!-- Step 0: Service -->
 <div class="section" x-show="step===0" x-transition>
-  <h2 class="section__title">Welchen <em>Service</em> brauchst du?</h2>
-  <p class="section__sub">Flexible Termine, verifizierte Partner, faire Preise.</p>
+  <h2 class="section__title">Welchen <em>Service</em> brauchen Sie?</h2>
+  <p class="section__sub">Drei Welten. Ein Standard. Ab 56,58 EUR netto.</p>
   <div class="services">
     <template x-for="s in services" :key="s.id">
       <div class="card service" :class="{'card--selected':form.service===s.name}" @click="selectService(s)">
@@ -136,7 +136,7 @@ require_once __DIR__ . '/includes/config.php';
 <!-- Step 1: Details -->
 <div class="section fade-in" x-show="step===1" x-transition>
   <h2 class="section__title">Wann und <em>wo</em>?</h2>
-  <p class="section__sub">Sag uns wann und wo wir kommen sollen.</p>
+  <p class="section__sub">Teilen Sie uns Ihren Wunschtermin und die Adresse mit.</p>
   <!-- Selected service pill -->
   <div style="display:flex;align-items:center;justify-content:space-between;background:var(--brand-light);border-radius:var(--radius-pill);padding:.6rem 1rem;margin-bottom:1.5rem">
     <span style="font-weight:700;font-size:.9rem" x-text="form.service + ' — ' + form.price_per_hour + ' EUR/h'"></span>
@@ -144,7 +144,7 @@ require_once __DIR__ . '/includes/config.php';
   </div>
   <div class="card" style="display:flex;flex-direction:column;gap:1rem">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-      <div class="field"><label>Name</label><input type="text" x-model="form.name" placeholder="Max Mustermann"/></div>
+      <div class="field"><label>Ihr Name</label><input type="text" x-model="form.name" placeholder="Max Mustermann"/></div>
       <div class="field"><label>Telefon</label><input type="tel" x-model="form.phone" placeholder="+49 170 123 4567"/></div>
     </div>
     <div class="field"><label>Email</label><input type="email" x-model="form.email" placeholder="deine@email.de"/></div>
@@ -161,14 +161,14 @@ require_once __DIR__ . '/includes/config.php';
         <select x-model="form.frequency"><option value="once">Einmalig</option><option value="weekly">Jede Woche</option><option value="biweekly">Alle 2 Wochen</option><option value="monthly">Monatlich</option></select></div>
     </div>
     <div class="field"><label>Anmerkungen <span style="font-weight:400;text-transform:none">(optional)</span></label>
-      <textarea rows="2" x-model="form.notes" placeholder="z.B. Haustiere, bestimmte Bereiche..."></textarea></div>
+      <textarea rows="2" x-model="form.notes" placeholder="z.B. Haustiere im Haushalt, Schluesseluebergabe..."></textarea></div>
   </div>
 </div>
 
 <!-- Step 2: Summary -->
 <div class="section fade-in" x-show="step===2" x-transition>
   <h2 class="section__title">Fast <em>geschafft</em>!</h2>
-  <p class="section__sub">Pruefe deine Angaben und buche.</p>
+  <p class="section__sub">Pruefen Sie Ihre Angaben und buchen Sie.</p>
   <div class="summary" style="margin-bottom:1.5rem">
     <div class="summary__head">
       <h3 x-text="form.service"></h3>
@@ -196,7 +196,7 @@ require_once __DIR__ . '/includes/config.php';
   <div class="success">
     <div class="success__icon"><svg width="28" height="28" fill="none" stroke="var(--brand)" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg></div>
     <h2 style="margin-bottom:.5rem">Buchung <em>bestaetigt</em>!</h2>
-    <p style="color:var(--text-muted);margin-bottom:2rem">Wir melden uns innerhalb von 2 Stunden.</p>
+    <p style="color:var(--text-muted);margin-bottom:2rem">Wir melden uns innerhalb von 2 Stunden bei Ihnen.</p>
     <div class="card" style="max-width:360px;margin:0 auto 2rem;text-align:left">
       <div class="summary__row"><span>Buchungs-Nr.</span><span style="font-family:monospace;color:var(--brand)" x-text="'#' + bookingId"></span></div>
       <div class="summary__row"><span>Service</span><span x-text="form.service"></span></div>
@@ -224,10 +224,9 @@ function bookingForm() {
   return {
     step:0, paying:false, bookingId:'',
     services:[
-      {id:'std',name:'Standardreinigung',price:35,desc:'Wohnung, Haus oder Buero — regelmaessig oder einmalig.',tag:'Am beliebtesten'},
-      {id:'grd',name:'Grundreinigung',price:45,desc:'Tiefenreinigung nach Umzug, Renovierung oder Fruehjahrputz.',tag:'Intensiv'},
-      {id:'fen',name:'Fensterreinigung',price:40,desc:'Alle Fenster innen + aussen, Rahmen und Fensterbaenke.',tag:'Innen + Aussen'},
-      {id:'bue',name:'Bueroreinigung',price:38,desc:'Professionelle Buero- und Gewerbereinigung.',tag:'Gewerbe'}
+      {id:'hc',name:'Home Care',price:29.99,desc:'Regelmaessige Pflege fuer Ihr Zuhause. Fester Partner, Live-Updates, Foto-Dokumentation.',tag:'Woechentlich bis monatlich'},
+      {id:'str',name:'Short-Term Rental',price:29.99,desc:'Zwischen zwei Gaesten — Waesche, Check, Aufbereitung. iCal-Synchronisation moeglich.',tag:'Meistgebucht'},
+      {id:'bs',name:'Business Service',price:29.99,desc:'Professionelle Pflege fuer Bueros und Gewerbeflaechen. Flexibel und zuverlaessig.',tag:'Gewerbe'}
     ],
     form:{service:'',price_per_hour:0,name:'',phone:'',email:'',address:'',date:'',time:'09:00',hours:'3',frequency:'once',notes:''},
     get minDate(){var d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)},
