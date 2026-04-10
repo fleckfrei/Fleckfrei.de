@@ -1021,7 +1021,7 @@ function renderDeepCards(data, container) {
       <svg class="w-5 h-5 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
       </svg>
-      <h3 class="font-semibold text-gray-900">Ontology Graph <span class="text-[9px] text-gray-400 font-mono">v3.2</span></h3>
+      <h3 class="font-semibold text-gray-900">Ontology Graph <span class="text-[9px] text-gray-400 font-mono">v3.3</span></h3>
       <span class="text-xs text-gray-400 ml-1" id="ontoStatsMini">lade…</span>
     </div>
   </div>
@@ -1093,10 +1093,16 @@ function renderDeepCards(data, container) {
           <h4 class="text-xs font-bold text-indigo-900 uppercase tracking-wider">KI Verify</h4>
           <span class="text-[10px] text-indigo-500">Groq · Perplexity · SearXNG · Grok</span>
         </div>
-        <span class="text-[10px] text-indigo-500 font-mono" id="aiVerifyTiming"></span>
+        <div class="flex items-center gap-2">
+          <label class="text-[10px] text-indigo-700 flex items-center gap-1 cursor-pointer">
+            <input type="checkbox" id="aiAutoToggle" checked class="accent-indigo-600">
+            Auto
+          </label>
+          <span class="text-[10px] text-indigo-500 font-mono" id="aiVerifyTiming"></span>
+        </div>
       </div>
       <div class="flex gap-2 mb-2">
-        <input type="text" id="aiVerifyQuery" placeholder="Name, Firma, Adresse… (oder Object auswählen und Suchen klicken)"
+        <input type="text" id="aiVerifyQuery" placeholder="Name, Firma, Adresse… (auto-triggered aus Haupt-Suche)"
                class="flex-1 px-3 py-1.5 border border-indigo-200 rounded text-xs bg-white focus:outline-none focus:border-indigo-500">
         <button onclick="runAiVerify()" id="aiVerifyBtn" class="px-4 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 whitespace-nowrap">🤖 Verify</button>
       </div>
@@ -1293,10 +1299,22 @@ async function ontoSearch() {
   });
   if (!j.success) {
     document.getElementById('ontoResults').innerHTML =
-      '<div class="text-xs text-red-500 py-4 text-center">Fehler: ' + (j.error || 'unbekannt') + '</div>';
+      '<div class="text-xs text-red-500 py-4 text-center">Fehler: ' + (j.error || 'unbekannt') +
+      '<br><button onclick="ontoSearch()" class="mt-2 px-2 py-1 bg-brand text-white rounded text-[10px]">↻ Retry</button></div>';
     return;
   }
   renderOntoResults(j.data);
+  // ✨ Auto-trigger KI Verify on meaningful queries (not browse mode)
+  if (q.length >= 3 && !j.data.browse) {
+    const auto = document.getElementById('aiAutoToggle');
+    if (auto && auto.checked) {
+      const aiInput = document.getElementById('aiVerifyQuery');
+      if (aiInput) { aiInput.value = q; aiInput.dataset.userTyped = ''; }
+      // Debounce: wait 500ms so user can still type without firing on each char
+      clearTimeout(window._aiAutoTimer);
+      window._aiAutoTimer = setTimeout(() => { runAiVerify(); }, 500);
+    }
+  }
 }
 
 function ontoTypeBadge(t) {
@@ -1404,9 +1422,15 @@ async function ontoSelect(objId) {
     ONTO.currentObj = dt.data;
     // Auto-fill KI Verify input with object's name (if user hasn't typed anything)
     const qInput = document.getElementById('aiVerifyQuery');
-    if (qInput && !qInput.dataset.userTyped) qInput.value = dt.data.display_name || '';
+    if (qInput && !qInput.dataset.userTyped) { qInput.value = dt.data.display_name || ''; }
     // Cache-only AI probe — show AI insights inline if we have them already
-    await ontoLoadCachedAi(dt.data.display_name);
+    const cached = await ontoLoadCachedAi(dt.data.display_name);
+    // Auto-trigger full KI Verify if nothing cached AND auto toggle is on
+    const auto = document.getElementById('aiAutoToggle');
+    if (!cached && auto && auto.checked && dt.data.display_name) {
+      clearTimeout(window._aiAutoTimer);
+      window._aiAutoTimer = setTimeout(() => { runAiVerify(); }, 400);
+    }
   } else {
     const d = document.getElementById('ontoDetail');
     d.classList.remove('hidden');
@@ -1415,12 +1439,12 @@ async function ontoSelect(objId) {
 }
 
 async function ontoLoadCachedAi(name) {
-  if (!name) return;
+  if (!name) return false;
   const j = await ontoFetchJson('/api/gotham-ai-verify.php', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({query: name, cache_only: true}),
   });
-  if (!j.success) return;
+  if (!j.success) return false;
   const d = j.data;
   // Detect which sources have cached data
   const haveGroq = d.groq && d.groq.content && !d.groq.error;
@@ -1435,7 +1459,7 @@ async function ontoLoadCachedAi(name) {
         '<button onclick="runAiVerify()" class="text-indigo-600 hover:underline font-semibold">🤖 KI Verify laufen lassen</button> ' +
         '<span class="text-gray-400">— kein Cache für dieses Object</span></div>');
     }
-    return;
+    return false;
   }
   // Render cached insights in a collapsible strip inside detail panel
   const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
@@ -1459,6 +1483,7 @@ async function ontoLoadCachedAi(name) {
   html += '</div>';
   const detail = document.getElementById('ontoDetail');
   if (detail) detail.insertAdjacentHTML('beforeend', html);
+  return true;  // had cached data
 }
 
 function renderOntoGraph(data) {
