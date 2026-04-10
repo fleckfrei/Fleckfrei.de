@@ -80,6 +80,7 @@ $page = $page ?? '';
         <?php if ($isHost): ?>
           <a href="/customer/services.php" class="nav-link <?= $page==='services' ? 'active' : '' ?>">Services</a>
           <a href="/customer/calendar.php" class="nav-link <?= $page==='calendar' ? 'active' : '' ?>">Kalender</a>
+          <a href="/customer/transport.php" class="nav-link <?= $page==='transport' ? 'active' : '' ?>">Live Transport</a>
         <?php endif; ?>
         <a href="/customer/referral.php" class="nav-link <?= $page==='referral' ? 'active' : '' ?>">Weiterempfehlen</a>
         <a href="/customer/messages.php" class="nav-link <?= $page==='messages' ? 'active' : '' ?>">Chat</a>
@@ -134,6 +135,7 @@ $page = $page ?? '';
       if ($isHost) {
           $mobileItems[] = ['/customer/services.php', 'Services', 'services'];
           $mobileItems[] = ['/customer/calendar.php', 'Kalender', 'calendar'];
+          $mobileItems[] = ['/customer/transport.php', 'Live Transport', 'transport'];
       }
       $mobileItems = array_merge($mobileItems, [
           ['/customer/referral.php', 'Weiterempfehlen', 'referral'],
