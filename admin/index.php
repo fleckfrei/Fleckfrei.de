@@ -437,6 +437,38 @@ include __DIR__ . '/../includes/layout.php';
 </div>
 <?php endif; ?>
 
+<!-- Job Heatmap — Wochentag x Uhrzeit -->
+<?php
+$heatmap = all("SELECT DAYOFWEEK(j_date) as dow, HOUR(j_time) as hour, COUNT(*) as cnt FROM jobs WHERE j_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY) AND status=1 AND j_time IS NOT NULL GROUP BY dow, hour");
+$heatGrid = [];
+foreach ($heatmap as $h) { $heatGrid[($h['dow']+5)%7][$h['hour']] = (int)$h['cnt']; }
+$dowLabels = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+$maxHeat = max(array_map('max', array_map(fn($r) => $r ?: [0], $heatGrid)) ?: [1]);
+?>
+<div class="bg-white rounded-xl border p-5 mb-6">
+  <h3 class="font-semibold mb-3">Job-Heatmap (letzte 90 Tage)</h3>
+  <div class="overflow-x-auto">
+    <table class="text-xs">
+      <thead><tr><th class="px-1 py-1"></th>
+        <?php for ($h=6; $h<=22; $h++): ?><th class="px-1 py-1 text-gray-400 font-normal"><?= $h ?></th><?php endfor; ?>
+      </tr></thead>
+      <tbody>
+        <?php for ($d=0; $d<7; $d++): ?>
+        <tr><td class="px-2 py-1 font-medium text-gray-500"><?= $dowLabels[$d] ?></td>
+          <?php for ($h=6; $h<=22; $h++):
+            $v = $heatGrid[$d][$h] ?? 0;
+            $intensity = $maxHeat > 0 ? $v / $maxHeat : 0;
+            $bg = $v === 0 ? 'bg-gray-50' : ($intensity > 0.7 ? 'bg-brand text-white' : ($intensity > 0.3 ? 'bg-brand/40' : 'bg-brand/15'));
+          ?>
+          <td class="px-1 py-1"><div class="w-7 h-7 rounded flex items-center justify-center <?= $bg ?>" title="<?= $dowLabels[$d] ?> <?= $h ?>:00 — <?= $v ?> Jobs"><?= $v ?: '' ?></div></td>
+          <?php endfor; ?>
+        </tr>
+        <?php endfor; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- Job Detail Popup -->
 <div id="jobDetailModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden overflow-y-auto py-4">
   <div class="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl m-4">

@@ -56,7 +56,36 @@ if (shouldRun('ical_sync', 15)) {
     }
 }
 
-// === TASK 2: Smoobu Sync (every 30 min, if configured) ===
+// === TASK 2: Email Inbox Sync (every 10 min) ===
+if (shouldRun('email_sync', 10)) {
+    try {
+        global $dbLocal;
+        $accounts = $dbLocal->query("SELECT * FROM email_accounts WHERE active=1")->fetchAll(PDO::FETCH_ASSOC);
+        if (!empty($accounts)) {
+            $url = 'https://app.' . SITE_DOMAIN . '/admin/email-inbox.php';
+            // Trigger sync via internal POST
+            $ch = curl_init('https://app.' . SITE_DOMAIN . '/api/index.php?action=email/sync');
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_TIMEOUT=>20, CURLOPT_POST=>1,
+                CURLOPT_HTTPHEADER=>['X-API-Key: '.API_KEY, 'Content-Type: application/json']]);
+            $result = curl_exec($ch); curl_close($ch);
+            // Notify if new emails
+            if ($result) {
+                $data = json_decode($result, true);
+                $count = $data['data']['synced'] ?? 0;
+                if ($count > 0) {
+                    $tgMsg = "📩 <b>{$count} neue Email(s)</b>\n\n";
+                    $tgMsg .= "<a href=\"https://app." . SITE_DOMAIN . "/admin/email-inbox.php\">Email Inbox öffnen</a>";
+                    $ch = curl_init('https://api.telegram.org/bot' . (defined('TELEGRAM_BOT') ? TELEGRAM_BOT : '***REDACTED***') . '/sendMessage');
+                    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_POST=>1,
+                        CURLOPT_POSTFIELDS=>http_build_query(['chat_id'=>'6904792507', 'text'=>$tgMsg, 'parse_mode'=>'HTML'])]);
+                    curl_exec($ch); curl_close($ch);
+                }
+            }
+        }
+    } catch (Exception $e) {}
+}
+
+// === TASK 3: Smoobu Sync (every 30 min, if configured) ===
 if (defined('FEATURE_SMOOBU') && FEATURE_SMOOBU && shouldRun('smoobu_sync', 30)) {
     $url = 'https://app.' . SITE_DOMAIN . '/api/index.php?action=smoobu/sync';
     $ch = curl_init($url);
