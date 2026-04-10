@@ -109,10 +109,13 @@ define('FEATURE_INVOICE_AUTO', true); // Auto-Rechnungserstellung
 // SYSTEM — Nicht ändern
 // ============================================================
 // Main DB (Hostinger localhost) — all reads and writes
+// NOTE: Persistent connections caused repeated "server has gone away"
+// errors because Hostinger's shared MySQL kills idle connections in
+// the PHP-FPM pool. Switched to non-persistent: ~5ms extra per request
+// for the MySQL handshake, but connection is always fresh and alive.
 $db = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_PERSISTENT => true
 ]);
 $dbRemote = $db;
 
@@ -121,7 +124,6 @@ try {
     $dbLocal = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_PERSISTENT => true
     ]);
 } catch (Exception $e) {
     $dbLocal = $db; // Fallback to main DB

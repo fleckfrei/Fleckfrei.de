@@ -131,7 +131,7 @@ function socialLinks($name, $email='', $phone='') {
         // === KONTAKT ===
         'Kontakt' => [
             ['WhatsApp','https://wa.me/'.$phInt],['Telegram','https://t.me/+'.$phInt],
-            ['SMS','sms:'.$ph],['Anrufen','tel:'.$ph],['Email','mailto:'.$e],
+            ['SMS','sms:'.$ph],['Anrufen','tel:'.$ph],['Email','mailto:'.$email],
         ],
         // === SOCIAL MEDIA ===
         'Social Media' => [
