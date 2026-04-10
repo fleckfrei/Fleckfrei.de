@@ -141,6 +141,59 @@ $dbLocal->exec("CREATE TABLE IF NOT EXISTS pricing_history (
     INDEX idx_service (service_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// ============================================================
+// Palantir-Lite Ontology (Gotham) — Session 12
+// 3 tables: typed objects, typed links, temporal events
+// Backs /admin/gotham.php unified investigation UI
+// ============================================================
+$dbLocal->exec("CREATE TABLE IF NOT EXISTS ontology_objects (
+    obj_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    obj_type VARCHAR(24) NOT NULL,
+    obj_key VARCHAR(255) NOT NULL,
+    display_name VARCHAR(500) NOT NULL,
+    properties JSON DEFAULT NULL,
+    confidence FLOAT DEFAULT 0.0,
+    verified TINYINT(1) DEFAULT 0,
+    source_count INT DEFAULT 1,
+    source_scans JSON DEFAULT NULL,
+    first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by INT DEFAULT NULL,
+    UNIQUE KEY uk_type_key (obj_type, obj_key(191)),
+    INDEX idx_display (display_name(100)),
+    INDEX idx_type (obj_type),
+    INDEX idx_verified (verified),
+    INDEX idx_updated (last_updated)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$dbLocal->exec("CREATE TABLE IF NOT EXISTS ontology_links (
+    link_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    from_obj BIGINT NOT NULL,
+    to_obj BIGINT NOT NULL,
+    relation VARCHAR(64) NOT NULL,
+    source VARCHAR(128) DEFAULT NULL,
+    confidence FLOAT DEFAULT 0.5,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_link (from_obj, to_obj, relation),
+    INDEX idx_from (from_obj),
+    INDEX idx_to (to_obj),
+    INDEX idx_relation (relation)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$dbLocal->exec("CREATE TABLE IF NOT EXISTS ontology_events (
+    event_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    obj_id BIGINT NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    event_date DATE DEFAULT NULL,
+    title VARCHAR(500) NOT NULL,
+    data JSON DEFAULT NULL,
+    source VARCHAR(128) DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_obj (obj_id),
+    INDEX idx_date (event_date),
+    INDEX idx_type (event_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // Insert default pricing rules if empty
 try {
     $prCount = $dbLocal->query("SELECT COUNT(*) FROM pricing_rules")->fetchColumn();

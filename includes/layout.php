@@ -157,6 +157,7 @@ $user = me(); $page = $page ?? ''; ?>
         ]);
         if (FEATURE_OSINT) array_splice($menu, -2, 0, [
           ['/admin/scanner.php', 'OSI', 'scanner', $iconSearch, ''],
+          ['/admin/gotham.php', 'Gotham', 'gotham', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>', ''],
           ['/admin/osint-dashboard.php', 'OSINT API', 'osint-dashboard', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>', ''],
         ]);
         array_splice($menu, -2, 0, [

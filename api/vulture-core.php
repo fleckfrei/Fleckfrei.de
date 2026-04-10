@@ -33,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); echo json_encode(['error'=>'POST only']); exit; }
 
 require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/ontology.php';
 
 // Auth
 $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? '';
@@ -687,8 +688,31 @@ if (($aiCheck['triangulation_strength'] ?? '') === 'strong') {
 }
 
 // ============================================================
+// DB RECONNECT — after 30s+ cascade MySQL conn has usually
+// timed out. Fresh handles before persist + ingest.
+// ============================================================
+try {
+    global $db, $dbLocal;
+    $db = new PDO(
+        "mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
+        DB_USER, DB_PASS,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+    );
+    try {
+        $dbLocal = new PDO(
+            "mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4",
+            DB_LOCAL_USER, DB_LOCAL_PASS,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+        );
+    } catch (Exception $e) { $dbLocal = $db; }
+} catch (Exception $e) { /* if reconnect fails, downstream try blocks catch */ }
+
+// ============================================================
 // PERSIST — cascade audit trail for learning
 // ============================================================
+$scanIdForOntology = null;
 try {
     q("INSERT INTO osint_scans (customer_id_fk, scan_name, scan_email, scan_phone, scan_address, scan_data, deep_scan_data, scanned_by)
        VALUES (?,?,?,?,?,?,?,?)",
@@ -710,7 +734,22 @@ try {
        ]),
        $_SESSION['uid'] ?? null,
       ]);
+    $scanIdForOntology = (int)$db->lastInsertId();
 } catch (Exception $e) { /* audit persistence best-effort */ }
+
+// ============================================================
+// ONTOLOGY INGESTION — feed Palantir-Lite objects/links/events
+// ============================================================
+$ingestStats = ['objects_created' => 0, 'links_created' => 0, 'events_created' => 0];
+try {
+    $vcPayload = [
+        'graph'  => ['nodes' => array_values($graph['nodes'])],
+        'report' => $report,
+    ];
+    $ingestStats = ontology_ingest_scan($vcPayload, $scanIdForOntology ?: null);
+} catch (Throwable $e) {
+    $ingestStats['error'] = $e->getMessage();
+}
 
 ob_end_clean();
 echo json_encode([
@@ -724,5 +763,6 @@ echo json_encode([
         'layers_executed' => count($graph['raw_layers']),
     ],
     'cascade_log' => $graph['cascade_log'],
+    'ontology' => $ingestStats,
     'elapsed_seconds' => round($elapsed, 2),
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
