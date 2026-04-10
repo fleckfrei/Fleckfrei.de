@@ -1085,6 +1085,24 @@ function renderDeepCards(data, container) {
       </div>
     </div>
 
+    <!-- 🤖 KI Verify Panel — multi-LLM lookup (Groq + Perplexity + Grok + SearXNG) -->
+    <div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg p-3 mb-3">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span class="text-sm">🤖</span>
+          <h4 class="text-xs font-bold text-indigo-900 uppercase tracking-wider">KI Verify</h4>
+          <span class="text-[10px] text-indigo-500">Groq · Perplexity · SearXNG · Grok</span>
+        </div>
+        <span class="text-[10px] text-indigo-500 font-mono" id="aiVerifyTiming"></span>
+      </div>
+      <div class="flex gap-2 mb-2">
+        <input type="text" id="aiVerifyQuery" placeholder="Name, Firma, Adresse… (oder Object auswählen und Suchen klicken)"
+               class="flex-1 px-3 py-1.5 border border-indigo-200 rounded text-xs bg-white focus:outline-none focus:border-indigo-500">
+        <button onclick="runAiVerify()" id="aiVerifyBtn" class="px-4 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 whitespace-nowrap">🤖 Verify</button>
+      </div>
+      <div id="aiVerifyResult" class="hidden grid grid-cols-1 md:grid-cols-2 gap-2 mt-3"></div>
+    </div>
+
     <!-- CSV / Sheet Import Panel (collapsed by default) -->
     <div id="ontoImportPanel" class="hidden mb-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
       <div class="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-2">CSV / Google Sheet Import</div>
@@ -1447,6 +1465,110 @@ function renderOntoDetail(o) {
   }
   d.innerHTML = html;
 }
+
+// ──────────────────────────────────────────────────────────────
+// 🤖 KI VERIFY — multi-LLM lookup with inline rendering
+// ──────────────────────────────────────────────────────────────
+async function runAiVerify() {
+  const q = document.getElementById('aiVerifyQuery').value.trim() || (ONTO.query || '');
+  if (!q && !ONTO.currentObjId) {
+    alert('Gib eine Query ein oder wähle ein Ergebnis aus.');
+    return;
+  }
+  const btn = document.getElementById('aiVerifyBtn');
+  const resultDiv = document.getElementById('aiVerifyResult');
+  const timing = document.getElementById('aiVerifyTiming');
+  btn.disabled = true; btn.textContent = '🤖 Läuft…';
+  timing.textContent = 'querying 4 sources…';
+  resultDiv.classList.remove('hidden');
+  resultDiv.innerHTML = '<div class="col-span-full text-[11px] text-indigo-700 py-6 text-center">' +
+    '<div class="inline-block w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mr-2"></div>' +
+    'Querying Groq · Perplexity · Grok · SearXNG in parallel…</div>';
+
+  const body = q ? { query: q } : { obj_id: ONTO.currentObjId };
+  const j = await ontoFetchJson('/api/gotham-ai-verify.php', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (!j.success) {
+    resultDiv.innerHTML = '<div class="col-span-full text-xs text-red-600 py-4">Fehler: ' + (j.error || 'unbekannt') + '</div>';
+    btn.disabled = false; btn.textContent = '🤖 Verify';
+    timing.textContent = 'error';
+    return;
+  }
+  const d = j.data;
+  timing.textContent = 'total: ' + d.total_elapsed + 's';
+  const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  function card(title, iconColor, content, elapsed, cached, error, citations) {
+    if (error) {
+      return '<div class="bg-white border border-red-200 rounded p-2.5">' +
+        '<div class="flex items-center justify-between mb-1">' +
+        '<span class="text-[10px] font-bold uppercase ' + iconColor + '">' + title + '</span>' +
+        '<span class="text-[9px] text-red-500">' + esc(error) + '</span></div></div>';
+    }
+    if (!content) {
+      return '<div class="bg-white border border-gray-200 rounded p-2.5 opacity-60">' +
+        '<div class="flex items-center justify-between mb-1">' +
+        '<span class="text-[10px] font-bold uppercase ' + iconColor + '">' + title + '</span>' +
+        '<span class="text-[9px] text-gray-400">no result</span></div></div>';
+    }
+    const cacheTag = cached ? '<span class="text-[9px] text-amber-600 ml-1">cached</span>' : '';
+    const citLinks = (citations || []).slice(0, 6).map((c, i) =>
+      '<a href="' + esc(c) + '" target="_blank" class="text-[9px] text-indigo-500 hover:underline mr-1">[' + (i+1) + ']</a>'
+    ).join('');
+    return '<div class="bg-white border border-gray-200 rounded p-2.5">' +
+      '<div class="flex items-center justify-between mb-1">' +
+      '<span class="text-[10px] font-bold uppercase ' + iconColor + '">' + title + '</span>' +
+      '<span class="text-[9px] text-gray-400 font-mono">' + elapsed + 's' + cacheTag + '</span></div>' +
+      '<div class="text-[11px] text-gray-800 leading-relaxed whitespace-pre-wrap">' + esc(content) + '</div>' +
+      (citLinks ? '<div class="mt-1 pt-1 border-t border-gray-100">' + citLinks + '</div>' : '') +
+      '</div>';
+  }
+
+  function sxCard() {
+    const sx = d.searxng || {};
+    if (sx.error) {
+      return '<div class="bg-white border border-red-200 rounded p-2.5 col-span-full">' +
+        '<div class="text-[10px] font-bold uppercase text-red-600 mb-1">SearXNG error</div>' +
+        '<div class="text-[10px] text-red-500">' + esc(sx.error) + '</div></div>';
+    }
+    if (!sx.hits) {
+      return '<div class="bg-white border border-gray-200 rounded p-2.5 col-span-full opacity-60">' +
+        '<div class="text-[10px] font-bold uppercase text-cyan-700">SearXNG (250 engines)</div>' +
+        '<div class="text-[10px] text-gray-400">no hits</div></div>';
+    }
+    const items = sx.results.map(r =>
+      '<a href="' + esc(r.url) + '" target="_blank" class="block border border-gray-100 rounded p-1.5 hover:bg-cyan-50 transition no-underline">' +
+      '<div class="text-[11px] font-semibold text-gray-900 truncate">' + esc(r.title) + '</div>' +
+      '<div class="text-[9px] text-cyan-700 truncate">' + esc(r.url) + '</div>' +
+      '<div class="text-[10px] text-gray-600 line-clamp-2">' + esc(r.snippet) + '</div></a>'
+    ).join('');
+    const cacheTag = sx.cached ? '<span class="text-[9px] text-amber-600 ml-1">cached</span>' : '';
+    return '<div class="bg-white border border-gray-200 rounded p-2.5 col-span-full">' +
+      '<div class="flex items-center justify-between mb-2">' +
+      '<span class="text-[10px] font-bold uppercase text-cyan-700">🔎 SearXNG · ' + sx.hits + ' hits</span>' +
+      '<span class="text-[9px] text-gray-400 font-mono">' + sx.elapsed + 's' + cacheTag + '</span></div>' +
+      '<div class="grid grid-cols-1 md:grid-cols-2 gap-1.5">' + items + '</div></div>';
+  }
+
+  resultDiv.innerHTML =
+    card('⚡ Groq · llama-3.3-70b', 'text-amber-600', d.groq.content, d.groq.elapsed, d.groq.cached, d.groq.error) +
+    card('🔮 Perplexity · sonar', 'text-purple-600', d.perplexity.content, d.perplexity.elapsed, d.perplexity.cached, d.perplexity.error, d.perplexity.citations) +
+    (d.grok && d.grok.configured ? card('🤖 Grok · x.ai', 'text-slate-700', d.grok.content, d.grok.elapsed, d.grok.cached, d.grok.error) : '') +
+    sxCard();
+
+  btn.disabled = false; btn.textContent = '🤖 Verify';
+}
+
+// Auto-fill AI verify input when user types in the main search box
+document.getElementById('ontoQuery').addEventListener('input', e => {
+  const ai = document.getElementById('aiVerifyQuery');
+  if (ai && !ai.dataset.userTyped) ai.value = e.target.value.trim();
+});
+document.getElementById('aiVerifyQuery').addEventListener('input', e => {
+  e.target.dataset.userTyped = '1';
+});
 
 // ──────────────────────────────────────────────────────────────
 // WATCHLIST UI
