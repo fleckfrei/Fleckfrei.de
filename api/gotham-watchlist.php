@@ -17,6 +17,7 @@ header('Content-Type: application/json');
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/ontology.php';
 
+db_ping_reconnect();
 // Allow either session auth OR cron-key auth (for unattended runs)
 session_start();
 $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? $_GET['key'] ?? '';

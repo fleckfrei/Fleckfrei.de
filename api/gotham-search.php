@@ -19,6 +19,7 @@ header('X-Content-Type-Options: nosniff');
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/ontology.php';
 
+db_ping_reconnect();
 session_start();
 $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? '';
 if (empty($_SESSION['uid']) && $apiKey !== API_KEY) {

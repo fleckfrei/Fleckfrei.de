@@ -124,6 +124,40 @@ try {
 }
 define('DB_MODE', 'local');
 
+// Ping both DB connections and reconnect if dead. Long-running endpoints
+// (cascade, mass-ingest, etc.) exhaust wait_timeout on Hostinger shared
+// MySQL — call db_ping_reconnect() at the top of any endpoint that might
+// be hit after a >30s operation by the same user session.
+function db_ping_reconnect(): void {
+    global $db, $dbLocal;
+    try {
+        $db->query('SELECT 1');
+    } catch (Exception $e) {
+        try {
+            $db = new PDO(
+                "mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
+                DB_USER, DB_PASS,
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+            );
+        } catch (Exception $e2) { /* downstream catches will report */ }
+    }
+    if (isset($dbLocal) && $dbLocal !== $db) {
+        try {
+            $dbLocal->query('SELECT 1');
+        } catch (Exception $e) {
+            try {
+                $dbLocal = new PDO(
+                    "mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4",
+                    DB_LOCAL_USER, DB_LOCAL_PASS,
+                    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+                );
+            } catch (Exception $e2) { $dbLocal = $db; }
+        }
+    }
+}
+
 function q($sql, $p=[]) { global $db; $s=$db->prepare($sql); $s->execute($p); return $s; }
 function all($sql, $p=[]) { return q($sql,$p)->fetchAll(); }
 function one($sql, $p=[]) { return q($sql,$p)->fetch(); }
