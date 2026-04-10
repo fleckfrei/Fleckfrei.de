@@ -82,6 +82,11 @@ function node_id(string $type, string $value): string {
     return $type . ':' . strtolower(trim($value));
 }
 
+// 4-source triangulation: a fact is only "verified" when attested by
+// 4 independent MODULES (not path occurrences). This raises the bar
+// from the original 3-source rule for stricter quality.
+const VULTURE_VERIFY_THRESHOLD = 4;
+
 function add_node(array &$g, string $type, string $value, string $source, float $weight = 1.0): string {
     $id = node_id($type, $value);
     if (!isset($g['nodes'][$id])) {
@@ -96,10 +101,10 @@ function add_node(array &$g, string $type, string $value, string $source, float 
     if (!in_array($source, $g['nodes'][$id]['sources'], true)) {
         $g['nodes'][$id]['sources'][] = $source;
     }
-    // Confidence formula: 1 - (1 - 0.33)^n_sources, capped via 3-source rule
+    // Confidence: 1 - 0.67^n_sources, capped via 4-source rule
     $n = count($g['nodes'][$id]['sources']);
     $g['nodes'][$id]['confidence'] = min(0.99, 1 - pow(0.67, $n));
-    $g['nodes'][$id]['verified'] = $n >= 3;
+    $g['nodes'][$id]['verified'] = $n >= VULTURE_VERIFY_THRESHOLD;
     return $id;
 }
 
@@ -305,7 +310,12 @@ function extract_seeds(array $scan, array &$graph, int $layer, array $initialSee
         ? substr($initialEmail, strpos($initialEmail, '@') + 1)
         : strtolower($initialSeed['domain'] ?? '');
 
-    // Walk results recursively and harvest identifiers
+    // Walk results recursively and harvest identifiers.
+    // Source tagging: use the TOP-LEVEL module name from the path
+    // (e.g. ".db_profile.customer.email" → "db_profile") so that two
+    // hits inside the same module count as ONE source, not two.
+    // This is the "distinct modules" fix — path inflation was turning
+    // 2 hits in 1 module into confidence 55% instead of 33%.
     $harvest = function($node, $path = '') use (&$harvest, &$new, &$graph, $initialDomain) {
         if (is_array($node)) {
             foreach ($node as $k => $v) { $harvest($v, $path . '.' . $k); }
@@ -313,12 +323,15 @@ function extract_seeds(array $scan, array &$graph, int $layer, array $initialSee
         }
         if (!is_string($node) || strlen($node) > 500) return;
 
+        // Extract top-level module name from path for source attribution
+        $moduleTag = 'osint_deep:' . (preg_match('/^\.([^.]+)/', $path, $pm) ? $pm[1] : 'root');
+
         // Email pattern
         if (preg_match_all('/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/', $node, $m)) {
             foreach ($m[0] as $email) {
                 $emailDomain = strtolower(substr($email, strpos($email, '@') + 1));
                 if (is_noise_domain($emailDomain)) continue;
-                add_node($graph, 'email', $email, "osint_deep:$path", 1.0);
+                add_node($graph, 'email', $email, $moduleTag, 1.0);
                 if (!isset($graph['seeds_seen']["email:$email"])) {
                     $graph['seeds_seen']["email:$email"] = true;
                     $new[] = ['email' => $email];
@@ -328,7 +341,7 @@ function extract_seeds(array $scan, array &$graph, int $layer, array $initialSee
         // Phone pattern (E.164)
         if (preg_match_all('/\+\d{7,15}/', $node, $m)) {
             foreach ($m[0] as $phone) {
-                add_node($graph, 'phone', $phone, "osint_deep:$path", 1.0);
+                add_node($graph, 'phone', $phone, $moduleTag, 1.0);
                 if (!isset($graph['seeds_seen']["phone:$phone"])) {
                     $graph['seeds_seen']["phone:$phone"] = true;
                     $new[] = ['phone' => $phone];
@@ -341,7 +354,7 @@ function extract_seeds(array $scan, array &$graph, int $layer, array $initialSee
                 $d = strtolower($domain);
                 if (is_noise_domain($d)) continue;
                 if ($d === $initialDomain) continue;
-                add_node($graph, 'domain', $d, "osint_deep:$path", 0.5);
+                add_node($graph, 'domain', $d, $moduleTag, 0.5);
             }
         }
     };
@@ -629,16 +642,45 @@ for ($layer = 0; $layer < $depth; $layer++) {
     $queue = [];
 
     foreach ($currentLayer as $seed) {
+        $seedStart = microtime(true);
         $scan = run_deep_scan($seed, $apiKey, $mode);
+        $seedElapsed = round(microtime(true) - $seedStart, 2);
         if (!($scan['success'] ?? false)) {
-            $graph['cascade_log'][] = ['layer' => $layer, 'seed' => $seed, 'error' => $scan['error'] ?? 'unknown'];
+            $graph['cascade_log'][] = [
+                'layer' => $layer, 'seed' => $seed,
+                'error' => $scan['error'] ?? 'unknown',
+                'elapsed_seconds' => $seedElapsed,
+            ];
             continue;
         }
         $graph['raw_layers'][] = $scan;
+
+        // Per-module data-size profiling: which modules actually
+        // returned useful data, and how heavy was each one?
+        $moduleProfile = [];
+        foreach (($scan['data'] ?? []) as $moduleName => $moduleData) {
+            if ($moduleName === '_meta') continue;
+            $bytes = strlen(json_encode($moduleData));
+            $isEmpty = empty($moduleData) || $moduleData === [] || $moduleData === null;
+            if ($bytes > 50) {
+                $moduleProfile[$moduleName] = [
+                    'bytes' => $bytes,
+                    'empty' => $isEmpty,
+                ];
+            }
+        }
+        // Sort heaviest first (limited to top 10 per layer to keep response small)
+        uasort($moduleProfile, fn($a, $b) => $b['bytes'] <=> $a['bytes']);
+        $moduleProfile = array_slice($moduleProfile, 0, 10, true);
+
         $graph['cascade_log'][] = [
             'layer' => $layer,
             'seed' => $seed,
             'modules_hit' => count($scan['data'] ?? []),
+            'modules_with_data' => count($moduleProfile),
+            'elapsed_seconds' => $seedElapsed,
+            'osint_deep_meta' => $scan['data']['_meta'] ?? null,
+            'top_modules_by_size' => $moduleProfile,
         ];
 
         // Register provided seed values as confirmed nodes (self-attestation source)

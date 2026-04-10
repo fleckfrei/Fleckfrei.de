@@ -18,6 +18,13 @@ if (!function_exists('qLocal')) {
     require_once __DIR__ . '/config.php';
 }
 
+// Source threshold for "verified" objects. Raised from 3 to 4 for
+// stricter triangulation — a fact must be attested by 4 distinct
+// independent modules before we treat it as ground truth.
+if (!defined('ONTOLOGY_VERIFY_THRESHOLD')) {
+    define('ONTOLOGY_VERIFY_THRESHOLD', 4);
+}
+
 // ============================================================
 // CANONICALIZATION — produce stable keys so duplicates merge
 // ============================================================
@@ -68,9 +75,9 @@ function ontology_upsert_object(
             $scans[] = $scanId;
         }
         $newCount = count($scans) ?: $existing['source_count'] + 1;
-        // Confidence: 1 - (1-0.33)^n  (matches vulture-core)
+        // Confidence: 1 - 0.67^n  (matches vulture-core)
         $newConf = min(0.99, 1 - pow(0.67, max(1, $newCount)));
-        $verified = $newCount >= 3 ? 1 : 0;
+        $verified = $newCount >= ONTOLOGY_VERIFY_THRESHOLD ? 1 : 0;
         qLocal(
             "UPDATE ontology_objects SET properties=?, source_scans=?, source_count=?,
              confidence=?, verified=?, last_updated=NOW() WHERE obj_id=?",
