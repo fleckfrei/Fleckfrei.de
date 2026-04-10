@@ -56,18 +56,19 @@ else
     exit 1
 fi
 
-# Validate PHP syntax locally
+# Validate PHP syntax on server (via SCP to /tmp → php -l → cleanup)
 echo "Checking ${#FILES[@]} PHP file(s)..."
 ERRORS=()
 for f in "${FILES[@]}"; do
-    # Use server PHP version via SSH for accurate check
     rel_path="${f#${LOCAL_SRC}/}"
-    output=$($SSH_CMD "php -l -" < "$f" 2>&1 || true)
-    if echo "$output" | grep -qi "error"; then
+    tmp_remote="/tmp/syntax_check_$$_$(basename "$f")"
+    $SCP_CMD "$f" "${SSH_USER}@${SSH_HOST}:${tmp_remote}" >/dev/null 2>&1 || true
+    output=$($SSH_CMD "php -l '${tmp_remote}' && rm -f '${tmp_remote}'" 2>&1 || true)
+    if echo "$output" | grep -q "No syntax errors detected"; then
+        echo "  ✅ ${rel_path}"
+    else
         ERRORS+=("$rel_path: $output")
         echo "  ❌ ${rel_path}"
-    else
-        echo "  ✅ ${rel_path}"
     fi
 done
 
@@ -123,7 +124,7 @@ POST_ERRORS=0
 for f in "${FILES[@]}"; do
     rel_path="${f#${LOCAL_SRC}/}"
     result=$($SSH_CMD "php -l '${REMOTE_ROOT}/${rel_path}'" 2>&1 || true)
-    if echo "$result" | grep -qi "error"; then
+    if ! echo "$result" | grep -q "No syntax errors detected"; then
         echo "  ❌ SERVER: ${rel_path} — ROLLING BACK"
         # Rollback from backup
         if ! $NO_BACKUP && [[ -f "${BACKUP_PATH}/${TARGET}" ]]; then
