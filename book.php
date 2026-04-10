@@ -119,7 +119,7 @@ require_once __DIR__ . '/includes/config.php';
 <!-- Step 0: Service -->
 <div class="section" x-show="step===0" x-transition>
   <h2 class="section__title">Welchen <em>Service</em> brauchen Sie?</h2>
-  <p class="section__sub">Drei Welten. Ein Standard. Ab 56,58 EUR netto (2h Minimum).</p>
+  <p class="section__sub">Drei Welten. Ein Standard. Ab 24,58 EUR netto pro Stunde.</p>
   <div class="services">
     <template x-for="s in services" :key="s.id">
       <div class="card service" :class="{'card--selected':form.service===s.name}" @click="selectService(s)">
@@ -224,9 +224,9 @@ function bookingForm() {
   return {
     step:0, paying:false, bookingId:'',
     services:[
-      {id:'hc',name:'Home Care',price:28.29,desc:'Regelmaessige Pflege fuer Ihr Zuhause. Fester Partner, Live-Updates, Foto-Dokumentation.',tag:'Woechentlich bis monatlich'},
-      {id:'str',name:'Short-Term Rental',price:28.29,desc:'Vollautomatischer Turnover-Service. iCal-Sync und Buchungsplattformen. Wir kommen, bevor Ihre Gaeste gehen.',tag:'Meistgebucht'},
-      {id:'bs',name:'Business & Office',price:28.29,desc:'Flexibler Service fuer Startups und Unternehmen. On-Demand oder regelmaessig. Keine Langzeitvertraege.',tag:'Gewerbe'}
+      {id:'hc',name:'Home Care',price:24.58,desc:'Regelmaessige Pflege fuer Ihr Zuhause. Fester Partner, Live-Updates, Foto-Dokumentation.',tag:'Woechentlich bis monatlich'},
+      {id:'str',name:'Short-Term Rental',price:24.58,desc:'Vollautomatischer Turnover-Service. iCal-Sync und Buchungsplattformen. Wir kommen, bevor Ihre Gaeste gehen.',tag:'Meistgebucht'},
+      {id:'bs',name:'Business & Office',price:24.58,desc:'Flexibler Service fuer Startups und Unternehmen. On-Demand oder regelmaessig. Keine Langzeitvertraege.',tag:'Gewerbe'}
     ],
     form:{service:'',price_per_hour:0,name:'',phone:'',email:'',address:'',date:'',time:'09:00',hours:'3',frequency:'once',notes:''},
     get minDate(){var d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)},
