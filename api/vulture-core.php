@@ -396,8 +396,7 @@ function extract_seeds(array $scan, array &$graph, int $layer, array $initialSee
     // ========================================================
     // AUTO-IP CASCADE — resolve every newly harvested public
     // domain to its A record and add the IP as a first-class
-    // node linked to the domain. Caches DNS lookups per-request
-    // to avoid duplicate resolves. Skips if A record is private.
+    // node linked to the domain.
     // ========================================================
     $dnsCache = [];
     foreach ($graph['nodes'] as $nid => $node) {
@@ -405,23 +404,147 @@ function extract_seeds(array $scan, array &$graph, int $layer, array $initialSee
         $d = $node['value'];
         if (isset($dnsCache[$d])) continue;
         $dnsCache[$d] = true;
-        // Short DNS timeout — don't block the cascade
         $ip = @gethostbyname($d);
         if (!$ip || $ip === $d) continue;
         if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) continue;
-        // Filter private/reserved (reuse same logic as harvest)
         $parts = explode('.', $ip);
         $first = (int)$parts[0]; $second = (int)$parts[1];
         if ($first === 10 || $first === 127 || $first === 0 || $first >= 224) continue;
         if ($first === 172 && $second >= 16 && $second <= 31) continue;
         if ($first === 192 && $second === 168) continue;
         if ($first === 169 && $second === 254) continue;
-        // Upsert IP node + link
         add_node($graph, 'ip', $ip, 'dns_resolve', 0.85);
+    }
+
+    // ========================================================
+    // CRT.SH SUB-DOMAIN ENUMERATION — for every newly-seen root
+    // domain in the graph, hit crt.sh's free certificate
+    // transparency API to discover subdomains. 24h filecache
+    // per-domain. Each subdomain becomes a domain node.
+    // Only runs for the initial seed domain + its apex to keep
+    // the scope bounded and avoid crt.sh rate-limiting.
+    // ========================================================
+    if ($initialDomain) {
+        $apex = _apex_domain($initialDomain);
+        $subs = crtsh_subdomains($apex);
+        foreach ($subs as $sub) {
+            if (is_noise_domain($sub)) continue;
+            if ($sub === $initialDomain || $sub === $apex) continue;
+            add_node($graph, 'domain', $sub, 'crtsh', 0.75);
+            // Don't auto-seed subdomains into the cascade queue — that
+            // would explode for domains like *.amazonaws.com. Only
+            // harvest them into the graph as passive findings.
+        }
     }
 
     // Layer-cap to prevent exponential blowup
     return array_slice($new, 0, 8);
+}
+
+// ============================================================
+// Helper: extract apex domain from subdomain
+// example: "www.foo.bar.de" → "bar.de"
+// simplistic: 2-label suffix; doesn't handle .co.uk style multi-ccTLD
+// ============================================================
+function _apex_domain(string $d): string {
+    $parts = explode('.', strtolower(trim($d, '.')));
+    $n = count($parts);
+    if ($n <= 2) return implode('.', $parts);
+    // Known multi-ccTLD suffixes
+    $suffix2 = ['co.uk','co.nz','com.au','co.za','co.jp','com.br','com.mx','co.kr','co.il','com.tr','com.sg'];
+    $lastTwo = $parts[$n-2] . '.' . $parts[$n-1];
+    if (in_array($lastTwo, $suffix2, true)) {
+        return $n >= 3 ? $parts[$n-3] . '.' . $lastTwo : $lastTwo;
+    }
+    return $parts[$n-2] . '.' . $parts[$n-1];
+}
+
+// ============================================================
+// Certificate Transparency → subdomain enumeration
+// Primary:  api.certspotter.com  (free, friendly to shared IPs)
+// Fallback: crt.sh                (free but 503s Hostinger IPs)
+// 24h filecache per-apex. Caps at 100 subdomains per domain.
+// ============================================================
+function crtsh_subdomains(string $apex): array {
+    $apex = strtolower(trim($apex));
+    if ($apex === '' || strpos($apex, '.') === false) return [];
+    $cacheDir = sys_get_temp_dir() . '/vulture_vps_cache';
+    if (!is_dir($cacheDir)) @mkdir($cacheDir, 0700, true);
+    $cacheFile = $cacheDir . '/crtsh_' . md5($apex) . '.json';
+    if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
+        $cached = json_decode(@file_get_contents($cacheFile), true);
+        if (is_array($cached)) return $cached;
+    }
+
+    $seen = [];
+
+    // ── PRIMARY: certspotter ─────────────────────────────
+    $url = 'https://api.certspotter.com/v1/issuances?domain=' . urlencode($apex) .
+           '&include_subdomains=true&expand=dns_names';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; FleckfreiVulture/3.0)',
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($code === 200 && $resp) {
+        $rows = json_decode($resp, true);
+        if (is_array($rows)) {
+            foreach ($rows as $row) {
+                $dnsNames = $row['dns_names'] ?? [];
+                if (!is_array($dnsNames)) continue;
+                foreach ($dnsNames as $n) {
+                    $n = strtolower(trim($n));
+                    if (!$n || strpos($n, '*') !== false) continue;
+                    if (!preg_match('/^[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}$/i', $n)) continue;
+                    if (!str_ends_with($n, $apex)) continue;
+                    $seen[$n] = true;
+                }
+            }
+        }
+    }
+
+    // ── FALLBACK: crt.sh (if certspotter returned nothing) ──
+    if (empty($seen)) {
+        $url = 'https://crt.sh/?q=%25.' . urlencode($apex) . '&output=json';
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; FleckfreiVulture/3.0)',
+        ]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code === 200 && $resp) {
+            $rows = json_decode($resp, true);
+            if (is_array($rows)) {
+                foreach ($rows as $row) {
+                    $name = $row['name_value'] ?? '';
+                    if (!$name) continue;
+                    foreach (preg_split('/\s+/', $name) as $n) {
+                        $n = strtolower(trim($n, ".\t "));
+                        if (!$n || strpos($n, '*') !== false) continue;
+                        if (!preg_match('/^[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}$/i', $n)) continue;
+                        if (!str_ends_with($n, $apex)) continue;
+                        $seen[$n] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    unset($seen[$apex]);
+    $list = array_slice(array_keys($seen), 0, 100);
+    @file_put_contents($cacheFile, json_encode($list));
+    return $list;
 }
 
 // ============================================================
