@@ -90,7 +90,7 @@ require_once __DIR__ . '/includes/config.php';
     @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
   </style>
 </head>
-<body x-data="bookingForm()" x-cloak>
+<body x-data="bookingForm()" x-init="init()" x-cloak>
 
 <!-- Nav -->
 <nav class="nav">
@@ -119,7 +119,7 @@ require_once __DIR__ . '/includes/config.php';
 <!-- Step 0: Service -->
 <div class="section" x-show="step===0" x-transition>
   <h2 class="section__title">Welchen <em>Service</em> brauchen Sie?</h2>
-  <p class="section__sub">Drei Welten. Ein Standard. Ab 56,58 EUR netto.</p>
+  <p class="section__sub">Drei Welten. Ein Standard. Ab 56,58 EUR netto (2h Minimum).</p>
   <div class="services">
     <template x-for="s in services" :key="s.id">
       <div class="card service" :class="{'card--selected':form.service===s.name}" @click="selectService(s)">
@@ -224,9 +224,9 @@ function bookingForm() {
   return {
     step:0, paying:false, bookingId:'',
     services:[
-      {id:'hc',name:'Home Care',price:29.99,desc:'Regelmaessige Pflege fuer Ihr Zuhause. Fester Partner, Live-Updates, Foto-Dokumentation.',tag:'Woechentlich bis monatlich'},
-      {id:'str',name:'Short-Term Rental',price:29.99,desc:'Zwischen zwei Gaesten — Waesche, Check, Aufbereitung. iCal-Synchronisation moeglich.',tag:'Meistgebucht'},
-      {id:'bs',name:'Business Service',price:29.99,desc:'Professionelle Pflege fuer Bueros und Gewerbeflaechen. Flexibel und zuverlaessig.',tag:'Gewerbe'}
+      {id:'hc',name:'Home Care',price:28.29,desc:'Regelmaessige Pflege fuer Ihr Zuhause. Fester Partner, Live-Updates, Foto-Dokumentation.',tag:'Woechentlich bis monatlich'},
+      {id:'str',name:'Short-Term Rental',price:28.29,desc:'Vollautomatischer Turnover-Service. iCal-Sync und Buchungsplattformen. Wir kommen, bevor Ihre Gaeste gehen.',tag:'Meistgebucht'},
+      {id:'bs',name:'Business & Office',price:28.29,desc:'Flexibler Service fuer Startups und Unternehmen. On-Demand oder regelmaessig. Keine Langzeitvertraege.',tag:'Gewerbe'}
     ],
     form:{service:'',price_per_hour:0,name:'',phone:'',email:'',address:'',date:'',time:'09:00',hours:'3',frequency:'once',notes:''},
     get minDate(){var d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)},
@@ -239,6 +239,16 @@ function bookingForm() {
       return true;
     },
     formatDate(d){if(!d)return'';var p=d.split('-');return p[2]+'.'+p[1]+'.'+p[0]},
+    init() {
+      // Auto-select service from URL parameter
+      var params = new URLSearchParams(window.location.search);
+      var svc = params.get('service');
+      if (svc) {
+        var map = {'home-care':'Home Care','short-term-rental':'Short-Term Rental','business':'Business & Office','hc':'Home Care','str':'Short-Term Rental','bs':'Business & Office'};
+        var name = map[svc];
+        if (name) { var s = this.services.find(function(x){return x.name===name}); if (s) this.selectService(s); }
+      }
+    },
     selectService(s){this.form.service=s.name;this.form.price_per_hour=s.price;this.step=1},
     nextStep(){if(this.canNext)this.step++},
     async submitBooking(method){
