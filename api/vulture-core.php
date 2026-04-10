@@ -413,7 +413,31 @@ function extract_seeds(array $scan, array &$graph, int $layer, array $initialSee
         if ($first === 172 && $second >= 16 && $second <= 31) continue;
         if ($first === 192 && $second === 168) continue;
         if ($first === 169 && $second === 254) continue;
-        add_node($graph, 'ip', $ip, 'dns_resolve', 0.85);
+        $ipNodeId = add_node($graph, 'ip', $ip, 'dns_resolve', 0.85);
+
+        // Shodan enrichment — services/ports/certs/asn for the IP
+        // 7-day cache means rerunning is cheap. Stored as properties
+        // on the IP node for the synthesize step + ontology ingest.
+        $sh = shodan_host($ip);
+        if ($sh && empty($sh['_no_data'])) {
+            add_node($graph, 'ip', $ip, 'shodan', 0.95);
+            // Stash shodan summary on the node for the report
+            if (isset($graph['nodes'][$ipNodeId])) {
+                $graph['nodes'][$ipNodeId]['shodan'] = [
+                    'org'      => $sh['org'] ?? null,
+                    'asn'      => $sh['asn'] ?? null,
+                    'country'  => $sh['country'] ?? null,
+                    'ports'    => $sh['ports'] ?? [],
+                    'services' => array_slice($sh['services'] ?? [], 0, 8),
+                    'hostnames'=> $sh['hostnames'] ?? [],
+                    'vulns'    => array_slice($sh['vulns'] ?? [], 0, 5),
+                ];
+            }
+            // ASN as separate node, link IP→ASN
+            if (!empty($sh['asn'])) {
+                add_node($graph, 'company', $sh['asn'] . ' (' . ($sh['org'] ?? '?') . ')', 'shodan', 0.85);
+            }
+        }
     }
 
     // ========================================================

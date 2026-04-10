@@ -1148,6 +1148,7 @@ function renderDeepCards(data, container) {
           <div id="ontoGraphActions" class="hidden flex items-center gap-1">
             <button onclick="ontoCascade()" class="px-2 py-0.5 text-[10px] bg-brand text-white rounded">🦅 Cascade</button>
             <button onclick="ontoLineage()" class="px-2 py-0.5 text-[10px] border border-gray-200 text-gray-600 rounded hover:bg-gray-50">🔍 Lineage</button>
+            <a id="ontoFullLink" href="#" class="px-2 py-0.5 text-[10px] border border-gray-200 text-gray-600 rounded hover:bg-gray-50">⛶ Full</a>
             <a id="ontoBriefingLink" href="#" target="_blank" class="px-2 py-0.5 text-[10px] border border-gray-200 text-gray-600 rounded hover:bg-gray-50">📄 Briefing</a>
           </div>
         </div>
@@ -1406,6 +1407,7 @@ async function ontoSelect(objId) {
   document.getElementById('ontoGraphActions').classList.remove('hidden');
   document.getElementById('ontoGraphActions').style.display = 'flex';
   document.getElementById('ontoBriefingLink').href = '/admin/gotham-briefing.php?obj_id=' + objId;
+  document.getElementById('ontoFullLink').href = '/admin/gotham-detail.php?obj_id=' + objId;
   document.getElementById('ontoGraphHeader').textContent = 'Link-Graph — lade…';
 
   const [gr, dt] = await Promise.all([

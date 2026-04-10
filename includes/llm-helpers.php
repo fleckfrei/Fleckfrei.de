@@ -107,6 +107,74 @@ if (!defined('LLM_HELPERS_LOADED')) {
     }
 
     // ============================================================
+    // SHODAN HOST — enrich IP nodes with services/ports/certs
+    // Free tier: 100 host lookups/month with API plan, $0 for SSL
+    // Returns null on failure (graceful skip).
+    // 7-day file cache (IPs change slowly).
+    // ============================================================
+    function shodan_host(string $ip): ?array {
+        if (!defined('SHODAN_API_KEY') || !SHODAN_API_KEY) return null;
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) return null;
+        $cacheDir = sys_get_temp_dir() . '/vulture_vps_cache';
+        if (!is_dir($cacheDir)) @mkdir($cacheDir, 0700, true);
+        $cacheFile = $cacheDir . '/shodan_' . md5($ip) . '.json';
+        if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 604800) {
+            $cached = json_decode(@file_get_contents($cacheFile), true);
+            if (is_array($cached)) { $cached['_cache_hit'] = true; return $cached; }
+        }
+        $url = 'https://api.shodan.io/shodan/host/' . urlencode($ip) . '?key=' . urlencode(SHODAN_API_KEY);
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 12,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code !== 200 || !$resp) {
+            // Negative cache 7d so we don't hammer Shodan on bad IPs
+            @file_put_contents($cacheFile, json_encode(['_error' => "HTTP $code", '_no_data' => true]));
+            return null;
+        }
+        $decoded = json_decode($resp, true);
+        if (!is_array($decoded)) return null;
+        // Distill: keep only the fields we care about, drop heavy raw banners
+        $out = [
+            'ip'            => $decoded['ip_str'] ?? $ip,
+            'org'           => $decoded['org'] ?? null,
+            'isp'           => $decoded['isp'] ?? null,
+            'asn'           => $decoded['asn'] ?? null,
+            'country'       => $decoded['country_name'] ?? null,
+            'country_code'  => $decoded['country_code'] ?? null,
+            'city'          => $decoded['city'] ?? null,
+            'os'            => $decoded['os'] ?? null,
+            'ports'         => $decoded['ports'] ?? [],
+            'hostnames'     => $decoded['hostnames'] ?? [],
+            'domains'       => $decoded['domains'] ?? [],
+            'last_update'   => $decoded['last_update'] ?? null,
+            'vulns'         => array_values($decoded['vulns'] ?? []),
+            'tags'          => $decoded['tags'] ?? [],
+        ];
+        // Per-port service summary
+        $services = [];
+        foreach (($decoded['data'] ?? []) as $svc) {
+            $services[] = [
+                'port'      => $svc['port'] ?? null,
+                'transport' => $svc['transport'] ?? 'tcp',
+                'product'   => $svc['product'] ?? null,
+                'version'   => $svc['version'] ?? null,
+                'cpe'       => $svc['cpe'] ?? null,
+                'ssl_cn'    => $svc['ssl']['cert']['subject']['CN'] ?? null,
+                'ssl_issuer'=> $svc['ssl']['cert']['issuer']['O'] ?? null,
+            ];
+        }
+        $out['services'] = $services;
+        @file_put_contents($cacheFile, json_encode($out));
+        return $out;
+    }
+
+    // ============================================================
     // GROK (x.ai) — grok-2-latest, paid
     // Gracefully returns 'not configured' if key missing so
     // ai_crosscheck can silently skip it without noise.
