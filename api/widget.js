@@ -176,4 +176,26 @@
 
     // Poll for new messages every 5s when open
     setInterval(() => { if (isOpen && identified) loadMessages(); }, 5000);
+
+    // === BOOKING REDIRECT ===
+    // Redirect all #buchen links to app.fleckfrei.de/book.php
+    document.addEventListener('click', function(e) {
+        const link = e.target.closest('a[href*="#buchen"]');
+        if (!link) return;
+        e.preventDefault();
+        // Detect which service card was clicked
+        const card = link.closest('.service-card');
+        let service = '';
+        if (card) {
+            const h3 = card.querySelector('h3');
+            if (h3) {
+                const text = h3.textContent.toLowerCase();
+                if (text.includes('home care')) service = 'home-care';
+                else if (text.includes('short-term') || text.includes('rental')) service = 'short-term-rental';
+                else if (text.includes('business') || text.includes('office')) service = 'business';
+            }
+        }
+        const url = 'https://app.fleckfrei.de/book.php' + (service ? '?service=' + service : '');
+        window.location.href = url;
+    }, true);
 })();
