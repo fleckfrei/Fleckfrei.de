@@ -155,7 +155,14 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/bookings.php', 'Buchungen', 'bookings', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>', ''],
           ['/admin/availability.php', 'Verfügbarkeit', 'availability', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>', ''],
         ]);
-        if (FEATURE_OSINT) array_splice($menu, -2, 0, [  ['/admin/scanner.php', 'OSI', 'scanner', $iconSearch, '']  ]);
+        if (FEATURE_OSINT) array_splice($menu, -2, 0, [
+          ['/admin/scanner.php', 'OSI', 'scanner', $iconSearch, ''],
+          ['/admin/osint-dashboard.php', 'OSINT API', 'osint-dashboard', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>', ''],
+        ]);
+        array_splice($menu, -2, 0, [
+          ['/admin/pricing.php', 'Pricing', 'pricing', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', ''],
+          ['/admin/email-inbox.php', 'Email', 'email-inbox', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>', ''],
+        ]);
       } elseif ($user['type'] === 'customer') {
         $menu = [];
         if (customerCan('dashboard')) $menu[] = ['/customer/', 'Dashboard', 'dashboard', $iconHome, ''];

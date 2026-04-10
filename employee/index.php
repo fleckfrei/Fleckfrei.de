@@ -139,14 +139,27 @@ include __DIR__ . '/../includes/layout.php';
     </form>
     <?php elseif ($j['job_status'] === 'RUNNING'): ?>
     <div class="bg-brand/5 rounded-xl p-4 mb-3">
-      <p class="text-brand font-medium">Gestartet um <?= substr($j['start_time'],0,5) ?></p>
-      <?php
-        $start = new DateTime($j['j_date'].' '.$j['start_time']);
-        $now = new DateTime();
-        $diff = $now->diff($start);
-        $runMins = ($diff->h * 60) + $diff->i;
-      ?>
-      <p class="text-sm text-gray-500">Läuft seit <?= $diff->h ?>h <?= $diff->i ?>min</p>
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-brand font-medium">Gestartet um <?= substr($j['start_time'],0,5) ?></p>
+          <?php
+            $start = new DateTime($j['j_date'].' '.$j['start_time']);
+            $now = new DateTime();
+            $diff = $now->diff($start);
+            $runMins = ($diff->h * 60) + $diff->i;
+          ?>
+          <p class="text-sm text-gray-500">Läuft seit <?= $diff->h ?>h <?= $diff->i ?>min</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium" id="gpsIndicator_<?= $j['j_id'] ?>">
+            <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> GPS aktiv
+          </span>
+          <button onclick="openCamera(<?= $j['j_id'] ?>)" class="px-3 py-2 bg-brand text-white rounded-lg text-sm font-medium">
+            <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Foto
+          </button>
+        </div>
+      </div>
     </div>
     <form method="POST" enctype="multipart/form-data" onsubmit="return getLocationAndSubmit(this, 'stop')" class="space-y-3">
       <input type="hidden" name="action" value="stop_job"/>
@@ -273,7 +286,43 @@ function getLocationAndSubmit(form, type) {
     // Send immediately + every 30s
     sendGPS();
     setInterval(sendGPS, 30000);
+
+    // Update GPS indicator
+    var indicator = document.getElementById('gpsIndicator_' + runningJobId);
+    if (indicator) {
+        setInterval(function() {
+            indicator.querySelector('span:first-child').style.opacity = indicator.querySelector('span:first-child').style.opacity === '0.3' ? '1' : '0.3';
+        }, 1500);
+    }
 })();
+
+// Camera direct open
+function openCamera(jid) {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.multiple = true;
+    input.onchange = function() {
+        if (!input.files.length) return;
+        var formData = new FormData();
+        for (var i = 0; i < input.files.length; i++) {
+            formData.append('photos[]', input.files[i]);
+        }
+        formData.append('j_id', jid);
+        fetch('/api/index.php?action=job/photos', {
+            method: 'POST',
+            headers: { 'X-API-Key': '$apiKeyJs' },
+            body: formData
+        }).then(function(r){return r.json()}).then(function(d){
+            if (d.success) {
+                var btn = event.target.closest ? event.target.closest('button') : null;
+                if (btn) { btn.textContent = d.data.count + ' Foto(s) hochgeladen'; setTimeout(function(){ btn.innerHTML = '<svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg> Foto'; }, 2000); }
+            }
+        });
+    };
+    input.click();
+}
 JS;
 include __DIR__ . '/../includes/footer.php';
 ?>

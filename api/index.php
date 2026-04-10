@@ -1375,6 +1375,34 @@ try {
         })(),
 
         // GPS: Partner sends live position (called from Employee Portal every 30s during RUNNING job)
+        // Job: Upload photos during running job
+        $action === 'job/photos' && $method === 'POST' => (function() {
+            $jid = (int)($_POST['j_id'] ?? 0);
+            if (!$jid) throw new Exception('j_id required');
+            $job = one("SELECT * FROM jobs WHERE j_id=?", [$jid]);
+            if (!$job) throw new Exception('Job not found');
+            $uploadDir = __DIR__ . '/../uploads/jobs/' . $jid . '/';
+            if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+            $uploaded = [];
+            if (!empty($_FILES['photos']['name'][0])) {
+                foreach ($_FILES['photos']['tmp_name'] as $i => $tmp) {
+                    if ($_FILES['photos']['error'][$i] !== UPLOAD_ERR_OK) continue;
+                    if ($_FILES['photos']['size'][$i] > 10 * 1024 * 1024) continue;
+                    $finfo = new finfo(FILEINFO_MIME_TYPE);
+                    $mime = $finfo->file($tmp);
+                    $allowed = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'];
+                    if (!isset($allowed[$mime])) continue;
+                    $fname = bin2hex(random_bytes(8)) . '.' . $allowed[$mime];
+                    if (move_uploaded_file($tmp, $uploadDir . $fname)) $uploaded[] = $fname;
+                }
+            }
+            // Append to existing photos
+            $existing = !empty($job['job_photos']) ? json_decode($job['job_photos'], true) : [];
+            $all = array_merge($existing ?: [], $uploaded);
+            q("UPDATE jobs SET job_photos=? WHERE j_id=?", [json_encode($all), $jid]);
+            return ['count' => count($uploaded), 'total' => count($all), 'files' => $uploaded];
+        })(),
+
         $action === 'gps/update' && $method === 'POST' => (function() use ($body) {
             if (empty($body['emp_id']) || empty($body['lat']) || empty($body['lng'])) throw new Exception('Need emp_id, lat, lng');
             $location = $body['lat'] . ',' . $body['lng'];
