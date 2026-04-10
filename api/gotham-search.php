@@ -32,10 +32,51 @@ $body = $_SERVER['REQUEST_METHOD'] === 'POST'
     : [];
 $action = $_GET['action'] ?? $body['action'] ?? '';
 
-// Stats is GET-allowed; everything else requires POST
-if ($action !== 'stats' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+// stats + heatmap are GET-allowed; everything else requires POST
+if (!in_array($action, ['stats','heatmap'], true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'POST only']);
+    exit;
+}
+
+// ============================================================
+// HEATMAP mode — per-day event activity for last N days
+// ============================================================
+if ($action === 'heatmap') {
+    $days = max(7, min(365, (int)($_GET['days'] ?? 90)));
+    try {
+        $rows = allLocal(
+            "SELECT DATE(COALESCE(event_date, created_at)) as d, COUNT(*) as n
+             FROM ontology_events
+             WHERE COALESCE(event_date, created_at) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+             GROUP BY DATE(COALESCE(event_date, created_at))
+             ORDER BY d",
+            [$days]
+        );
+        $typeRows = allLocal(
+            "SELECT event_type, COUNT(*) as n
+             FROM ontology_events
+             WHERE COALESCE(event_date, created_at) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+             GROUP BY event_type ORDER BY n DESC",
+            [$days]
+        );
+        $topObjects = allLocal(
+            "SELECT o.obj_id, o.obj_type, o.display_name, COUNT(e.event_id) as events
+             FROM ontology_events e
+             JOIN ontology_objects o ON o.obj_id = e.obj_id
+             WHERE COALESCE(e.event_date, e.created_at) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+             GROUP BY o.obj_id ORDER BY events DESC LIMIT 10",
+            [$days]
+        );
+        echo json_encode(['success' => true, 'data' => [
+            'days'        => $days,
+            'by_date'     => $rows,
+            'by_type'     => $typeRows,
+            'top_objects' => $topObjects,
+        ]]);
+    } catch (Exception $e) {
+        echo json_encode(['error' => $e->getMessage()]);
+    }
     exit;
 }
 

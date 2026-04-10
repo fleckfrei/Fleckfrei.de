@@ -1047,6 +1047,42 @@ function renderDeepCards(data, container) {
       <span class="px-2.5 py-1 border border-gray-200 text-gray-600 rounded-full text-[11px] font-medium cursor-pointer hover:bg-gray-50" data-type="address">Adresse</span>
       <span class="px-2.5 py-1 border border-gray-200 text-gray-600 rounded-full text-[11px] font-medium cursor-pointer hover:bg-gray-50" data-type="handle">Handle</span>
     </div>
+    <!-- Activity Heatmap (last 90 days) -->
+    <div class="mb-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Aktivität · letzte 90 Tage</div>
+        <button type="button" onclick="document.getElementById('ontoImportPanel').classList.toggle('hidden')"
+                class="text-[10px] text-brand hover:underline">+ CSV / Sheet Import</button>
+      </div>
+      <div id="ontoHeatmap" class="flex items-end gap-0.5 h-12"></div>
+      <div id="ontoHeatmapLegend" class="text-[9px] font-mono text-gray-400 mt-1"></div>
+    </div>
+
+    <!-- CSV / Sheet Import Panel (collapsed by default) -->
+    <div id="ontoImportPanel" class="hidden mb-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+      <div class="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-2">CSV / Google Sheet Import</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label class="text-[10px] text-gray-600 block mb-1">Datei hochladen (CSV)</label>
+          <input type="file" id="ontoCsvFile" accept=".csv,text/csv" class="text-xs">
+          <div class="text-[10px] text-gray-500 mt-1">Header-Zeile required. Auto-detect für Name/Email/Telefon/Adresse.</div>
+        </div>
+        <div>
+          <label class="text-[10px] text-gray-600 block mb-1">Oder: Public Google Sheet URL</label>
+          <input type="text" id="ontoSheetUrl" placeholder="https://docs.google.com/spreadsheets/d/ID/export?format=csv"
+                 class="w-full px-2 py-1 border border-gray-200 rounded text-xs">
+          <div class="text-[10px] text-gray-500 mt-1">Sheet muss "Anyone with link = Viewer" sein</div>
+        </div>
+      </div>
+      <div class="mt-2 flex items-center gap-2">
+        <input type="text" id="ontoImportLabel" placeholder="Label (z.B. 'Master Credentials')"
+               class="flex-1 px-2 py-1 border border-gray-200 rounded text-xs">
+        <button onclick="ontoImport()" id="ontoImportBtn"
+                class="px-3 py-1 bg-brand text-white rounded text-[11px] font-medium">Importieren</button>
+      </div>
+      <div id="ontoImportResult" class="text-[10px] font-mono text-gray-600 mt-2"></div>
+    </div>
+
     <!-- Results + graph split -->
     <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
       <div class="lg:col-span-2">
@@ -1111,6 +1147,84 @@ setTimeout(() => {
     ontoSearch();
   }
 }, 600);
+
+// ──────────────────────────────────────────────────────────────
+// HEATMAP — 90-day event activity
+// ──────────────────────────────────────────────────────────────
+fetch('/api/gotham-search.php?action=heatmap&days=90').then(r=>r.json()).then(j=>{
+  if (!j.success) return;
+  const byDate = {};
+  (j.data.by_date || []).forEach(r => byDate[r.d] = parseInt(r.n,10));
+  const container = document.getElementById('ontoHeatmap');
+  if (!container) return;
+  const max = Math.max(1, ...Object.values(byDate));
+  const today = new Date();
+  let cells = '';
+  for (let i = 89; i >= 0; i--) {
+    const d = new Date(today); d.setDate(today.getDate() - i);
+    const key = d.toISOString().substring(0, 10);
+    const n = byDate[key] || 0;
+    const intensity = n === 0 ? 0 : Math.min(1, n / max);
+    const bg = n === 0 ? '#e5e7eb' : `rgba(46,125,107,${0.25 + intensity*0.75})`;
+    const tip = `${key}: ${n} Events`;
+    cells += `<div style="width:4px;height:${6+intensity*42}px;background:${bg};border-radius:1px" title="${tip}"></div>`;
+  }
+  container.innerHTML = cells;
+  const total = Object.values(byDate).reduce((a,b)=>a+b,0);
+  const peakDay = Object.entries(byDate).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById('ontoHeatmapLegend').textContent =
+    `${total} Events gesamt · Peak: ${peakDay ? peakDay[0] + ' (' + peakDay[1] + ')' : '—'} · ${Object.keys(byDate).length} aktive Tage`;
+}).catch(()=>{});
+
+// ──────────────────────────────────────────────────────────────
+// CSV / Sheet Import
+// ──────────────────────────────────────────────────────────────
+async function ontoImport() {
+  const file = document.getElementById('ontoCsvFile').files[0];
+  const url  = document.getElementById('ontoSheetUrl').value.trim();
+  const label = document.getElementById('ontoImportLabel').value.trim() || 'import';
+  const result = document.getElementById('ontoImportResult');
+  const btn = document.getElementById('ontoImportBtn');
+
+  if (!file && !url) { result.textContent = '⚠ Datei oder Sheet-URL angeben'; return; }
+  btn.disabled = true; btn.textContent = 'Importiere…';
+  result.textContent = '';
+
+  try {
+    let r;
+    if (file) {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('source_label', label);
+      fd.append('mapping', '{}');
+      r = await fetch('/api/gotham-import.php', {method:'POST', body: fd});
+    } else {
+      r = await fetch('/api/gotham-import.php', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({sheet_url: url, mapping: {}, source_label: label}),
+      });
+    }
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || 'import fehlgeschlagen');
+    const s = j.stats;
+    result.innerHTML = `✓ ${s.rows} rows → ${s.objects} objects · ${s.links} links · ${s.errors} errors · ${s.elapsed}s<br>Cols: ${Object.entries(s.resolved_columns).map(([k,v])=>k+'='+v).join(', ')}`;
+    // Refresh stats
+    setTimeout(() => {
+      fetch('/api/gotham-search.php?action=stats').then(r=>r.json()).then(j=>{
+        if (j && j.success) {
+          const d = j.data;
+          document.getElementById('ontoStatsMini').textContent =
+            `${d.total_objects} Objects · ${d.verified} verified · ${d.total_links} Links · ${d.total_scans} Scans`;
+        }
+      });
+      ontoSearch();
+    }, 500);
+  } catch(e) {
+    result.innerHTML = '<span class="text-red-600">✗ ' + e.message + '</span>';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Importieren';
+  }
+}
 document.getElementById('ontoQuery').addEventListener('keydown', e => {
   if (e.key === 'Enter') { clearTimeout(ONTO.debounce); ontoSearch(); }
 });
