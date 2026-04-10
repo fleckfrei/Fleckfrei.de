@@ -108,22 +108,49 @@ Live-Audit aller produktiven Systeme. Erzeugt am 2026-04-10 18:46 UTC durch dire
 - Action: `scripts/run-seeders.sh` started with correct Upstash credentials. Runs ~100 seed-*.mjs scripts sequentially.
 - Will auto-skip any seeder requiring an external API key that isn't configured (see below)
 
-## Still Open — External API Keys Needed for Full Functionality
+## External API Keys — EU-Focused Strategy
 
-The following data sources require external API keys in `/opt/worldmonitor/docker-compose.override.yml` (file doesn't exist yet — create it) to be fully populated:
+**Key insight (2026-04-10):** The real business value of worldmonitor for La-Renting is **flight tracking for Airbnb guest arrivals** (delay-aware cleaning schedule, guest messaging, Live Map on `app.la-renting.de`). Most other data sources are either (a) US-specific and not needed for Berlin/Cluj rentals, or (b) already public and keyless.
 
-| Source | Env Var | Where to get |
+### Done (2026-04-10)
+- ✅ `FINNHUB_API_KEY` — added to `/opt/worldmonitor/docker-compose.override.yml` (gitignored, chmod 600). Note: `seed-market-quotes.mjs` currently blocked by a separate bug (`CHROME_UA is not defined` in Yahoo scraper), unrelated to the key.
+
+### Priority: DO GET (supports guest-arrival flight tracking)
+| Source | Env Var | Where | Use Case |
+|---|---|---|---|
+| **AviationStack** | `AVIATIONSTACK` | aviationstack.com (free tier 100 calls/day) | Flight delay alerts for Smoobu bookings |
+
+### Nice to have
+| Source | Env Var | Where |
 |---|---|---|
-| Finnhub (market quotes) | `FINNHUB_API_KEY` | finnhub.io (free tier) |
-| FRED (macro economics) | `FRED_API_KEY` | fred.stlouisfed.org |
-| EIA (energy) | `EIA_API_KEY` | eia.gov/opendata |
-| ACLED (conflict data) | `ACLED_ACCESS_TOKEN`, `ACLED_EMAIL`, `ACLED_PASSWORD` | acleddata.com |
-| NASA FIRMS (wildfires) | `NASA_FIRMS` | firms.modaps.eosdis.nasa.gov |
-| AviationStack (flight delays) | `AVIATIONSTACK` | aviationstack.com |
+| Groq (LLM summaries) | `GROQ_API_KEY` | console.groq.com (free, very fast) |
 | OpenAQ / WAQI (air quality) | `OPENAQ_API_KEY`, `WAQI_API_KEY` | openaq.org, waqi.info |
-| Groq (LLM summaries) | `GROQ_API_KEY` | console.groq.com (free) |
 
-These are all free or have generous free tiers. Max can register for each and drop them into the override file.
+### SKIP — US-only data, not relevant to EU rental business
+- ❌ `FRED_API_KEY` (Federal Reserve Bank of St. Louis — US macro)
+- ❌ `EIA_API_KEY` (US Energy Information Administration)
+- ❌ `ACLED_*` (global conflict data, interesting for Vulture pitch but not for rentals)
+- ❌ `NASA_FIRMS` (wildfire detection, not relevant to Berlin/Cluj)
+
+### EU-native data sources — already in worldmonitor, ZERO keys required
+These seeders run against public endpoints and populate automatically via `scripts/run-seeders.sh`:
+- `seed-ecb-fx-rates.mjs`, `seed-ecb-short-rates.mjs` — ECB currency and interest rates
+- `seed-yield-curve-eu.mjs`, `seed-bundle-ecb-eu.mjs` — EU yield curves
+- `seed-eurostat-country-data.mjs` — Eurostat country-level data
+- `seed-fsi-eu.mjs` — EU Financial Stress Index
+- `seed-jodi-oil.mjs`, `seed-jodi-gas.mjs` — Global oil/gas (includes EU)
+- `seed-fao-food-price-index.mjs` — FAO food prices
+- `seed-airport-delays.mjs` — airport delay reference data (public)
+
+## Session-11 Roadmap — Flight-Tracking Integration
+
+Concrete plan for making worldmonitor useful for the rental business:
+
+1. **Add `AVIATIONSTACK` key** to `docker-compose.override.yml` (once Max registers)
+2. **Build `/api/flights/:flightNumber` endpoint** in worldmonitor that proxies AviationStack
+3. **n8n workflow `flight-arrival-monitor`**: polls Smoobu for arrivals in next 48h → extracts flight number from booking form → calls worldmonitor endpoint → if delay > 30 min, Telegram ping cleaner + WhatsApp ping guest via Evolution API
+4. **Dashboard widget** on `app.la-renting.de`: "Incoming Guests Today" with live flight status badges
+5. **Mobile PWA push notification** (manifest.php already supports it) for cleaners when flight status changes
 
 ## Separate Minor Issues Noted
 
