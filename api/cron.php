@@ -123,3 +123,19 @@ if (shouldRun('gotham_watchlist', 60)) {
     curl_exec($ch);
     curl_close($ch);
 }
+
+// === TASK 6: Gotham Daily Report (every 24h) ===
+// Summarizes last-24h activity + watchlist movements + merge candidates
+// into a single Telegram HTML message
+if (shouldRun('gotham_daily', 1440)) {
+    $url = 'https://app.' . SITE_DOMAIN . '/api/gotham-daily-report.php?run=1';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_HTTPHEADER => ['X-API-Key: ' . API_KEY],
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
+}

@@ -146,8 +146,27 @@ function run_deep_scan(array $seed, string $apiKey, string $mode): array {
 // ============================================================
 // VPS API V4 — direct calls for tools not in osint-deep
 // Endpoint: http://89.116.22.185:8900  (auth via X-API-Key)
+// 24h filecache for read-only, idempotent queries (searxng,
+// websearch, perplexity) because re-querying the same term
+// dominates latency — profiler showed searxng is 5x heavier
+// than the next module.
 // ============================================================
-function vps_call(string $tool, array $params): ?array {
+function vps_call(string $tool, array $params, bool $useCache = true): ?array {
+    $cacheable = in_array($tool, ['searxng', 'websearch', 'perplexity', 'google-osint'], true);
+    $cacheDir = sys_get_temp_dir() . '/vulture_vps_cache';
+    if ($useCache && $cacheable) {
+        if (!is_dir($cacheDir)) @mkdir($cacheDir, 0700, true);
+        $cacheKey = md5($tool . '|' . json_encode($params));
+        $cacheFile = $cacheDir . '/' . $cacheKey . '.json';
+        if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
+            $cached = json_decode(@file_get_contents($cacheFile), true);
+            if (is_array($cached)) {
+                $cached['_cache_hit'] = true;
+                return $cached;
+            }
+        }
+    }
+
     $url = 'http://89.116.22.185:8900/' . ltrim($tool, '/');
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -162,7 +181,13 @@ function vps_call(string $tool, array $params): ?array {
     ]);
     $resp = curl_exec($ch);
     curl_close($ch);
-    return $resp ? json_decode($resp, true) : null;
+    $decoded = $resp ? json_decode($resp, true) : null;
+
+    // Only cache successful responses (no error key)
+    if ($useCache && $cacheable && is_array($decoded) && empty($decoded['error'])) {
+        @file_put_contents($cacheFile, $resp);
+    }
+    return $decoded;
 }
 
 // ============================================================
@@ -355,6 +380,26 @@ function extract_seeds(array $scan, array &$graph, int $layer, array $initialSee
                 if (is_noise_domain($d)) continue;
                 if ($d === $initialDomain) continue;
                 add_node($graph, 'domain', $d, $moduleTag, 0.5);
+            }
+        }
+
+        // IPv4 — skip private/loopback ranges, extract public IPs
+        // as first-class ontology objects. These are detection leads
+        // that can be cascaded manually via Shodan/Censys later.
+        if (preg_match_all('/\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/', $node, $m)) {
+            foreach (array_unique($m[0]) as $ip) {
+                $parts = explode('.', $ip);
+                $first = (int)$parts[0];
+                $second = (int)$parts[1];
+                // Filter private + reserved ranges
+                if ($first === 10) continue;
+                if ($first === 127) continue;
+                if ($first === 0) continue;
+                if ($first >= 224) continue;              // multicast + reserved
+                if ($first === 172 && $second >= 16 && $second <= 31) continue;
+                if ($first === 192 && $second === 168) continue;
+                if ($first === 169 && $second === 254) continue; // link-local
+                add_node($graph, 'ip', $ip, $moduleTag, 0.8);
             }
         }
     };

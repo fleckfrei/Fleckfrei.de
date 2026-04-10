@@ -48,6 +48,101 @@ if ($action === 'merge_candidates') {
 }
 
 // ============================================================
+// LINEAGE — audit trail showing WHERE each fact attributing to
+// this object came from (per source, per timestamp, per module)
+// ============================================================
+if ($action === 'lineage') {
+    try {
+        $obj = ontology_get_object($objId);
+        if (!$obj) {
+            http_response_code(404);
+            echo json_encode(['error' => 'object not found']);
+            exit;
+        }
+
+        // Sources this object was seen in
+        $sources = $obj['source_scans'] ?? [];
+        $scanRows = [];
+        if (!empty($sources)) {
+            $placeholders = implode(',', array_fill(0, count($sources), '?'));
+            $scanRows = all(
+                "SELECT scan_id, scan_name, scan_email, scan_phone, scan_address, scan_data, created_at, scanned_by
+                 FROM osint_scans WHERE scan_id IN ($placeholders) ORDER BY created_at DESC",
+                $sources
+            );
+        }
+
+        // All events on this object (timeline)
+        $events = $obj['events'] ?? [];
+
+        // All links with their provenance (source field tells us module)
+        $linksAll = array_merge(
+            array_map(fn($l) => $l + ['direction' => 'out'], $obj['links_out'] ?? []),
+            array_map(fn($l) => $l + ['direction' => 'in'], $obj['links_in'] ?? [])
+        );
+
+        // Collapse into a per-source summary
+        $bySource = [];
+        foreach ($linksAll as $l) {
+            $src = $l['source'] ?? 'unknown';
+            if (!isset($bySource[$src])) {
+                $bySource[$src] = ['source' => $src, 'link_count' => 0, 'first_seen' => $l['created_at'] ?? null, 'relations' => []];
+            }
+            $bySource[$src]['link_count']++;
+            if (!in_array($l['relation'], $bySource[$src]['relations'], true)) {
+                $bySource[$src]['relations'][] = $l['relation'];
+            }
+            if ($l['created_at'] && (!$bySource[$src]['first_seen'] || $l['created_at'] < $bySource[$src]['first_seen'])) {
+                $bySource[$src]['first_seen'] = $l['created_at'];
+            }
+        }
+        foreach ($scanRows as $s) {
+            $src = 'osint_scan_' . $s['scan_id'];
+            $bySource[$src] = [
+                'source' => $src,
+                'scan_id' => (int)$s['scan_id'],
+                'seed' => trim(($s['scan_name'] ?? '') . ' ' . ($s['scan_email'] ?? '')),
+                'first_seen' => $s['created_at'],
+                'link_count' => 0,
+                'relations' => ['contributed_via_scan'],
+            ];
+        }
+        uasort($bySource, fn($a, $b) => strcmp($b['first_seen'] ?? '', $a['first_seen'] ?? ''));
+
+        echo json_encode([
+            'success' => true,
+            'data' => [
+                'object'      => [
+                    'obj_id'       => $obj['obj_id'],
+                    'obj_type'     => $obj['obj_type'],
+                    'display_name' => $obj['display_name'],
+                    'confidence'   => (float)$obj['confidence'],
+                    'verified'     => (int)$obj['verified'],
+                    'source_count' => (int)$obj['source_count'],
+                    'first_seen'   => $obj['first_seen'],
+                    'last_updated' => $obj['last_updated'],
+                ],
+                'sources'     => array_values($bySource),
+                'scan_rows'   => array_map(fn($s) => [
+                    'scan_id'    => (int)$s['scan_id'],
+                    'created_at' => $s['created_at'],
+                    'name'       => $s['scan_name'],
+                    'email'      => $s['scan_email'],
+                    'phone'      => $s['scan_phone'],
+                ], $scanRows),
+                'events'      => $events,
+                'total_links' => count($linksAll),
+                'summary'     => 'This object is attested by ' . count($bySource) . ' distinct sources, ' .
+                                 count($scanRows) . ' historical scans, and ' . count($events) . ' timeline events.',
+            ],
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        echo json_encode(['error' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// ============================================================
 // MERGE — execute a reviewed merge
 // ============================================================
 if ($action === 'merge') {

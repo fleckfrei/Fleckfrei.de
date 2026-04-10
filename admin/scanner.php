@@ -1123,6 +1123,7 @@ function renderDeepCards(data, container) {
           <span id="ontoGraphHeader">Link-Graph — wähle ein Ergebnis</span>
           <div id="ontoGraphActions" class="hidden flex items-center gap-1">
             <button onclick="ontoCascade()" class="px-2 py-0.5 text-[10px] bg-brand text-white rounded">🦅 Cascade</button>
+            <button onclick="ontoLineage()" class="px-2 py-0.5 text-[10px] border border-gray-200 text-gray-600 rounded hover:bg-gray-50">🔍 Lineage</button>
             <a id="ontoBriefingLink" href="#" target="_blank" class="px-2 py-0.5 text-[10px] border border-gray-200 text-gray-600 rounded hover:bg-gray-50">📄 Briefing</a>
           </div>
         </div>
@@ -1533,6 +1534,51 @@ async function ontoMerge(winnerId, loserId) {
 
 // Auto-load watchlist on first load
 setTimeout(ontoLoadWatchlist, 800);
+
+// ──────────────────────────────────────────────────────────────
+// LINEAGE — source audit trail for selected object
+// ──────────────────────────────────────────────────────────────
+async function ontoLineage() {
+  if (!ONTO.currentObjId) return;
+  const j = await ontoFetchJson(`/api/gotham-expand.php?action=lineage&obj_id=${ONTO.currentObjId}`);
+  const d = document.getElementById('ontoDetail');
+  d.classList.remove('hidden');
+  if (!j.success) {
+    d.innerHTML = '<div class="text-red-600 text-xs">Lineage error: ' + (j.error || 'unbekannt') + '</div>';
+    return;
+  }
+  const data = j.data;
+  const o = data.object;
+  let html = `<div class="flex items-center justify-between mb-2">
+    <span class="font-semibold text-gray-900">🔍 Lineage: ${o.display_name} ${ontoTypeBadge(o.obj_type)}</span>
+    <span class="text-[10px] text-gray-400 font-mono">${Math.round(o.confidence*100)}% · first ${o.first_seen.substring(0,10)}</span>
+  </div>`;
+  html += `<div class="text-[10px] text-gray-600 mb-2 italic">${data.summary}</div>`;
+  if (data.sources && data.sources.length) {
+    html += '<div class="text-[9px] font-bold text-gray-500 uppercase mb-1">Sources by origin</div>';
+    html += '<div class="space-y-1 mb-2">';
+    data.sources.forEach(s => {
+      const rel = (s.relations || []).join(', ');
+      html += `<div class="flex items-center justify-between text-[10px] bg-white border border-gray-200 rounded px-2 py-1">
+        <span class="font-mono text-gray-700 truncate flex-1">${s.source}</span>
+        <span class="text-gray-500 ml-2">${rel}</span>
+        <span class="text-gray-400 ml-2 font-mono">${(s.first_seen||'').substring(5,16)}</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  if (data.scan_rows && data.scan_rows.length) {
+    html += '<div class="text-[9px] font-bold text-gray-500 uppercase mb-1">Contributing scans</div>';
+    html += '<div class="flex flex-wrap gap-1 mb-2">';
+    data.scan_rows.slice(0, 10).forEach(s => {
+      html += `<span class="text-[10px] bg-brand/10 text-brand border border-brand/30 rounded px-1.5 py-0.5">
+        #${s.scan_id} ${(s.name||s.email||'').substring(0,20)} <span class="opacity-60">${(s.created_at||'').substring(5,10)}</span>
+      </span>`;
+    });
+    html += '</div>';
+  }
+  d.innerHTML = html;
+}
 
 async function ontoCascade() {
   if (!ONTO.currentObjId) return;
