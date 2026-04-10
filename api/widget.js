@@ -178,24 +178,38 @@
     setInterval(() => { if (isOpen && identified) loadMessages(); }, 5000);
 
     // === BOOKING REDIRECT ===
-    // Redirect all #buchen links to app.fleckfrei.de/book.php
-    document.addEventListener('click', function(e) {
-        const link = e.target.closest('a[href*="#buchen"]');
-        if (!link) return;
-        e.preventDefault();
-        // Detect which service card was clicked
-        const card = link.closest('.service-card');
-        let service = '';
-        if (card) {
-            const h3 = card.querySelector('h3');
-            if (h3) {
-                const text = h3.textContent.toLowerCase();
-                if (text.includes('home care')) service = 'home-care';
-                else if (text.includes('short-term') || text.includes('rental')) service = 'short-term-rental';
-                else if (text.includes('business') || text.includes('office')) service = 'business';
+    // Replace all #buchen links with app.fleckfrei.de/book.php
+    function patchBookingLinks() {
+        document.querySelectorAll('a[href="#buchen"], a[href$="#buchen"]').forEach(function(link) {
+            // Detect service from parent card
+            var card = link.closest('.service-card');
+            var service = '';
+            if (card) {
+                var h3 = card.querySelector('h3');
+                if (h3) {
+                    var text = h3.textContent.toLowerCase();
+                    if (text.indexOf('home care') !== -1) service = 'home-care';
+                    else if (text.indexOf('short-term') !== -1 || text.indexOf('rental') !== -1) service = 'short-term-rental';
+                    else if (text.indexOf('business') !== -1 || text.indexOf('office') !== -1) service = 'business';
+                }
             }
+            var url = 'https://app.fleckfrei.de/book.php' + (service ? '?service=' + service : '');
+            link.href = url;
+            link.removeAttribute('data-patched');
+        });
+        // Also override the #buchen section form submit
+        var bookForm = document.getElementById('bookingForm');
+        if (bookForm) {
+            bookForm.setAttribute('action', 'https://app.fleckfrei.de/book.php');
+            bookForm.setAttribute('method', 'GET');
         }
-        const url = 'https://app.fleckfrei.de/book.php' + (service ? '?service=' + service : '');
-        window.location.href = url;
-    }, true);
+    }
+    // Run on DOM ready + after 1s (for dynamic content)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', patchBookingLinks);
+    } else {
+        patchBookingLinks();
+    }
+    setTimeout(patchBookingLinks, 1000);
+    setTimeout(patchBookingLinks, 3000);
 })();
