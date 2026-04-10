@@ -26,9 +26,39 @@ if (empty($_SESSION['uid']) && $apiKey !== API_KEY) {
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $objId  = (int)($_GET['obj_id'] ?? $_POST['obj_id'] ?? 0);
 
-// ingest_scan uses scan_id not obj_id — skip guard for that action
-if ($action !== 'ingest_scan' && $objId <= 0) {
+// Some actions don't use obj_id — skip guard for them
+$noObjIdActions = ['ingest_scan','merge_candidates','merge'];
+if (!in_array($action, $noObjIdActions, true) && $objId <= 0) {
     echo json_encode(['error' => 'obj_id required']);
+    exit;
+}
+
+// ============================================================
+// MERGE_CANDIDATES — surface cluster duplicates for review
+// ============================================================
+if ($action === 'merge_candidates') {
+    try {
+        $cands = ontology_find_merge_candidates(50);
+        echo json_encode(['success' => true, 'data' => $cands]);
+    } catch (Throwable $e) {
+        echo json_encode(['error' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// ============================================================
+// MERGE — execute a reviewed merge
+// ============================================================
+if ($action === 'merge') {
+    $body = json_decode(file_get_contents('php://input'), true) ?? [];
+    $winnerId = (int)($body['winner_id'] ?? 0);
+    $loserId  = (int)($body['loser_id']  ?? 0);
+    try {
+        $result = ontology_merge_objects($winnerId, $loserId);
+        echo json_encode($result);
+    } catch (Throwable $e) {
+        echo json_encode(['error' => $e->getMessage()]);
+    }
     exit;
 }
 

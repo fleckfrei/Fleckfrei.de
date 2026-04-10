@@ -1058,6 +1058,33 @@ function renderDeepCards(data, container) {
       <div id="ontoHeatmapLegend" class="text-[9px] font-mono text-gray-400 mt-1"></div>
     </div>
 
+    <!-- Watchlist + Merge panels row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+      <!-- Watchlist -->
+      <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">👁 Watchlist</div>
+          <button onclick="ontoLoadWatchlist()" class="text-[10px] text-brand hover:underline">refresh</button>
+        </div>
+        <div class="flex gap-1 mb-2">
+          <input type="text" id="ontoWatchLabel" placeholder="Label" class="flex-1 px-2 py-1 border border-gray-200 rounded text-[11px]">
+          <input type="text" id="ontoWatchQuery" placeholder="Query" class="flex-1 px-2 py-1 border border-gray-200 rounded text-[11px]">
+          <button onclick="ontoAddWatch()" class="px-2 py-1 bg-brand text-white rounded text-[10px]">+</button>
+        </div>
+        <div id="ontoWatchlist" class="space-y-1 max-h-32 overflow-y-auto"></div>
+      </div>
+      <!-- Merge candidates -->
+      <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">🔗 Merge Candidates</div>
+          <button onclick="ontoLoadMerges()" class="text-[10px] text-brand hover:underline">scan</button>
+        </div>
+        <div id="ontoMerges" class="space-y-1 max-h-32 overflow-y-auto text-[11px]">
+          <div class="text-[10px] text-gray-400">Click scan to find duplicate entities…</div>
+        </div>
+      </div>
+    </div>
+
     <!-- CSV / Sheet Import Panel (collapsed by default) -->
     <div id="ontoImportPanel" class="hidden mb-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
       <div class="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-2">CSV / Google Sheet Import</div>
@@ -1231,29 +1258,26 @@ document.getElementById('ontoQuery').addEventListener('keydown', e => {
 
 async function ontoSearch() {
   const q = document.getElementById('ontoQuery').value.trim();
-  // Empty query = browse mode (most recent objects + scans)
   if (q.length === 1) {
     document.getElementById('ontoResults').innerHTML = '<div class="text-xs text-amber-600 py-4 text-center">Bitte mindestens 2 Zeichen eingeben.</div>';
     return;
   }
   ONTO.query = q;
   document.getElementById('ontoResults').innerHTML = '<div class="text-xs text-gray-400 py-4 text-center">' + (q ? 'suche…' : 'lade zuletzt hinzugefügte…') + '</div>';
-  try {
-    const r = await fetch('/api/gotham-search.php', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        query: q,
-        type_filter: ONTO.typeFilter,
-        include_live: document.getElementById('ontoLive').checked,
-      }),
-    });
-    const j = await r.json();
-    if (!j.success) throw new Error(j.error || 'search failed');
-    renderOntoResults(j.data);
-  } catch(e) {
+  const j = await ontoFetchJson('/api/gotham-search.php', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      query: q,
+      type_filter: ONTO.typeFilter,
+      include_live: document.getElementById('ontoLive').checked,
+    }),
+  });
+  if (!j.success) {
     document.getElementById('ontoResults').innerHTML =
-      '<div class="text-xs text-red-500 py-4 text-center">Fehler: ' + e.message + '</div>';
+      '<div class="text-xs text-red-500 py-4 text-center">Fehler: ' + (j.error || 'unbekannt') + '</div>';
+    return;
   }
+  renderOntoResults(j.data);
 }
 
 function ontoTypeBadge(t) {
@@ -1317,15 +1341,26 @@ function renderOntoResults(d) {
 
 // Click on past scan — ingest into ontology on demand then select
 async function ontoIngestScan(scanId) {
+  const j = await ontoFetchJson(`/api/gotham-expand.php?action=ingest_scan&scan_id=${scanId}`, {method:'POST'});
+  if (!j.success || !j.obj_id) {
+    alert('Import fehlgeschlagen: ' + (j.error || 'unbekannt'));
+    return;
+  }
+  await ontoSelect(j.obj_id);
+  setTimeout(ontoSearch, 300);
+}
+
+// Defensive JSON fetch — catches empty/truncated responses so the UI
+// never throws "Unexpected end of JSON input" into the user's face.
+async function ontoFetchJson(url, opts = {}) {
   try {
-    const r = await fetch(`/api/gotham-expand.php?action=ingest_scan&scan_id=${scanId}`, {method:'POST'});
-    const j = await r.json();
-    if (!j.success || !j.obj_id) throw new Error(j.error || 'ingest failed');
-    await ontoSelect(j.obj_id);
-    // Re-run search to refresh counts
-    setTimeout(ontoSearch, 300);
-  } catch(e) {
-    alert('Import fehlgeschlagen: ' + e.message);
+    const r = await fetch(url, opts);
+    const text = await r.text();
+    if (!text || !text.trim()) return { success: false, error: `empty response (HTTP ${r.status})` };
+    try { return JSON.parse(text); }
+    catch (e) { return { success: false, error: 'invalid JSON: ' + text.substring(0, 120) }; }
+  } catch (e) {
+    return { success: false, error: 'network: ' + e.message };
   }
 }
 
@@ -1337,11 +1372,21 @@ async function ontoSelect(objId) {
   document.getElementById('ontoGraphHeader').textContent = 'Link-Graph — lade…';
 
   const [gr, dt] = await Promise.all([
-    fetch(`/api/gotham-expand.php?action=graph&obj_id=${objId}&depth=2`).then(r=>r.json()),
-    fetch(`/api/gotham-expand.php?action=detail&obj_id=${objId}`).then(r=>r.json()),
+    ontoFetchJson(`/api/gotham-expand.php?action=graph&obj_id=${objId}&depth=2`),
+    ontoFetchJson(`/api/gotham-expand.php?action=detail&obj_id=${objId}`),
   ]);
-  if (gr.success) renderOntoGraph(gr.data);
-  if (dt.success) renderOntoDetail(dt.data);
+  if (gr.success) {
+    renderOntoGraph(gr.data);
+  } else {
+    document.getElementById('ontoGraphHeader').textContent = 'Graph error: ' + gr.error;
+  }
+  if (dt.success) {
+    renderOntoDetail(dt.data);
+  } else {
+    const d = document.getElementById('ontoDetail');
+    d.classList.remove('hidden');
+    d.innerHTML = '<div class="text-red-600 text-xs">Detail konnte nicht geladen werden: ' + dt.error + '</div>';
+  }
 }
 
 function renderOntoGraph(data) {
@@ -1402,6 +1447,93 @@ function renderOntoDetail(o) {
   d.innerHTML = html;
 }
 
+// ──────────────────────────────────────────────────────────────
+// WATCHLIST UI
+// ──────────────────────────────────────────────────────────────
+async function ontoLoadWatchlist() {
+  const j = await ontoFetchJson('/api/gotham-watchlist.php?action=list');
+  const el = document.getElementById('ontoWatchlist');
+  if (!j.success) { el.innerHTML = '<div class="text-[10px] text-red-500">'+j.error+'</div>'; return; }
+  const rows = j.data || [];
+  if (!rows.length) { el.innerHTML = '<div class="text-[10px] text-gray-400">no watches yet</div>'; return; }
+  el.innerHTML = rows.map(w => `
+    <div class="flex items-center justify-between bg-white border border-gray-200 rounded px-2 py-1 text-[11px]">
+      <div class="flex-1 min-w-0 cursor-pointer" onclick="document.getElementById('ontoQuery').value='${w.query.replace(/'/g,"\\'")}'; ontoSearch();">
+        <span class="font-semibold truncate">${w.label}</span>
+        <span class="text-gray-400 ml-1">· ${w.query}</span>
+        <span class="text-[9px] text-gray-400 ml-1 font-mono">[${w.last_hit_count} hits]</span>
+      </div>
+      <button onclick="ontoRemoveWatch(${w.watch_id})" class="text-red-400 hover:text-red-600 ml-1 text-[10px]">✕</button>
+    </div>
+  `).join('');
+}
+
+async function ontoAddWatch() {
+  const label = document.getElementById('ontoWatchLabel').value.trim();
+  const query = document.getElementById('ontoWatchQuery').value.trim();
+  if (!label || !query) { alert('Label + Query required'); return; }
+  const j = await ontoFetchJson('/api/gotham-watchlist.php?action=add', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({label, query}),
+  });
+  if (!j.success) { alert('Add failed: ' + j.error); return; }
+  document.getElementById('ontoWatchLabel').value = '';
+  document.getElementById('ontoWatchQuery').value = '';
+  ontoLoadWatchlist();
+}
+
+async function ontoRemoveWatch(id) {
+  if (!confirm('Remove watch?')) return;
+  const j = await ontoFetchJson('/api/gotham-watchlist.php?action=remove', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({watch_id: id}),
+  });
+  if (j.success) ontoLoadWatchlist();
+}
+
+// ──────────────────────────────────────────────────────────────
+// MERGE CANDIDATES UI
+// ──────────────────────────────────────────────────────────────
+async function ontoLoadMerges() {
+  const el = document.getElementById('ontoMerges');
+  el.innerHTML = '<div class="text-[10px] text-gray-400">scanning…</div>';
+  const j = await ontoFetchJson('/api/gotham-expand.php?action=merge_candidates');
+  if (!j.success) { el.innerHTML = '<div class="text-[10px] text-red-500">'+j.error+'</div>'; return; }
+  const cands = j.data || [];
+  if (!cands.length) { el.innerHTML = '<div class="text-[10px] text-gray-400">no duplicates found</div>'; return; }
+  el.innerHTML = cands.slice(0, 20).map((c, i) => `
+    <div class="bg-white border border-gray-200 rounded p-1.5">
+      <div class="flex items-center justify-between gap-1">
+        <span class="truncate flex-1">
+          <span class="text-gray-900 font-medium">${c.person_a.name}</span>
+          <span class="text-gray-400">≡</span>
+          <span class="text-gray-900 font-medium">${c.person_b.name}</span>
+        </span>
+        <div class="flex gap-1 shrink-0">
+          <button onclick="ontoMerge(${c.person_a.obj_id},${c.person_b.obj_id})" class="px-1.5 py-0.5 bg-brand text-white rounded text-[9px]">merge</button>
+          <button onclick="ontoSelect(${c.person_a.obj_id})" class="px-1.5 py-0.5 border border-gray-200 rounded text-[9px]">view</button>
+        </div>
+      </div>
+      <div class="text-[9px] text-gray-500 mt-0.5">${c.reason} · ${Math.round(c.confidence*100)}%</div>
+    </div>
+  `).join('');
+}
+
+async function ontoMerge(winnerId, loserId) {
+  if (!confirm(`Merge #${loserId} → #${winnerId}? Irreversible.`)) return;
+  const j = await ontoFetchJson('/api/gotham-expand.php?action=merge', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({winner_id: winnerId, loser_id: loserId}),
+  });
+  if (!j.success) { alert('Merge failed: ' + j.error); return; }
+  alert(`✓ Merged #${loserId} into #${winnerId}`);
+  ontoLoadMerges();
+  ontoSearch();
+}
+
+// Auto-load watchlist on first load
+setTimeout(ontoLoadWatchlist, 800);
+
 async function ontoCascade() {
   if (!ONTO.currentObjId) return;
   if (!confirm('Click-Expand Cascade starten? Das dauert 15-30s und sendet einen VULTURE Scan vom aktuellen Node aus.')) return;
@@ -1410,15 +1542,13 @@ async function ontoCascade() {
   fd.append('obj_id', ONTO.currentObjId);
   fd.append('depth','2');
   fd.append('mode','fast');
-  try {
-    const r = await fetch('/api/gotham-expand.php', {method:'POST', body:fd});
-    const j = await r.json();
-    if (!j.success) throw new Error(j.error || 'cascade failed');
-    alert(`✓ ${j.cascade_stats?.objects_created || 0} neue Objects · Confidence ${Math.round((j.confidence||0)*100)}%`);
-    await ontoSelect(ONTO.currentObjId);
-  } catch(e) {
-    alert('Fehler: ' + e.message);
+  const j = await ontoFetchJson('/api/gotham-expand.php', {method:'POST', body:fd});
+  if (!j.success) {
+    alert('Cascade Fehler: ' + (j.error || 'unbekannt'));
+    return;
   }
+  alert(`✓ ${j.cascade_stats?.objects_created || 0} neue Objects · Confidence ${Math.round((j.confidence||0)*100)}%`);
+  await ontoSelect(ONTO.currentObjId);
 }
 </script>
 

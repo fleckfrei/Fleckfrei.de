@@ -385,28 +385,43 @@ function ontology_find_merge_candidates(int $limit = 50): array {
         ];
     }
 
-    // 2. Fuzzy name matches (simple: same first 4 chars, different key, any shared link)
-    $fuzzy = allLocal("
-        SELECT o1.obj_id as a_id, o1.display_name as a_name,
-               o2.obj_id as b_id, o2.display_name as b_name
-        FROM ontology_objects o1
-        JOIN ontology_objects o2
-          ON o2.obj_type = 'person'
-         AND o1.obj_id < o2.obj_id
-         AND LEFT(LOWER(o1.obj_key), 4) = LEFT(LOWER(o2.obj_key), 4)
-         AND LEVENSHTEIN(o1.obj_key, o2.obj_key) BETWEEN 1 AND 4
-        WHERE o1.obj_type = 'person'
-        LIMIT 30");
-    // LEVENSHTEIN may not be installed — fall back to PHP if the query throws
-    foreach ($fuzzy as $r) {
-        $candidates[] = [
-            'type'       => 'fuzzy_name',
-            'confidence' => 0.5,
-            'reason'     => "Similar names (small edit distance)",
-            'person_a'   => ['obj_id' => (int)$r['a_id'], 'name' => $r['a_name']],
-            'person_b'   => ['obj_id' => (int)$r['b_id'], 'name' => $r['b_name']],
-        ];
-    }
+    // 2. Fuzzy name matches — PHP-side levenshtein (MySQL version not
+    // installed on Hostinger shared hosting). Prefilter by same first
+    // 3 chars to keep comparison set small.
+    try {
+        $persons = allLocal("SELECT obj_id, obj_key, display_name FROM ontology_objects
+                             WHERE obj_type = 'person' LIMIT 500");
+        $buckets = [];
+        foreach ($persons as $p) {
+            $prefix = mb_substr(mb_strtolower($p['obj_key']), 0, 3);
+            $buckets[$prefix][] = $p;
+        }
+        $fuzzyCount = 0;
+        foreach ($buckets as $bucket) {
+            if (count($bucket) < 2) continue;
+            for ($i = 0; $i < count($bucket); $i++) {
+                for ($j = $i + 1; $j < count($bucket); $j++) {
+                    if ($fuzzyCount >= 20) break 3;
+                    $a = $bucket[$i]; $b = $bucket[$j];
+                    $keyA = mb_strtolower($a['obj_key']);
+                    $keyB = mb_strtolower($b['obj_key']);
+                    if ($keyA === $keyB) continue;
+                    if (abs(strlen($keyA) - strlen($keyB)) > 4) continue;
+                    $dist = levenshtein($keyA, $keyB);
+                    if ($dist >= 1 && $dist <= 4) {
+                        $candidates[] = [
+                            'type'       => 'fuzzy_name',
+                            'confidence' => 0.5,
+                            'reason'     => "Similar names (levenshtein $dist)",
+                            'person_a'   => ['obj_id' => (int)$a['obj_id'], 'name' => $a['display_name']],
+                            'person_b'   => ['obj_id' => (int)$b['obj_id'], 'name' => $b['display_name']],
+                        ];
+                        $fuzzyCount++;
+                    }
+                }
+            }
+        }
+    } catch (Exception $e) { /* best-effort */ }
 
     return $candidates;
 }
