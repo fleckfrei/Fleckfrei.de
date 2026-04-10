@@ -89,11 +89,46 @@ Live-Audit aller produktiven Systeme. Erzeugt am 2026-04-10 18:46 UTC durch dire
 | `fleckfrei/whatsapp-flow` | WhatsApp Flow webhook server | `/var/www/whatsapp-flow` (VPS) |
 | `fleckfrei/max-cohost-bot` | n8n workflow backup | — |
 
-## Known Issues (Stand 2026-04-10)
+## Issues Resolved This Session (2026-04-10 19:00 UTC)
 
-1. **🔴 `worldmonitor-ais-relay` crash loop** — restart every ~24 seconds. Root cause: `AISSTREAM_API_KEY` env var not set. Impact: no live ship tracking data flows into WorldMonitor. Fix: get free API key at https://aisstream.io, add to `.env` next to the docker-compose, restart container.
+### ✅ FIXED — `worldmonitor-ais-relay` crash loop
+- Root cause: `AISSTREAM_API_KEY` env var was empty in `/opt/worldmonitor/.env`
+- Fix: Key set in `.env` (not committed to git — lives only on VPS)
+- Verification: container `Up (healthy)`, no more `AISSTREAM_API_KEY environment variable not set` in logs
+- Impact: AIS ship tracking relay now operational
 
-2. **🟡 `worldmonitor` container unhealthy** — container is running and responding on `worldmonitor.la-renting.de` (HTTP 200), but Docker healthcheck fails. Likely related to the AIS relay dependency. Will resolve when issue #1 is fixed.
+### ✅ FIXED — `worldmonitor` main app Upstash Redis integration
+- Root cause: App was sending `wm-local-token` (default), but the `worldmonitor-redis-rest` proxy was started with `SRH_TOKEN=wm-fleckfrei-2026`, causing HTTP 401 on every Redis call. This silently disabled 8+ features (CorridorRisk, USNI, ShippingStress, SocialVelocity, ClimateNewsSeed, ChokepointFlows, PizzINT, DodoPrices)
+- Fix: Added `REDIS_TOKEN=wm-fleckfrei-2026` to `/opt/worldmonitor/.env` (docker-compose reads it via `${REDIS_TOKEN:-wm-local-token}`), recreated worldmonitor container
+- Verification: From inside worldmonitor container: `wget http://redis-rest:80/ping` with the correct token returns `{"result":"PONG"}`. The "Disabled (no Upstash Redis)" messages are completely gone from logs.
+- Impact: all Redis-dependent features re-enabled
+
+### 🔄 IN PROGRESS — Data seeding
+- Root cause: 71 of 144 data sources in `/api/health` show status `EMPTY` — they were never successfully seeded because the Redis proxy was unreachable (see fix above)
+- Action: `scripts/run-seeders.sh` started with correct Upstash credentials. Runs ~100 seed-*.mjs scripts sequentially.
+- Will auto-skip any seeder requiring an external API key that isn't configured (see below)
+
+## Still Open — External API Keys Needed for Full Functionality
+
+The following data sources require external API keys in `/opt/worldmonitor/docker-compose.override.yml` (file doesn't exist yet — create it) to be fully populated:
+
+| Source | Env Var | Where to get |
+|---|---|---|
+| Finnhub (market quotes) | `FINNHUB_API_KEY` | finnhub.io (free tier) |
+| FRED (macro economics) | `FRED_API_KEY` | fred.stlouisfed.org |
+| EIA (energy) | `EIA_API_KEY` | eia.gov/opendata |
+| ACLED (conflict data) | `ACLED_ACCESS_TOKEN`, `ACLED_EMAIL`, `ACLED_PASSWORD` | acleddata.com |
+| NASA FIRMS (wildfires) | `NASA_FIRMS` | firms.modaps.eosdis.nasa.gov |
+| AviationStack (flight delays) | `AVIATIONSTACK` | aviationstack.com |
+| OpenAQ / WAQI (air quality) | `OPENAQ_API_KEY`, `WAQI_API_KEY` | openaq.org, waqi.info |
+| Groq (LLM summaries) | `GROQ_API_KEY` | console.groq.com (free) |
+
+These are all free or have generous free tiers. Max can register for each and drop them into the override file.
+
+## Separate Minor Issues Noted
+
+- **Healthcheck IPv6 bug**: Docker healthcheck uses `wget -q http://localhost:8080/api/health` inside the Alpine container. BusyBox `wget` resolves `localhost` to IPv6 `::1`, but the Node server binds to IPv4 `0.0.0.0:8080` only, causing "connection refused". The app is actually healthy, but Docker marks it unhealthy. Fix: change `localhost` → `127.0.0.1` in the `docker-compose.yml` healthcheck line. Cosmetic only.
+- **OREF alerts fetch failing**: `ais-relay` logs show `curl: (5) Unsupported proxy syntax in 'http://'` when fetching Israeli home front alerts. Empty proxy env var being passed to curl. Low priority.
 
 ## What's 100% Functional
 
