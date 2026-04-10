@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+@require_once __DIR__ . '/../includes/ontology.php';
 requireAdmin();
 $title = 'Email Inbox'; $page = 'email-inbox';
 global $dbLocal;
@@ -108,6 +109,44 @@ function syncEmails(): int {
                 $dbLocal->prepare("INSERT INTO email_inbox (message_id, from_email, from_name, to_email, subject, body_text, date_received, customer_id, category) VALUES (?,?,?,?,?,?,?,?,?)")
                     ->execute([$msgId, $fromEmail, $fromName, $acc['email'], $subject, substr($body, 0, 5000), $date, $customerId, $category]);
                 $total++;
+
+                // Gotham ontology ingest — every new email feeds the graph
+                if (function_exists('ontology_upsert_object') && $fromEmail) {
+                    try {
+                        $emailObjId = ontology_upsert_object('email', $fromEmail, [
+                            'last_subject' => mb_substr($subject, 0, 200),
+                            'last_seen' => $date,
+                        ], null, 0.85);
+                        if ($fromName && $emailObjId) {
+                            $personId = ontology_upsert_object('person', $fromName, [], null, 0.7);
+                            if ($personId) {
+                                ontology_upsert_link($personId, $emailObjId, 'has_email', 'email_inbox', 0.85);
+                                ontology_add_event($personId, 'email_received',
+                                    substr($date, 0, 10),
+                                    'Email: ' . mb_substr($subject, 0, 200),
+                                    ['from' => $fromEmail, 'msg_id' => $msgId],
+                                    'email_inbox');
+                            }
+                        }
+                        // Extract additional entities from the body via regex
+                        if (function_exists('ontology_extract_entities') && !empty($body)) {
+                            $ent = ontology_extract_entities($body);
+                            foreach (array_slice($ent['emails'] ?? [], 0, 5) as $em) {
+                                if (strcasecmp($em, $fromEmail) === 0) continue;
+                                $eId = ontology_upsert_object('email', $em, [], null, 0.5);
+                                if ($eId && $emailObjId) {
+                                    ontology_upsert_link($emailObjId, $eId, 'mentioned_in_email', 'email_body', 0.5);
+                                }
+                            }
+                            foreach (array_slice($ent['phones'] ?? [], 0, 3) as $ph) {
+                                $pId = ontology_upsert_object('phone', $ph, [], null, 0.55);
+                                if ($pId && $emailObjId) {
+                                    ontology_upsert_link($emailObjId, $pId, 'mentioned_in_email', 'email_body', 0.55);
+                                }
+                            }
+                        }
+                    } catch (Throwable $e) { /* ingest is best-effort */ }
+                }
             }
             imap_close($mailbox);
             $dbLocal->prepare("UPDATE email_accounts SET last_sync=CURRENT_TIMESTAMP WHERE id=?")->execute([$acc['id']]);

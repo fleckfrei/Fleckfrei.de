@@ -1109,6 +1109,23 @@ function renderDeepCards(data, container) {
       <div id="aiVerifyResult" class="hidden grid grid-cols-1 md:grid-cols-2 gap-2 mt-3"></div>
     </div>
 
+    <!-- 📎 OCR Document Drop -->
+    <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-[10px] font-bold text-purple-800 uppercase tracking-wider">📎 OCR Drop</div>
+        <span class="text-[10px] text-purple-500">Visitenkarte / Brief / Screenshot → Entities</span>
+      </div>
+      <div class="flex gap-2 items-center">
+        <input type="file" id="ocrFile" accept="image/*,application/pdf,text/plain"
+               class="text-xs flex-1">
+        <input type="text" id="ocrLabel" placeholder="Label (optional)"
+               class="px-2 py-1 border border-purple-200 rounded text-xs w-40">
+        <button onclick="runOcr()" id="ocrBtn"
+                class="px-3 py-1 bg-purple-600 text-white rounded text-[11px] font-medium hover:bg-purple-700">📎 Extract</button>
+      </div>
+      <div id="ocrResult" class="text-[10px] font-mono text-purple-700 mt-2"></div>
+    </div>
+
     <!-- CSV / Sheet Import Panel (collapsed by default) -->
     <div id="ontoImportPanel" class="hidden mb-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
       <div class="text-[10px] font-semibold text-amber-700 uppercase tracking-wider mb-2">CSV / Google Sheet Import</div>
@@ -1736,6 +1753,50 @@ async function ontoMerge(winnerId, loserId) {
 
 // Auto-load watchlist on first load
 setTimeout(ontoLoadWatchlist, 800);
+
+// ──────────────────────────────────────────────────────────────
+// 📎 OCR DOCUMENT DROP — upload image/pdf/text → entities → ontology
+// ──────────────────────────────────────────────────────────────
+async function runOcr() {
+  const file = document.getElementById('ocrFile').files[0];
+  const label = document.getElementById('ocrLabel').value.trim();
+  const result = document.getElementById('ocrResult');
+  const btn = document.getElementById('ocrBtn');
+  if (!file) { result.textContent = '⚠ Wähle eine Datei'; return; }
+  btn.disabled = true; btn.textContent = '📎 Läuft…';
+  result.textContent = 'OCR + entity extraction…';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (label) fd.append('label', label);
+    const r = await fetch('/api/gotham-ocr.php', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || 'OCR failed');
+    const ent = j.entities || {};
+    result.innerHTML = '✓ <b>' + (j.label || 'doc') + '</b> · ' + j.text_length + ' chars · ' +
+      'emails:' + (ent.emails||0) + ' phones:' + (ent.phones||0) +
+      ' urls:' + (ent.urls||0) + ' handles:' + (ent.handles||0) +
+      ' ibans:' + (ent.ibans||0) + '<br>' +
+      '<span class="text-purple-500">→ doc obj #' + j.doc_obj_id + ' created · ' + j.stats.objects_created + ' objects · ' + j.stats.links_created + ' links</span>';
+    // Clear file input
+    document.getElementById('ocrFile').value = '';
+    document.getElementById('ocrLabel').value = '';
+    // Refresh stats
+    setTimeout(() => {
+      fetch('/api/gotham-search.php?action=stats').then(r => r.json()).then(j => {
+        if (j && j.success) {
+          const d = j.data;
+          document.getElementById('ontoStatsMini').textContent =
+            d.total_objects + ' Objects · ' + d.verified + ' verified · ' + d.total_links + ' Links · ' + d.total_scans + ' Scans';
+        }
+      });
+    }, 300);
+  } catch(e) {
+    result.innerHTML = '<span class="text-red-600">✗ ' + e.message + '</span>';
+  } finally {
+    btn.disabled = false; btn.textContent = '📎 Extract';
+  }
+}
 
 // ──────────────────────────────────────────────────────────────
 // LINEAGE — source audit trail for selected object
