@@ -191,10 +191,67 @@ function vps_call(string $tool, array $params, bool $useCache = true): ?array {
 }
 
 // ============================================================
+// GROQ LLM — direct call (no VPS intermediate). Free tier,
+// llama-3.3-70b-versatile, ~0.5s responses. Used as 4th
+// independent AI source alongside Perplexity. Requires
+// GROQ_API_KEY constant from includes/llm-keys.php.
+// Responses cached 24h in the same file cache as vps_call.
+// ============================================================
+function groq_chat(string $prompt, int $maxTokens = 400): ?array {
+    if (!defined('GROQ_API_KEY') || !GROQ_API_KEY) {
+        return ['error' => 'GROQ_API_KEY not configured'];
+    }
+    $cacheDir = sys_get_temp_dir() . '/vulture_vps_cache';
+    if (!is_dir($cacheDir)) @mkdir($cacheDir, 0700, true);
+    $cacheFile = $cacheDir . '/groq_' . md5($prompt . '|' . $maxTokens) . '.json';
+    if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
+        $cached = json_decode(@file_get_contents($cacheFile), true);
+        if (is_array($cached)) {
+            $cached['_cache_hit'] = true;
+            return $cached;
+        }
+    }
+    $payload = [
+        'model' => 'llama-3.3-70b-versatile',
+        'messages' => [['role' => 'user', 'content' => $prompt]],
+        'max_tokens' => $maxTokens,
+        'temperature' => 0.2,
+    ];
+    $ch = curl_init('https://api.groq.com/openai/v1/chat/completions');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . GROQ_API_KEY,
+        ],
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($code !== 200 || !$resp) {
+        return ['error' => "Groq HTTP $code"];
+    }
+    $decoded = json_decode($resp, true);
+    if (!is_array($decoded)) return ['error' => 'invalid JSON'];
+    $content = $decoded['choices'][0]['message']['content'] ?? '';
+    $out = [
+        'content' => $content,
+        'model' => $decoded['model'] ?? '',
+        'usage' => $decoded['usage'] ?? null,
+    ];
+    if ($content) @file_put_contents($cacheFile, json_encode($out));
+    return $out;
+}
+
+// ============================================================
 // AI CROSS-CHECK — independent LLM verification via Perplexity
-// (and Google-OSINT) on VPS. Used as 3rd triangulation source:
-// if Perplexity confirms a claim that osint-deep also found,
-// that's an independent signal that deserves extra confidence.
+// + Groq LLM + SearXNG (250 engines) on VPS. Used as
+// 4-source triangulation: if multiple independent sources
+// agree on a claim, confidence gets a significant boost.
 // ============================================================
 function ai_crosscheck(array $initialSeed, array $rawLayers): array {
     $name    = trim($initialSeed['name'] ?? '');
@@ -214,6 +271,7 @@ function ai_crosscheck(array $initialSeed, array $rawLayers): array {
 
     $pplx1 = vps_call('perplexity', ['query' => $q1]);
     $pplx2 = vps_call('perplexity', ['query' => $q2]);
+    $groq  = groq_chat($q1);  // 4th triangulation source (free llama-3.3-70b)
     // SearXNG = local aggregator over 250 engines — independent of Google rate limits.
     // Two queries: one profile-oriented, one risk-oriented.
     $sx1 = vps_call('searxng', ['query' => $anchor, 'categories' => 'general', 'limit' => 10]);
@@ -225,6 +283,14 @@ function ai_crosscheck(array $initialSeed, array $rawLayers): array {
         'sources_queried' => [],
         'errors' => [],
     ];
+
+    // Groq LLM (4th triangulation source)
+    if ($groq && !empty($groq['content'])) {
+        $out['groq_profile'] = $groq['content'];
+        $out['sources_queried'][] = 'groq_profile';
+    } elseif (is_array($groq) && !empty($groq['error'])) {
+        $out['errors']['groq'] = $groq['error'];
+    }
 
     if ($pplx1 && !isset($pplx1['error'])) {
         $content = $pplx1['content'] ?? ($pplx1['choices'][0]['message']['content'] ?? '');
@@ -276,7 +342,7 @@ function ai_crosscheck(array $initialSeed, array $rawLayers): array {
     $matches = 0;
     $scanBlob = '';
     foreach ($rawLayers as $layer) { $scanBlob .= json_encode($layer['data'] ?? []); }
-    $aiBlob = ($out['perplexity_profile'] ?? '') . ' ' . ($out['perplexity_risk'] ?? '');
+    $aiBlob = ($out['perplexity_profile'] ?? '') . ' ' . ($out['perplexity_risk'] ?? '') . ' ' . ($out['groq_profile'] ?? '');
     foreach (($out['searxng_top'] ?? []) as $r) {
         $aiBlob .= ' ' . ($r['title'] ?? '') . ' ' . ($r['snippet'] ?? '');
     }

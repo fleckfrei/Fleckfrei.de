@@ -72,6 +72,10 @@ define('FEATURE_AUTO_BANK', true);
 // Stripe keys loaded from secrets file (not in git)
 $_stripeSecrets = __DIR__ . '/stripe-keys.php';
 if (file_exists($_stripeSecrets)) { require_once $_stripeSecrets; }
+
+// LLM API keys — gitignored, manually deployed
+$_llmKeys = __DIR__ . '/llm-keys.php';
+if (file_exists($_llmKeys)) { require_once $_llmKeys; }
 if (!defined('STRIPE_PK')) define('STRIPE_PK', '');
 if (!defined('STRIPE_SK')) define('STRIPE_SK', '');
 define('FEATURE_STRIPE', !empty(STRIPE_SK));

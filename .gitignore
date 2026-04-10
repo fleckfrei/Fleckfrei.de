@@ -6,6 +6,7 @@ backups/
 backup-*
 .DS_Store
 includes/stripe-keys.php
+includes/llm-keys.php
 scripts/monitor_stdout.log
 scripts/monitor_stderr.log
 scripts/monitor.log
