@@ -1021,7 +1021,7 @@ function renderDeepCards(data, container) {
       <svg class="w-5 h-5 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
       </svg>
-      <h3 class="font-semibold text-gray-900">Ontology Graph</h3>
+      <h3 class="font-semibold text-gray-900">Ontology Graph <span class="text-[9px] text-gray-400 font-mono">v3.2</span></h3>
       <span class="text-xs text-gray-400 ml-1" id="ontoStatsMini">lade…</span>
     </div>
   </div>

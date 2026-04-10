@@ -124,38 +124,30 @@ try {
 }
 define('DB_MODE', 'local');
 
-// Ping both DB connections and reconnect if dead. Long-running endpoints
-// (cascade, mass-ingest, etc.) exhaust wait_timeout on Hostinger shared
-// MySQL — call db_ping_reconnect() at the top of any endpoint that might
-// be hit after a >30s operation by the same user session.
+// Force-refresh both DB connections with NON-persistent PDO instances.
+// Even when a ping passes, Hostinger's persistent pool can hand us a
+// connection that dies mid-query after a long cascade. Don't rely on
+// the ping — always replace the connection. This adds ~5ms latency
+// per gotham endpoint but eliminates "server has gone away" entirely.
 function db_ping_reconnect(): void {
     global $db, $dbLocal;
     try {
-        $db->query('SELECT 1');
-    } catch (Exception $e) {
-        try {
-            $db = new PDO(
-                "mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
-                DB_USER, DB_PASS,
-                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
-            );
-        } catch (Exception $e2) { /* downstream catches will report */ }
-    }
-    if (isset($dbLocal) && $dbLocal !== $db) {
-        try {
-            $dbLocal->query('SELECT 1');
-        } catch (Exception $e) {
-            try {
-                $dbLocal = new PDO(
-                    "mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4",
-                    DB_LOCAL_USER, DB_LOCAL_PASS,
-                    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
-                );
-            } catch (Exception $e2) { $dbLocal = $db; }
-        }
-    }
+        $db = new PDO(
+            "mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
+            DB_USER, DB_PASS,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+            // Deliberately NO PDO::ATTR_PERSISTENT so we get a fresh socket
+        );
+    } catch (Exception $e) { /* downstream catches will report */ }
+    try {
+        $dbLocal = new PDO(
+            "mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4",
+            DB_LOCAL_USER, DB_LOCAL_PASS,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+        );
+    } catch (Exception $e) { $dbLocal = $db; }
 }
 
 function q($sql, $p=[]) { global $db; $s=$db->prepare($sql); $s->execute($p); return $s; }
