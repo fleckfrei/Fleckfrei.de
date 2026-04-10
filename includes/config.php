@@ -156,12 +156,60 @@ function db_ping_reconnect(): void {
     } catch (Exception $e) { $dbLocal = $db; }
 }
 
-function q($sql, $p=[]) { global $db; $s=$db->prepare($sql); $s->execute($p); return $s; }
+// q() / qLocal() with transparent auto-reconnect on "gone away".
+// Hostinger's MySQL has wait_timeout=20s. Any idle connection after
+// a long operation (vulture-core cascade, sentinel scan, mass-ingest)
+// gets killed mid-flight. Catching PDOException 2006 here and
+// retrying once with a fresh PDO eliminates the entire bug class
+// without changing any caller code.
+function _is_gone_away(PDOException $e): bool {
+    $msg = $e->getMessage();
+    return strpos($msg, 'gone away') !== false
+        || strpos($msg, '2006') !== false
+        || strpos($msg, 'Lost connection') !== false
+        || strpos($msg, 'Error reading result') !== false;
+}
+function _reconnect_db(): void {
+    global $db;
+    $db = new PDO("mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4", DB_USER, DB_PASS, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]);
+}
+function _reconnect_dbLocal(): void {
+    global $dbLocal, $db;
+    try {
+        $dbLocal = new PDO("mysql:host=".DB_LOCAL_HOST.";dbname=".DB_LOCAL_NAME.";charset=utf8mb4", DB_LOCAL_USER, DB_LOCAL_PASS, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+    } catch (Exception $e) { $dbLocal = $db; }
+}
+
+function q($sql, $p=[]) {
+    global $db;
+    try {
+        $s = $db->prepare($sql); $s->execute($p); return $s;
+    } catch (PDOException $e) {
+        if (!_is_gone_away($e)) throw $e;
+        _reconnect_db();
+        $s = $db->prepare($sql); $s->execute($p); return $s;
+    }
+}
 function all($sql, $p=[]) { return q($sql,$p)->fetchAll(); }
 function one($sql, $p=[]) { return q($sql,$p)->fetch(); }
 function val($sql, $p=[]) { return q($sql,$p)->fetchColumn(); }
-// Local DB queries (messages, audit, settings, gps)
-function qLocal($sql, $p=[]) { global $dbLocal; $s=$dbLocal->prepare($sql); $s->execute($p); return $s; }
+
+function qLocal($sql, $p=[]) {
+    global $dbLocal;
+    try {
+        $s = $dbLocal->prepare($sql); $s->execute($p); return $s;
+    } catch (PDOException $e) {
+        if (!_is_gone_away($e)) throw $e;
+        _reconnect_dbLocal();
+        $s = $dbLocal->prepare($sql); $s->execute($p); return $s;
+    }
+}
 function allLocal($sql, $p=[]) { return qLocal($sql,$p)->fetchAll(); }
 function oneLocal($sql, $p=[]) { return qLocal($sql,$p)->fetch(); }
 function valLocal($sql, $p=[]) { return qLocal($sql,$p)->fetchColumn(); }
