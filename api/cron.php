@@ -124,6 +124,20 @@ if (shouldRun('gotham_watchlist', 60)) {
     curl_close($ch);
 }
 
+// === TASK 7: Gotham Sentinel (every 6h, auto-cascade watchlist) ===
+if (shouldRun('gotham_sentinel', 360)) {
+    $url = 'https://app.' . SITE_DOMAIN . '/api/gotham-sentinel.php?run=1&max=5';
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 600,
+        CURLOPT_HTTPHEADER => ['X-API-Key: ' . API_KEY],
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
+}
+
 // === TASK 6: Gotham Daily Report (every 24h) ===
 // Summarizes last-24h activity + watchlist movements + merge candidates
 // into a single Telegram HTML message

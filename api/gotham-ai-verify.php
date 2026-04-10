@@ -49,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $body = json_decode(file_get_contents('php://input'), true) ?? [];
 $query = trim($body['query'] ?? '');
 $objId = (int)($body['obj_id'] ?? 0);
+$cacheOnly = !empty($body['cache_only']);  // return only cached, skip live calls
 
 // Resolve query from obj_id if needed
 if ($query === '' && $objId > 0) {
@@ -61,15 +62,33 @@ if ($query === '' || mb_strlen($query) < 2) {
     exit;
 }
 
-$out = ['query' => $query, 'anchor' => $query];
+$out = ['query' => $query, 'anchor' => $query, 'cache_only' => $cacheOnly];
 $globalStart = microtime(true);
+
+// cache_only mode: peek the filecache without making any API calls.
+// Used by auto-load-on-select in the UI so selecting an object is
+// instant if we already have AI answers for it from a previous run.
+function peek_cache(string $key, int $ttl = 86400): ?array {
+    $cacheFile = sys_get_temp_dir() . '/vulture_vps_cache/' . $key . '.json';
+    if (!file_exists($cacheFile)) return null;
+    if ((time() - filemtime($cacheFile)) >= $ttl) return null;
+    $d = json_decode(@file_get_contents($cacheFile), true);
+    return is_array($d) ? $d : null;
+}
 
 // ============================================================
 // GROQ (fast, ~0.5s, free)
 // ============================================================
-$t = microtime(true);
 $groqPrompt = "Who is $query? Short factual profile with verifiable public sources if known. If unknown, say so honestly. 4 sentences max.";
-$groqRes = groq_chat($groqPrompt, 400);
+$t = microtime(true);
+if ($cacheOnly) {
+    $key = 'groq_' . md5($groqPrompt . '|400');
+    $groqRes = peek_cache($key);
+    if ($groqRes) $groqRes['_cache_hit'] = true;
+    else $groqRes = ['content' => '', '_cache_miss' => true];
+} else {
+    $groqRes = groq_chat($groqPrompt, 400);
+}
 $out['groq'] = [
     'content'  => $groqRes['content'] ?? '',
     'cached'   => !empty($groqRes['_cache_hit']),
@@ -80,9 +99,16 @@ $out['groq'] = [
 // ============================================================
 // PERPLEXITY (with citations, ~3-5s)
 // ============================================================
-$t = microtime(true);
 $pplxQuery = "Who is $query? Give a short factual profile with verifiable public sources. If business: registry, directors, address. If person: role, location, companies. 4 sentences max.";
-$pplxRes = vps_call('perplexity', ['query' => $pplxQuery]);
+$t = microtime(true);
+if ($cacheOnly) {
+    $key = md5('perplexity|' . json_encode(['query' => $pplxQuery]));
+    $pplxRes = peek_cache($key);
+    if ($pplxRes) $pplxRes['_cache_hit'] = true;
+    else $pplxRes = ['_cache_miss' => true];
+} else {
+    $pplxRes = vps_call('perplexity', ['query' => $pplxQuery]);
+}
 $pplxContent = '';
 $pplxCitations = [];
 if ($pplxRes && !isset($pplxRes['error'])) {
@@ -115,7 +141,14 @@ $out['grok'] = [
 // SEARXNG (250 engines, ~2s cached)
 // ============================================================
 $t = microtime(true);
-$sxRes = vps_call('searxng', ['query' => $query, 'categories' => 'general', 'limit' => 10]);
+if ($cacheOnly) {
+    $key = md5('searxng|' . json_encode(['query' => $query, 'categories' => 'general', 'limit' => 10]));
+    $sxRes = peek_cache($key);
+    if ($sxRes) $sxRes['_cache_hit'] = true;
+    else $sxRes = ['results' => [], '_cache_miss' => true];
+} else {
+    $sxRes = vps_call('searxng', ['query' => $query, 'categories' => 'general', 'limit' => 10]);
+}
 $sxHits = [];
 if ($sxRes && !empty($sxRes['results']) && is_array($sxRes['results'])) {
     foreach (array_slice($sxRes['results'], 0, 10) as $r) {

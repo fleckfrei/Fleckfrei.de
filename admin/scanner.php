@@ -1401,11 +1401,64 @@ async function ontoSelect(objId) {
   }
   if (dt.success) {
     renderOntoDetail(dt.data);
+    ONTO.currentObj = dt.data;
+    // Auto-fill KI Verify input with object's name (if user hasn't typed anything)
+    const qInput = document.getElementById('aiVerifyQuery');
+    if (qInput && !qInput.dataset.userTyped) qInput.value = dt.data.display_name || '';
+    // Cache-only AI probe — show AI insights inline if we have them already
+    await ontoLoadCachedAi(dt.data.display_name);
   } else {
     const d = document.getElementById('ontoDetail');
     d.classList.remove('hidden');
     d.innerHTML = '<div class="text-red-600 text-xs">Detail konnte nicht geladen werden: ' + dt.error + '</div>';
   }
+}
+
+async function ontoLoadCachedAi(name) {
+  if (!name) return;
+  const j = await ontoFetchJson('/api/gotham-ai-verify.php', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({query: name, cache_only: true}),
+  });
+  if (!j.success) return;
+  const d = j.data;
+  // Detect which sources have cached data
+  const haveGroq = d.groq && d.groq.content && !d.groq.error;
+  const havePplx = d.perplexity && d.perplexity.content && !d.perplexity.error;
+  const haveSx   = d.searxng && (d.searxng.hits || 0) > 0;
+  if (!haveGroq && !havePplx && !haveSx) {
+    // Nothing cached — add a 1-click button below the detail panel
+    const detail = document.getElementById('ontoDetail');
+    if (detail && !detail.querySelector('.onto-ai-nudge')) {
+      detail.insertAdjacentHTML('beforeend',
+        '<div class="onto-ai-nudge mt-2 pt-2 border-t border-gray-200 text-[10px]">' +
+        '<button onclick="runAiVerify()" class="text-indigo-600 hover:underline font-semibold">🤖 KI Verify laufen lassen</button> ' +
+        '<span class="text-gray-400">— kein Cache für dieses Object</span></div>');
+    }
+    return;
+  }
+  // Render cached insights in a collapsible strip inside detail panel
+  const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  let html = '<div class="mt-2 pt-2 border-t border-indigo-200 space-y-1.5">' +
+             '<div class="text-[10px] font-bold text-indigo-600 uppercase">🤖 Cached AI Insights</div>';
+  if (haveGroq) {
+    html += '<div class="text-[10px] bg-amber-50 border border-amber-200 rounded p-1.5">' +
+            '<b class="text-amber-700">Groq:</b> ' + esc(d.groq.content.substring(0, 220)) +
+            (d.groq.content.length > 220 ? '…' : '') + '</div>';
+  }
+  if (havePplx) {
+    html += '<div class="text-[10px] bg-purple-50 border border-purple-200 rounded p-1.5">' +
+            '<b class="text-purple-700">Perplexity:</b> ' + esc(d.perplexity.content.substring(0, 220)) +
+            (d.perplexity.content.length > 220 ? '…' : '') + '</div>';
+  }
+  if (haveSx) {
+    html += '<div class="text-[10px] bg-cyan-50 border border-cyan-200 rounded p-1.5">' +
+            '<b class="text-cyan-700">SearXNG:</b> ' + d.searxng.hits + ' hits (cached)</div>';
+  }
+  html += '<button onclick="runAiVerify()" class="text-[10px] text-indigo-600 hover:underline">↻ Refresh AI insights</button>';
+  html += '</div>';
+  const detail = document.getElementById('ontoDetail');
+  if (detail) detail.insertAdjacentHTML('beforeend', html);
 }
 
 function renderOntoGraph(data) {

@@ -205,12 +205,18 @@ $dbLocal->exec("CREATE TABLE IF NOT EXISTS ontology_watchlist (
     query_type VARCHAR(24) DEFAULT 'any',
     last_checked DATETIME DEFAULT NULL,
     last_hit_count INT DEFAULT 0,
+    last_sentinel_scan DATETIME DEFAULT NULL,
     notify_telegram TINYINT(1) DEFAULT 1,
     active TINYINT(1) DEFAULT 1,
     created_by INT DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_active (active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Auto-add last_sentinel_scan if table pre-existed (migration)
+try {
+    $dbLocal->exec("ALTER TABLE ontology_watchlist ADD COLUMN last_sentinel_scan DATETIME DEFAULT NULL");
+} catch (Exception $e) { /* already exists */ }
 
 // Insert default pricing rules if empty
 try {
