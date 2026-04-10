@@ -26,7 +26,8 @@ if (empty($_SESSION['uid']) && $apiKey !== API_KEY) {
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $objId  = (int)($_GET['obj_id'] ?? $_POST['obj_id'] ?? 0);
 
-if ($objId <= 0) {
+// ingest_scan uses scan_id not obj_id — skip guard for that action
+if ($action !== 'ingest_scan' && $objId <= 0) {
     echo json_encode(['error' => 'obj_id required']);
     exit;
 }
@@ -159,4 +160,106 @@ if ($action === 'cascade') {
     exit;
 }
 
-echo json_encode(['error' => 'unknown action', 'valid' => ['detail','graph','cascade']]);
+// ============================================================
+// INGEST_SCAN — create ontology objects from a past osint_scans
+// row on-demand. Used when user clicks a "past scan" result
+// that has no obj_id yet. Returns the root obj_id for selection.
+// ============================================================
+if ($action === 'ingest_scan') {
+    $scanId = (int)($_GET['scan_id'] ?? $_POST['scan_id'] ?? 0);
+    if ($scanId <= 0) { echo json_encode(['error' => 'scan_id required']); exit; }
+    try {
+        $scan = one("SELECT scan_id, scan_name, scan_email, scan_phone, scan_address, deep_scan_data
+                     FROM osint_scans WHERE scan_id = ? LIMIT 1", [$scanId]);
+        if (!$scan) {
+            http_response_code(404);
+            echo json_encode(['error' => 'scan not found']);
+            exit;
+        }
+        $stats = ['objects_created' => 0, 'links_created' => 0, 'events_created' => 0];
+        $rootId = 0;
+
+        // Primary person object from scan identifiers
+        $primaryName = $scan['scan_name'] ?: $scan['scan_email'] ?: $scan['scan_phone'] ?: $scan['scan_address'];
+        if ($primaryName) {
+            $rootId = ontology_upsert_object('person', $primaryName, [
+                'from_scan_id' => $scanId,
+            ], $scanId, 0.7);
+            $stats['objects_created']++;
+        }
+
+        // Link identifiers
+        if ($rootId && !empty($scan['scan_email'])) {
+            $eId = ontology_upsert_object('email', $scan['scan_email'], [], $scanId, 0.8);
+            ontology_upsert_link($rootId, $eId, 'has_email', 'osint_scans', 0.8);
+            $stats['objects_created']++; $stats['links_created']++;
+        }
+        if ($rootId && !empty($scan['scan_phone'])) {
+            $pId = ontology_upsert_object('phone', $scan['scan_phone'], [], $scanId, 0.8);
+            ontology_upsert_link($rootId, $pId, 'has_phone', 'osint_scans', 0.8);
+            $stats['objects_created']++; $stats['links_created']++;
+        }
+        if ($rootId && !empty($scan['scan_address'])) {
+            $aId = ontology_upsert_object('address', $scan['scan_address'], [], $scanId, 0.7);
+            ontology_upsert_link($rootId, $aId, 'lives_at', 'osint_scans', 0.7);
+            $stats['objects_created']++; $stats['links_created']++;
+        }
+
+        // Parse deep_scan_data for additional nodes
+        if ($rootId && !empty($scan['deep_scan_data'])) {
+            $deepData = json_decode($scan['deep_scan_data'], true);
+            if (is_array($deepData)) {
+                // Check if this is a vulture_core scan with a graph
+                if (isset($deepData['report']) && isset($deepData['graph_summary'])) {
+                    // Already a vulture scan — nothing else to extract
+                } else {
+                    // Raw osint-deep scan — pull known fields
+                    $blob = json_encode($deepData);
+                    // Extract emails (filter noise)
+                    if (preg_match_all('/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/', $blob, $m)) {
+                        $emails = array_unique(array_slice($m[0], 0, 10));
+                        foreach ($emails as $em) {
+                            $dom = strtolower(substr($em, strpos($em, '@') + 1));
+                            if (in_array($dom, ['example.com','test.com','sentry.io','google.com','github.com'], true)) continue;
+                            $eId = ontology_upsert_object('email', $em, [], $scanId, 0.5);
+                            if ($eId) {
+                                ontology_upsert_link($rootId, $eId, 'mentioned_email', 'osint_scans', 0.5);
+                                $stats['objects_created']++; $stats['links_created']++;
+                            }
+                        }
+                    }
+                    // Companies from handelsregister/opencorporates/gleif_lei
+                    foreach (['handelsregister','opencorporates','gleif_lei'] as $mod) {
+                        if (!empty($deepData[$mod]) && is_array($deepData[$mod])) {
+                            foreach ($deepData[$mod] as $entry) {
+                                if (is_array($entry) && !empty($entry['company'])) {
+                                    $cId = ontology_upsert_object('company', $entry['company'], [], $scanId, 0.8);
+                                    ontology_upsert_link($rootId, $cId, 'associated_with', $mod, 0.8);
+                                    $stats['objects_created']++; $stats['links_created']++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Timeline event
+        if ($rootId) {
+            ontology_add_event(
+                $rootId, 'osint_scan_imported', substr($scan['scan_name'] ? date('Y-m-d') : '', 0, 10),
+                'Imported from past scan #' . $scanId,
+                ['scan_id' => $scanId], 'gotham_ingest'
+            );
+            $stats['events_created']++;
+        }
+
+        echo json_encode(['success' => true, 'obj_id' => $rootId, 'stats' => $stats]);
+        exit;
+    } catch (Throwable $e) {
+        echo json_encode(['error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+echo json_encode(['error' => 'unknown action', 'valid' => ['detail','graph','cascade','ingest_scan']]);

@@ -1012,6 +1012,292 @@ function renderDeepCards(data, container) {
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════ -->
+<!-- ONTOLOGY GRAPH — integriert, Standard-Theme      -->
+<!-- ═══════════════════════════════════════════════ -->
+<div class="bg-white rounded-xl border mb-4 overflow-hidden">
+  <div class="px-5 py-3 border-b flex items-center justify-between bg-gradient-to-r from-brand/5 to-transparent">
+    <div class="flex items-center gap-2">
+      <svg class="w-5 h-5 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+      <h3 class="font-semibold text-gray-900">Ontology Graph</h3>
+      <span class="text-xs text-gray-400 ml-1" id="ontoStatsMini">lade…</span>
+    </div>
+  </div>
+  <div class="p-4">
+    <!-- Search row -->
+    <div class="flex gap-2 mb-3">
+      <input type="text" id="ontoQuery" placeholder="Name, Email, Telefon, Domain, Firma…"
+             class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-brand"
+             autocomplete="off">
+      <label class="flex items-center gap-1 text-xs text-gray-500 px-2">
+        <input type="checkbox" id="ontoLive" class="accent-brand">LIVE
+      </label>
+      <button onclick="ontoSearch()" class="px-4 py-2 bg-brand text-white rounded-lg text-xs font-medium hover:bg-brand-dark">Suchen</button>
+    </div>
+    <!-- Type filter chips -->
+    <div class="flex flex-wrap gap-1.5 mb-3" id="ontoChips">
+      <span class="px-2.5 py-1 border border-gray-300 bg-brand text-white rounded-full text-[11px] font-medium cursor-pointer" data-type="all">ALLE</span>
+      <span class="px-2.5 py-1 border border-gray-200 text-gray-600 rounded-full text-[11px] font-medium cursor-pointer hover:bg-gray-50" data-type="person">Person</span>
+      <span class="px-2.5 py-1 border border-gray-200 text-gray-600 rounded-full text-[11px] font-medium cursor-pointer hover:bg-gray-50" data-type="company">Firma</span>
+      <span class="px-2.5 py-1 border border-gray-200 text-gray-600 rounded-full text-[11px] font-medium cursor-pointer hover:bg-gray-50" data-type="email">Email</span>
+      <span class="px-2.5 py-1 border border-gray-200 text-gray-600 rounded-full text-[11px] font-medium cursor-pointer hover:bg-gray-50" data-type="phone">Tel</span>
+      <span class="px-2.5 py-1 border border-gray-200 text-gray-600 rounded-full text-[11px] font-medium cursor-pointer hover:bg-gray-50" data-type="domain">Domain</span>
+      <span class="px-2.5 py-1 border border-gray-200 text-gray-600 rounded-full text-[11px] font-medium cursor-pointer hover:bg-gray-50" data-type="address">Adresse</span>
+      <span class="px-2.5 py-1 border border-gray-200 text-gray-600 rounded-full text-[11px] font-medium cursor-pointer hover:bg-gray-50" data-type="handle">Handle</span>
+    </div>
+    <!-- Results + graph split -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
+      <div class="lg:col-span-2">
+        <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2" id="ontoResultsHeader">Ergebnisse</div>
+        <div id="ontoResults" class="space-y-1.5 max-h-96 overflow-y-auto pr-1">
+          <div class="text-xs text-gray-400 py-8 text-center">Tippe einen Namen oder Email um zu suchen.</div>
+        </div>
+      </div>
+      <div class="lg:col-span-3">
+        <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+          <span id="ontoGraphHeader">Link-Graph — wähle ein Ergebnis</span>
+          <div id="ontoGraphActions" class="hidden flex items-center gap-1">
+            <button onclick="ontoCascade()" class="px-2 py-0.5 text-[10px] bg-brand text-white rounded">🦅 Cascade</button>
+            <a id="ontoBriefingLink" href="#" target="_blank" class="px-2 py-0.5 text-[10px] border border-gray-200 text-gray-600 rounded hover:bg-gray-50">📄 Briefing</a>
+          </div>
+        </div>
+        <div id="ontoGraph" class="bg-gray-50 border border-gray-200 rounded-lg h-96"></div>
+        <div id="ontoDetail" class="hidden mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<script>
+const ONTO = { query:'', typeFilter:'all', currentObjId:null, cy:null, debounce:null };
+
+// Load stats on page load
+fetch('/api/gotham-search.php', {
+  method:'POST', headers:{'Content-Type':'application/json'},
+  body: JSON.stringify({query:'a', type_filter:'all'})
+}).then(r=>r.json()).then(j=>{
+  if (j && j.success) {
+    const c = j.data.counts;
+    document.getElementById('ontoStatsMini').textContent =
+      c.ontology + ' Objects · ' + c.scans + ' Scans indiziert';
+  }
+}).catch(()=>{});
+
+document.querySelectorAll('#ontoChips span').forEach(chip => {
+  chip.onclick = () => {
+    document.querySelectorAll('#ontoChips span').forEach(c => {
+      c.classList.remove('bg-brand','text-white','border-gray-300');
+      c.classList.add('border-gray-200','text-gray-600');
+    });
+    chip.classList.remove('border-gray-200','text-gray-600');
+    chip.classList.add('bg-brand','text-white','border-gray-300');
+    ONTO.typeFilter = chip.dataset.type;
+    if (ONTO.query) ontoSearch();
+  };
+});
+
+document.getElementById('ontoQuery').addEventListener('input', e => {
+  clearTimeout(ONTO.debounce);
+  const v = e.target.value.trim();
+  if (v.length < 2) return;
+  ONTO.debounce = setTimeout(ontoSearch, 350);
+});
+document.getElementById('ontoQuery').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { clearTimeout(ONTO.debounce); ontoSearch(); }
+});
+
+async function ontoSearch() {
+  const q = document.getElementById('ontoQuery').value.trim();
+  if (q.length < 2) return;
+  ONTO.query = q;
+  document.getElementById('ontoResults').innerHTML = '<div class="text-xs text-gray-400 py-4 text-center">suche…</div>';
+  try {
+    const r = await fetch('/api/gotham-search.php', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        query: q,
+        type_filter: ONTO.typeFilter,
+        include_live: document.getElementById('ontoLive').checked,
+      }),
+    });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || 'search failed');
+    renderOntoResults(j.data);
+  } catch(e) {
+    document.getElementById('ontoResults').innerHTML =
+      '<div class="text-xs text-red-500 py-4 text-center">Fehler: ' + e.message + '</div>';
+  }
+}
+
+function ontoTypeBadge(t) {
+  const colors = {
+    person:'bg-blue-50 text-blue-700',
+    company:'bg-purple-50 text-purple-700',
+    email:'bg-green-50 text-green-700',
+    phone:'bg-amber-50 text-amber-700',
+    domain:'bg-rose-50 text-rose-700',
+    handle:'bg-pink-50 text-pink-700',
+    address:'bg-teal-50 text-teal-700',
+  };
+  return `<span class="px-1.5 py-0.5 rounded text-[9px] font-mono ${colors[t]||'bg-gray-100 text-gray-600'}">${t}</span>`;
+}
+
+function renderOntoResults(d) {
+  const list = document.getElementById('ontoResults');
+  document.getElementById('ontoResultsHeader').textContent =
+    `Ergebnisse (${d.counts.total}) · ${d.counts.ontology} Ontology · ${d.counts.scans} Scans · ${d.counts.live} Live`;
+
+  let html = '';
+  if (d.ontology.length) {
+    html += '<div class="text-[9px] font-bold text-brand uppercase tracking-wider px-1">Ontology</div>';
+    d.ontology.forEach(o => {
+      const v = o.verified == 1 ? '<span class="text-green-600 ml-1">✓</span>' : '';
+      html += `<div class="border border-gray-200 rounded-lg p-2 hover:border-brand hover:bg-brand/5 cursor-pointer transition" onclick="ontoSelect(${o.obj_id})">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm text-gray-900 font-medium truncate">${o.display_name}${v}</span>
+          ${ontoTypeBadge(o.obj_type)}
+        </div>
+        <div class="text-[10px] text-gray-400 font-mono mt-0.5">${Math.round(o.confidence*100)}% · ${o.source_count} sources</div>
+      </div>`;
+    });
+  }
+  if (d.scans.length) {
+    html += '<div class="text-[9px] font-bold text-brand uppercase tracking-wider px-1 mt-3">Vergangene Scans</div>';
+    d.scans.forEach(s => {
+      const name = s.scan_name || s.scan_email || s.scan_phone || s.scan_address || '(kein Identifier)';
+      const sub = [s.scan_email, s.scan_phone].filter(Boolean).join(' · ') || (s.created_at||'').substring(0,10);
+      html += `<div class="border border-gray-200 rounded-lg p-2 hover:border-brand hover:bg-brand/5 cursor-pointer transition" onclick="ontoIngestScan(${s.scan_id})">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-sm text-gray-900 font-medium truncate">${name}</span>
+          <span class="text-[9px] font-mono text-gray-400">#${s.scan_id}</span>
+        </div>
+        <div class="text-[10px] text-gray-500 mt-0.5 truncate">${sub}</div>
+      </div>`;
+    });
+  }
+  if (d.live.length) {
+    html += '<div class="text-[9px] font-bold text-brand uppercase tracking-wider px-1 mt-3">Live (SearXNG)</div>';
+    d.live.forEach(l => {
+      html += `<a href="${l.url}" target="_blank" class="block border border-gray-200 rounded-lg p-2 hover:border-brand hover:bg-brand/5 transition no-underline">
+        <div class="text-sm text-gray-900 font-medium truncate">${l.title}</div>
+        <div class="text-[10px] text-gray-500 truncate">${l.url}</div>
+      </a>`;
+    });
+  }
+  if (!html) html = '<div class="text-xs text-gray-400 py-8 text-center">Keine Treffer. Probiere LIVE einzuschalten.</div>';
+  list.innerHTML = html;
+}
+
+// Click on past scan — ingest into ontology on demand then select
+async function ontoIngestScan(scanId) {
+  try {
+    const r = await fetch(`/api/gotham-expand.php?action=ingest_scan&scan_id=${scanId}`, {method:'POST'});
+    const j = await r.json();
+    if (!j.success || !j.obj_id) throw new Error(j.error || 'ingest failed');
+    await ontoSelect(j.obj_id);
+    // Re-run search to refresh counts
+    setTimeout(ontoSearch, 300);
+  } catch(e) {
+    alert('Import fehlgeschlagen: ' + e.message);
+  }
+}
+
+async function ontoSelect(objId) {
+  ONTO.currentObjId = objId;
+  document.getElementById('ontoGraphActions').classList.remove('hidden');
+  document.getElementById('ontoGraphActions').style.display = 'flex';
+  document.getElementById('ontoBriefingLink').href = '/admin/gotham-briefing.php?obj_id=' + objId;
+  document.getElementById('ontoGraphHeader').textContent = 'Link-Graph — lade…';
+
+  const [gr, dt] = await Promise.all([
+    fetch(`/api/gotham-expand.php?action=graph&obj_id=${objId}&depth=2`).then(r=>r.json()),
+    fetch(`/api/gotham-expand.php?action=detail&obj_id=${objId}`).then(r=>r.json()),
+  ]);
+  if (gr.success) renderOntoGraph(gr.data);
+  if (dt.success) renderOntoDetail(dt.data);
+}
+
+function renderOntoGraph(data) {
+  document.getElementById('ontoGraphHeader').textContent =
+    `Link-Graph — ${data.nodes.length} Nodes · ${data.edges.length} Edges`;
+  if (ONTO.cy) ONTO.cy.destroy();
+  ONTO.cy = cytoscape({
+    container: document.getElementById('ontoGraph'),
+    elements: [...data.nodes, ...data.edges],
+    style: [
+      { selector:'node', style:{
+          'label':'data(label)','color':'#374151','font-size':'10px',
+          'text-valign':'bottom','text-margin-y':5,
+          'background-color':'#2E7D6B','width':24,'height':24,
+          'border-width':2,'border-color':'#fff',
+      }},
+      { selector:'node[type="person"]', style:{'background-color':'#3b82f6'} },
+      { selector:'node[type="company"]', style:{'background-color':'#a855f7'} },
+      { selector:'node[type="email"]', style:{'background-color':'#10b981'} },
+      { selector:'node[type="phone"]', style:{'background-color':'#f59e0b'} },
+      { selector:'node[type="domain"]', style:{'background-color':'#f43f5e'} },
+      { selector:'node[type="handle"]', style:{'background-color':'#ec4899'} },
+      { selector:'node[type="address"]', style:{'background-color':'#14b8a6'} },
+      { selector:'node[verified = 1]', style:{'border-color':'#fbbf24','border-width':3} },
+      { selector:'edge', style:{
+          'width':1,'line-color':'#cbd5e1','target-arrow-color':'#cbd5e1',
+          'target-arrow-shape':'triangle','curve-style':'bezier',
+          'label':'data(label)','font-size':'8px','color':'#94a3b8',
+          'text-rotation':'autorotate','text-margin-y':-5,
+      }},
+    ],
+    layout:{ name:'cose', animate:true, animationDuration:400, nodeRepulsion:6000, idealEdgeLength:80 },
+  });
+  ONTO.cy.on('tap','node', e => ontoSelect(e.target.data('obj_id')));
+}
+
+function renderOntoDetail(o) {
+  const d = document.getElementById('ontoDetail');
+  d.classList.remove('hidden');
+  let html = `<div class="flex items-center justify-between mb-2">
+    <span class="font-semibold text-gray-900">${o.display_name} ${ontoTypeBadge(o.obj_type)}</span>
+    <span class="text-[10px] text-gray-400 font-mono">${Math.round(o.confidence*100)}% · ${o.source_count} sources · ${(o.last_updated||'').substring(0,10)}</span>
+  </div>`;
+  if (o.events && o.events.length) {
+    html += '<div class="text-[9px] font-bold text-gray-500 uppercase mb-1">Timeline</div><div class="space-y-0.5 mb-2">';
+    o.events.slice(0,5).forEach(e => {
+      html += `<div class="text-[10px] text-gray-600"><span class="font-mono text-gray-400">${e.event_date||(e.created_at||'').substring(0,10)}</span> ${e.title}</div>`;
+    });
+    html += '</div>';
+  }
+  if (o.links_out && o.links_out.length) {
+    html += '<div class="text-[9px] font-bold text-gray-500 uppercase mb-1">Links</div><div class="flex flex-wrap gap-1">';
+    o.links_out.slice(0,12).forEach(l => {
+      html += `<span class="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-[10px] text-gray-700 cursor-pointer hover:border-brand" onclick="ontoSelect(${l.to_obj})">${l.relation} → ${l.target_name}</span>`;
+    });
+    html += '</div>';
+  }
+  d.innerHTML = html;
+}
+
+async function ontoCascade() {
+  if (!ONTO.currentObjId) return;
+  if (!confirm('Click-Expand Cascade starten? Das dauert 15-30s und sendet einen VULTURE Scan vom aktuellen Node aus.')) return;
+  const fd = new FormData();
+  fd.append('action','cascade');
+  fd.append('obj_id', ONTO.currentObjId);
+  fd.append('depth','2');
+  fd.append('mode','fast');
+  try {
+    const r = await fetch('/api/gotham-expand.php', {method:'POST', body:fd});
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error || 'cascade failed');
+    alert(`✓ ${j.cascade_stats?.objects_created || 0} neue Objects · Confidence ${Math.round((j.confidence||0)*100)}%`);
+    await ontoSelect(ONTO.currentObjId);
+  } catch(e) {
+    alert('Fehler: ' + e.message);
+  }
+}
+</script>
+
 <!-- Recherche Links (collapsible) -->
 <?php if ($scanName): ?>
 <details class="bg-white rounded-xl border mb-4 overflow-hidden group">
