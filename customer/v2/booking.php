@@ -105,20 +105,82 @@ include __DIR__ . '/../../includes/layout-v2.php';
 
     <!-- 3. Adresse -->
     <div class="card-elev p-6">
-      <h2 class="font-bold text-lg mb-5">3. Reinigungsadresse</h2>
-      <?php if (!empty($addresses)): ?>
-      <select x-model="form.address" required class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none">
-        <?php foreach ($addresses as $a): $full = trim($a['street'] . ' ' . $a['number'] . ', ' . $a['postal_code'] . ' ' . $a['city']); ?>
-        <option value="<?= e($full) ?>"><?= e($full) ?></option>
-        <?php endforeach; ?>
-        <option value="">Andere Adresse eingeben…</option>
-      </select>
-      <input x-show="!form.address" type="text" x-model="form.address_custom" placeholder="Straße Nr., PLZ Stadt" class="w-full mt-3 px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
-      <?php else: ?>
-      <input type="text" x-model="form.address" required placeholder="Straße Nr., PLZ Stadt" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
-      <?php endif; ?>
+      <h2 class="font-bold text-lg mb-1">3. Reinigungsadresse</h2>
+      <p class="text-xs text-gray-500 mb-5">Gespeicherte Adressen wählen oder eine neue anlegen.</p>
 
-      <div class="mt-4">
+      <!-- Saved addresses list -->
+      <div class="space-y-2 mb-4" x-show="addresses.length > 0">
+        <template x-for="(a, idx) in addresses" :key="a.ca_id || idx">
+          <label class="flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition"
+                 :class="form.address === a.full ? 'border-brand bg-brand-light' : 'border-gray-200 hover:border-brand'">
+            <input type="radio" :value="a.full" x-model="form.address" class="mt-1 w-4 h-4 text-brand focus:ring-brand"/>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-brand uppercase tracking-wider" x-text="a.address_for || 'Adresse'"></span>
+              </div>
+              <div class="font-medium text-gray-900 text-sm truncate" x-text="a.full"></div>
+            </div>
+          </label>
+        </template>
+      </div>
+
+      <!-- Toggle: add new address -->
+      <button type="button" @click="showNewAddr = !showNewAddr"
+              class="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 hover:border-brand hover:bg-brand-light rounded-xl text-sm font-semibold text-gray-600 hover:text-brand transition">
+        <svg class="w-4 h-4 transition-transform" :class="showNewAddr ? 'rotate-45' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        <span x-text="showNewAddr ? 'Abbrechen' : 'Neue Adresse hinzufügen'"></span>
+      </button>
+
+      <!-- New address form -->
+      <div x-show="showNewAddr" x-cloak x-transition class="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
+        <div>
+          <label class="block text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Typ / Zweck</label>
+          <select x-model="newAddr.address_for" class="w-full px-3 py-2.5 border border-gray-200 bg-white rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none">
+            <option value="Wohnung">🏠 Wohnung</option>
+            <option value="Büro">🏢 Büro</option>
+            <option value="Ferienwohnung">🏖 Ferienwohnung</option>
+            <option value="Garage">🚗 Garage</option>
+            <option value="Praxis">⚕ Praxis / Studio</option>
+            <option value="Laden">🛍 Laden / Geschäft</option>
+            <option value="Treppenhaus">🪜 Treppenhaus</option>
+            <option value="Baustelle">🧱 Baustelle</option>
+            <option value="Sonstige">📍 Sonstige</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="sm:col-span-2">
+            <label class="block text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Straße</label>
+            <input type="text" x-model="newAddr.street" placeholder="z.B. Hauptstraße" class="w-full px-3 py-2.5 border border-gray-200 bg-white rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Nr.</label>
+            <input type="text" x-model="newAddr.number" placeholder="12a" class="w-full px-3 py-2.5 border border-gray-200 bg-white rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">PLZ</label>
+            <input type="text" x-model="newAddr.postal_code" placeholder="10115" class="w-full px-3 py-2.5 border border-gray-200 bg-white rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Stadt</label>
+            <input type="text" x-model="newAddr.city" placeholder="Berlin" class="w-full px-3 py-2.5 border border-gray-200 bg-white rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+          </div>
+        </div>
+
+        <div x-show="newAddrError" x-cloak class="text-xs text-red-600" x-text="newAddrError"></div>
+
+        <div class="flex gap-2 pt-1">
+          <button type="button" @click="saveNewAddress()" :disabled="newAddrSaving"
+                  class="flex-1 px-4 py-2.5 bg-brand hover:bg-brand-dark disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2">
+            <svg x-show="!newAddrSaving" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            <span x-text="newAddrSaving ? 'Wird gespeichert…' : 'Adresse speichern & verwenden'"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Türcode (always visible) -->
+      <div class="mt-5">
         <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Türcode / Zugang (optional)</label>
         <input type="text" x-model="form.door_code" placeholder="z.B. Schlüsselbox 1234, Smartlock-Code" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
       </div>
@@ -263,6 +325,17 @@ include __DIR__ . '/../../includes/layout-v2.php';
 <script>
 function bookingForm() {
   return {
+    addresses: <?= json_encode(array_map(function($a) {
+        return [
+            'ca_id' => (int) $a['ca_id'],
+            'full' => trim($a['street'] . ' ' . $a['number'] . ', ' . $a['postal_code'] . ' ' . $a['city']),
+            'address_for' => $a['address_for'] ?? 'Wohnung',
+            'street' => $a['street'],
+            'number' => $a['number'],
+            'postal_code' => $a['postal_code'],
+            'city' => $a['city'],
+        ];
+    }, $addresses), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>,
     form: {
       service: '',
       hours: '3',
@@ -270,8 +343,7 @@ function bookingForm() {
       frequency: 'einmalig',
       date: '',
       time: '10:00',
-      address: '<?= e($addresses[0] ? trim($addresses[0]['street'].' '.$addresses[0]['number'].', '.$addresses[0]['postal_code'].' '.$addresses[0]['city']) : '') ?>',
-      address_custom: '',
+      address: <?= json_encode($addresses[0] ?? null ? trim($addresses[0]['street'].' '.$addresses[0]['number'].', '.$addresses[0]['postal_code'].' '.$addresses[0]['city']) : '', JSON_UNESCAPED_UNICODE) ?>,
       door_code: '',
       notes: '',
       optional_products: [],
@@ -281,6 +353,10 @@ function bookingForm() {
       check_in_date: '',
       booking_platform: 'airbnb',
     },
+    showNewAddr: <?= empty($addresses) ? 'true' : 'false' ?>,
+    newAddr: { street: '', number: '', postal_code: '', city: '', address_for: 'Wohnung' },
+    newAddrSaving: false,
+    newAddrError: null,
     frequencies: [
       { value: 'einmalig', label: 'Einmalig', discount: '' },
       { value: 'monatlich', label: 'Monatlich', discount: 'Sparen Sie 3 %' },
@@ -319,13 +395,38 @@ function bookingForm() {
       else this.form.optional_products.push(opt);
     },
     canSubmit() {
-      return this.form.service && this.form.date && this.form.time && (this.form.address || this.form.address_custom);
+      return this.form.service && this.form.date && this.form.time && this.form.address;
+    },
+    saveNewAddress() {
+      this.newAddrError = null;
+      if (!this.newAddr.street || !this.newAddr.city) {
+        this.newAddrError = 'Bitte mindestens Straße und Stadt angeben.';
+        return;
+      }
+      this.newAddrSaving = true;
+      fetch('/customer/v2/address-save.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.newAddr),
+      }).then(r => r.json()).then(d => {
+        this.newAddrSaving = false;
+        if (d.success && d.data) {
+          this.addresses.push(d.data);
+          this.form.address = d.data.full;
+          this.showNewAddr = false;
+          this.newAddr = { street: '', number: '', postal_code: '', city: '', address_for: 'Wohnung' };
+        } else {
+          this.newAddrError = d.error || 'Fehler beim Speichern.';
+        }
+      }).catch(e => {
+        this.newAddrSaving = false;
+        this.newAddrError = 'Netzwerk-Fehler.';
+      });
     },
     submit() {
       if (!this.canSubmit()) { this.error = 'Bitte Service, Datum, Uhrzeit und Adresse ausfüllen.'; return; }
       this.loading = true; this.error = null;
       const payload = { ...this.form };
-      payload.address = this.form.address || this.form.address_custom;
       payload.optional_products = this.form.optional_products.join(', ');
       payload.name = '<?= e($customer['name'] ?? '') ?>';
       payload.email = '<?= e($customer['email'] ?? '') ?>';
