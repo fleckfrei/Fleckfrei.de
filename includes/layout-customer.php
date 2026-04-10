@@ -1,6 +1,6 @@
 <?php
 // Layout v2 — Helpling-inspired top-navigation layout for customer area
-// Used only by /customer/v2/* pages. Leaves /customer/ (v1) untouched.
+// Used only by /customer/* pages. Leaves /customer/ (v1) untouched.
 // Security headers
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
@@ -67,28 +67,28 @@ $page = $page ?? '';
     <div class="flex items-center justify-between h-[68px]">
 
       <!-- Logo -->
-      <a href="/customer/v2/" class="flex items-center gap-2 text-white font-extrabold text-xl tracking-tight">
+      <a href="/customer/" class="flex items-center gap-2 text-white font-extrabold text-xl tracking-tight">
         <span class="text-2xl">✨</span>
         <span class="hidden sm:inline"><?= SITE ?></span>
       </a>
 
       <!-- Desktop nav -->
       <nav class="hidden lg:flex items-center gap-8">
-        <a href="/customer/v2/"          class="nav-link <?= $page==='dashboard' ? 'active' : '' ?>">Home</a>
-        <a href="/customer/v2/jobs.php"  class="nav-link <?= $page==='jobs' ? 'active' : '' ?>">Meine Termine</a>
-        <a href="/customer/v2/invoices.php" class="nav-link <?= $page==='invoices' ? 'active' : '' ?>">Rechnungen</a>
+        <a href="/customer/"          class="nav-link <?= $page==='dashboard' ? 'active' : '' ?>">Home</a>
+        <a href="/customer/jobs.php"  class="nav-link <?= $page==='jobs' ? 'active' : '' ?>">Meine Termine</a>
+        <a href="/customer/invoices.php" class="nav-link <?= $page==='invoices' ? 'active' : '' ?>">Rechnungen</a>
         <?php if ($isHost): ?>
-          <a href="/customer/v2/services.php" class="nav-link <?= $page==='services' ? 'active' : '' ?>">Services</a>
-          <a href="/customer/v2/calendar.php" class="nav-link <?= $page==='calendar' ? 'active' : '' ?>">Kalender</a>
+          <a href="/customer/services.php" class="nav-link <?= $page==='services' ? 'active' : '' ?>">Services</a>
+          <a href="/customer/calendar.php" class="nav-link <?= $page==='calendar' ? 'active' : '' ?>">Kalender</a>
         <?php endif; ?>
-        <a href="/customer/v2/referral.php" class="nav-link <?= $page==='referral' ? 'active' : '' ?>">Weiterempfehlen</a>
-        <a href="/customer/v2/messages.php" class="nav-link <?= $page==='messages' ? 'active' : '' ?>">Chat</a>
-        <a href="/customer/v2/help.php"     class="nav-link <?= $page==='help' ? 'active' : '' ?>">Hilfe</a>
+        <a href="/customer/referral.php" class="nav-link <?= $page==='referral' ? 'active' : '' ?>">Weiterempfehlen</a>
+        <a href="/customer/messages.php" class="nav-link <?= $page==='messages' ? 'active' : '' ?>">Chat</a>
+        <a href="/customer/help.php"     class="nav-link <?= $page==='help' ? 'active' : '' ?>">Hilfe</a>
       </nav>
 
       <!-- Right side: CTA + user -->
       <div class="flex items-center gap-3">
-        <a href="/customer/v2/booking.php" class="hidden sm:inline-block btn-outline-white">Jetzt buchen</a>
+        <a href="/customer/booking.php" class="hidden sm:inline-block btn-outline-white">Jetzt buchen</a>
 
         <!-- User dropdown -->
         <div class="relative hidden lg:block" @click.away="userMenu = false">
@@ -103,7 +103,7 @@ $page = $page ?? '';
               <div class="font-semibold text-gray-900 text-sm"><?= e($customer['name'] ?? '') ?></div>
               <div class="text-xs text-gray-500 truncate"><?= e($customer['email'] ?? '') ?></div>
             </div>
-            <a href="/customer/v2/profile.php" class="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">
+            <a href="/customer/profile.php" class="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">
               <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
               Kontoeinstellungen
             </a>
@@ -127,20 +127,20 @@ $page = $page ?? '';
     <div class="px-4 py-2 space-y-1">
       <?php
       $mobileItems = [
-          ['/customer/v2/', 'Home', 'dashboard'],
-          ['/customer/v2/jobs.php', 'Meine Termine', 'jobs'],
-          ['/customer/v2/invoices.php', 'Rechnungen', 'invoices'],
+          ['/customer/', 'Home', 'dashboard'],
+          ['/customer/jobs.php', 'Meine Termine', 'jobs'],
+          ['/customer/invoices.php', 'Rechnungen', 'invoices'],
       ];
       if ($isHost) {
-          $mobileItems[] = ['/customer/v2/services.php', 'Services', 'services'];
-          $mobileItems[] = ['/customer/v2/calendar.php', 'Kalender', 'calendar'];
+          $mobileItems[] = ['/customer/services.php', 'Services', 'services'];
+          $mobileItems[] = ['/customer/calendar.php', 'Kalender', 'calendar'];
       }
       $mobileItems = array_merge($mobileItems, [
-          ['/customer/v2/referral.php', 'Weiterempfehlen', 'referral'],
-          ['/customer/v2/messages.php', 'Chat', 'messages'],
-          ['/customer/v2/help.php', 'Hilfe', 'help'],
-          ['/customer/v2/profile.php', 'Kontoeinstellungen', 'profile'],
-          ['/customer/v2/booking.php', 'Jetzt buchen', 'booking'],
+          ['/customer/referral.php', 'Weiterempfehlen', 'referral'],
+          ['/customer/messages.php', 'Chat', 'messages'],
+          ['/customer/help.php', 'Hilfe', 'help'],
+          ['/customer/profile.php', 'Kontoeinstellungen', 'profile'],
+          ['/customer/booking.php', 'Jetzt buchen', 'booking'],
           ['/logout.php', 'Ausloggen', 'logout'],
       ]);
       foreach ($mobileItems as [$href, $label, $pg]):

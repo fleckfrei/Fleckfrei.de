@@ -1,6 +1,6 @@
 <?php
 // AJAX endpoint: save a new address to customer_address, return the created row as JSON.
-require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 requireCustomer();
 
 header('Content-Type: application/json');

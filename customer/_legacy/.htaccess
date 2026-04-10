@@ -1,0 +1,4 @@
+# Legacy v1 files — archived during V_0 consolidation (2026-04-10)
+# Preserved for rollback but NOT accessible via HTTP.
+Order deny,allow
+Deny from all

@@ -1,9 +1,9 @@
 <?php
-require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 requireCustomer();
 $title = 'Hilfe-Center'; $page = 'help';
 
-include __DIR__ . '/../../includes/layout-v2.php';
+include __DIR__ . '/../includes/layout-customer.php';
 ?>
 
 <div class="mb-6">
@@ -60,4 +60,4 @@ include __DIR__ . '/../../includes/layout-v2.php';
   </div>
 </div>
 
-<?php include __DIR__ . '/../../includes/footer-v2.php'; ?>
+<?php include __DIR__ . '/../includes/footer-customer.php'; ?>

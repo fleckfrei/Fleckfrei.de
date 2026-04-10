@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 requireCustomer();
 $title = 'Weiterempfehlen'; $page = 'referral';
 $cid = me()['id'];
@@ -18,7 +18,7 @@ if (!$refCode) {
 $refLink = 'https://fleckfrei.de/?ref=' . $refCode;
 $shareText = "Ich nutze " . SITE . " für meine Wohnungsreinigung in Berlin — hier ist mein Einladungscode für 50% Rabatt auf deine erste Buchung: $refCode";
 
-include __DIR__ . '/../../includes/layout-v2.php';
+include __DIR__ . '/../includes/layout-customer.php';
 ?>
 
 <div class="mb-6">
@@ -100,4 +100,4 @@ include __DIR__ . '/../../includes/layout-v2.php';
   * Der Rabatt wird nach erfolgreichem Abschluss des ersten Termins Ihres geworbenen Freundes gutgeschrieben. Maximal ein Rabatt pro Buchung. Nicht mit anderen Aktionen kombinierbar.
 </p>
 
-<?php include __DIR__ . '/../../includes/footer-v2.php'; ?>
+<?php include __DIR__ . '/../includes/footer-customer.php'; ?>

@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 requireCustomer();
 $title = 'Kalender & iCal'; $page = 'calendar';
 $cid = me()['id'];
@@ -7,12 +7,12 @@ $customer = one("SELECT * FROM customer WHERE customer_id=?", [$cid]);
 
 // Host-only
 if (!in_array($customer['customer_type'] ?? '', ['Airbnb', 'Host', 'Booking', 'Short-Term Rental'], true)) {
-    header('Location: /customer/v2/'); exit;
+    header('Location: /customer/'); exit;
 }
 
 // POST handlers
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verifyCsrf()) { header('Location: /customer/v2/calendar.php?error=csrf'); exit; }
+    if (!verifyCsrf()) { header('Location: /customer/calendar.php?error=csrf'); exit; }
     $action = $_POST['action'] ?? '';
 
     if ($action === 'create') {
@@ -25,10 +25,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   [$cid, $label, $url, $platform]);
                 audit('create', 'ical_feeds', (int) lastInsertId(), 'Customer added iCal feed (v2)');
             } catch (Exception $e) {
-                header('Location: /customer/v2/calendar.php?error=db'); exit;
+                header('Location: /customer/calendar.php?error=db'); exit;
             }
         }
-        header('Location: /customer/v2/calendar.php?added=1'); exit;
+        header('Location: /customer/calendar.php?added=1'); exit;
     }
 
     if ($action === 'toggle' && !empty($_POST['id'])) {
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 audit('update', 'ical_feeds', $id, "Customer toggled iCal feed active=$new (v2)");
             }
         } catch (Exception $e) { }
-        header('Location: /customer/v2/calendar.php'); exit;
+        header('Location: /customer/calendar.php'); exit;
     }
 
     if ($action === 'delete' && !empty($_POST['id'])) {
@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             q("DELETE FROM ical_feeds WHERE id = ? AND customer_id_fk = ?", [$id, $cid]);
             audit('delete', 'ical_feeds', $id, 'Customer deleted iCal feed (v2)');
         } catch (Exception $e) { }
-        header('Location: /customer/v2/calendar.php?deleted=1'); exit;
+        header('Location: /customer/calendar.php?deleted=1'); exit;
     }
 }
 
@@ -59,7 +59,7 @@ try {
     $feeds = all("SELECT * FROM ical_feeds WHERE customer_id_fk = ? ORDER BY id DESC", [$cid]);
 } catch (Exception $e) { $feeds = []; }
 
-include __DIR__ . '/../../includes/layout-v2.php';
+include __DIR__ . '/../includes/layout-customer.php';
 ?>
 
 <div class="flex items-start justify-between mb-6 flex-wrap gap-4">
@@ -169,4 +169,4 @@ include __DIR__ . '/../../includes/layout-v2.php';
 </div>
 <?php endif; ?>
 
-<?php include __DIR__ . '/../../includes/footer-v2.php'; ?>
+<?php include __DIR__ . '/../includes/footer-customer.php'; ?>

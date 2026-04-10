@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../includes/auth.php';
 requireCustomer();
 $title = 'Meine Services'; $page = 'services';
 $cid = me()['id'];
@@ -7,12 +7,12 @@ $customer = one("SELECT * FROM customer WHERE customer_id=?", [$cid]);
 
 // Host-only page
 if (!in_array($customer['customer_type'] ?? '', ['Airbnb', 'Host', 'Booking', 'Short-Term Rental'], true)) {
-    header('Location: /customer/v2/'); exit;
+    header('Location: /customer/'); exit;
 }
 
 // POST: create / update / delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verifyCsrf()) { header('Location: /customer/v2/services.php?error=csrf'); exit; }
+    if (!verifyCsrf()) { header('Location: /customer/services.php?error=csrf'); exit; }
     $action = $_POST['action'] ?? '';
 
     if ($action === 'create' || $action === 'update') {
@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                VALUES (?, 'Stunde', ?, 0, 0, ?, 1, ?, ?, ?, ?, 'Deutschland', ?, ?, ?, ?, 1)",
               [$title_, $price, $price, $street, $number, $postal, $city, $boxCode, $qm, $room, $cid]);
             audit('create', 'services', (int) lastInsertId(), 'Customer created service (v2)');
-            header('Location: /customer/v2/services.php?created=1'); exit;
+            header('Location: /customer/services.php?created=1'); exit;
         }
 
         if ($action === 'update' && !empty($_POST['s_id'])) {
@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   [$title_, $price, $price, $street, $number, $postal, $city, $boxCode, $qm, $room, $sid, $cid]);
                 audit('update', 'services', $sid, 'Customer updated service (v2)');
             }
-            header('Location: /customer/v2/services.php?saved=1'); exit;
+            header('Location: /customer/services.php?saved=1'); exit;
         }
     }
 
@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             q("UPDATE services SET status = 0 WHERE s_id = ? AND customer_id_fk = ?", [$sid, $cid]);
             audit('delete', 'services', $sid, 'Customer soft-deleted service (v2)');
         }
-        header('Location: /customer/v2/services.php?deleted=1'); exit;
+        header('Location: /customer/services.php?deleted=1'); exit;
     }
 }
 
@@ -63,7 +63,7 @@ $editId = (int) ($_GET['edit'] ?? 0);
 $editService = $editId ? one("SELECT * FROM services WHERE s_id = ? AND customer_id_fk = ?", [$editId, $cid]) : null;
 $showForm = !empty($_GET['new']) || $editService;
 
-include __DIR__ . '/../../includes/layout-v2.php';
+include __DIR__ . '/../includes/layout-customer.php';
 ?>
 
 <div class="flex items-start justify-between mb-6 flex-wrap gap-4">
@@ -140,7 +140,7 @@ if (!empty($_GET['deleted'])) echo '<div class="card-elev bg-green-50 border-gre
 
     <div class="flex gap-3 pt-2">
       <button type="submit" class="px-6 py-3 bg-brand hover:bg-brand-dark text-white rounded-lg font-semibold text-sm">Speichern</button>
-      <a href="/customer/v2/services.php" class="px-6 py-3 border border-gray-200 hover:bg-gray-50 rounded-lg font-semibold text-sm">Abbrechen</a>
+      <a href="/customer/services.php" class="px-6 py-3 border border-gray-200 hover:bg-gray-50 rounded-lg font-semibold text-sm">Abbrechen</a>
     </div>
   </form>
 </div>
@@ -198,4 +198,4 @@ if (!empty($_GET['deleted'])) echo '<div class="card-elev bg-green-50 border-gre
 </div>
 <?php endif; ?>
 
-<?php include __DIR__ . '/../../includes/footer-v2.php'; ?>
+<?php include __DIR__ . '/../includes/footer-customer.php'; ?>
