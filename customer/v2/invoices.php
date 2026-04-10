@@ -5,12 +5,9 @@ if (!customerCan('invoices')) { header('Location: /customer/v2/'); exit; }
 $title = 'Rechnungen'; $page = 'invoices';
 $cid = me()['id'];
 
-// Tab: 'service' (Reinigungen) or 'other'
 $tab = $_GET['tab'] ?? 'service';
-
-// All invoices
 $allInvoices = all("SELECT * FROM invoices WHERE customer_id_fk=? ORDER BY issue_date DESC", [$cid]);
-$invoices = $allInvoices; // no separation yet — show all under 'service'; 'other' shows empty for now
+$invoices = $allInvoices;
 
 $totalUnpaid = (float) val("SELECT COALESCE(SUM(remaining_price),0) FROM invoices WHERE customer_id_fk=? AND invoice_paid='no'", [$cid]);
 $unpaidCount = (int) val("SELECT COUNT(*) FROM invoices WHERE customer_id_fk=? AND invoice_paid='no'", [$cid]);
@@ -24,24 +21,22 @@ include __DIR__ . '/../../includes/layout-v2.php';
 </div>
 
 <?php if ($totalUnpaid > 0): ?>
-<div class="card-elev border-red-200 bg-red-50 p-5 mb-6 flex items-center justify-between gap-4">
+<div class="card-elev border-red-200 bg-red-50 p-5 mb-6 flex items-center justify-between gap-4 flex-wrap">
   <div>
     <div class="font-semibold text-red-900"><?= $unpaidCount ?> offene Rechnung<?= $unpaidCount === 1 ? '' : 'en' ?></div>
     <div class="text-sm text-red-700"><?= money($totalUnpaid) ?> Gesamtbetrag</div>
   </div>
-  <a href="/customer/invoices.php" class="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold whitespace-nowrap">Jetzt bezahlen →</a>
+  <a href="https://wa.me/<?= CONTACT_WA ?>?text=<?= urlencode('Hallo ' . SITE . ', ich möchte meine Rechnung bezahlen.') ?>" target="_blank" class="px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-semibold whitespace-nowrap flex items-center gap-2">
+    <span>💬</span> Per WhatsApp bezahlen
+  </a>
 </div>
 <?php endif; ?>
 
-<!-- Tabs (Helpling-style) -->
+<!-- Tabs -->
 <div class="border-b mb-6">
   <div class="flex gap-8">
-    <a href="?tab=service" class="tab-underline <?= $tab === 'service' ? 'active' : '' ?>">
-      Dienstleistung
-    </a>
-    <a href="?tab=other" class="tab-underline <?= $tab === 'other' ? 'active' : '' ?>">
-      Andere
-    </a>
+    <a href="?tab=service" class="tab-underline <?= $tab === 'service' ? 'active' : '' ?>">Dienstleistung</a>
+    <a href="?tab=other" class="tab-underline <?= $tab === 'other' ? 'active' : '' ?>">Andere</a>
   </div>
 </div>
 
@@ -70,12 +65,12 @@ include __DIR__ . '/../../includes/layout-v2.php';
       <div class="text-xs text-gray-500 mt-0.5">
         Ausgestellt <?= date('d.m.Y', strtotime($inv['issue_date'])) ?>
         <?php if (!empty($inv['start_date']) && !empty($inv['end_date'])): ?>
-          · <?= date('d.m.', strtotime($inv['start_date'])) ?> – <?= date('d.m.Y', strtotime($inv['end_date'])) ?>
+          · <?= date('d.m.', strtotime($inv['start_date'])) ?>–<?= date('d.m.Y', strtotime($inv['end_date'])) ?>
         <?php endif; ?>
       </div>
     </div>
   </div>
-  <div class="flex items-center gap-4 ml-auto">
+  <div class="flex items-center gap-3 ml-auto flex-wrap justify-end">
     <div class="text-right">
       <div class="font-bold text-gray-900"><?= money($inv['total_price']) ?></div>
       <?php if ($paid): ?>
@@ -93,8 +88,14 @@ include __DIR__ . '/../../includes/layout-v2.php';
         PDF
       </a>
       <?php endif; ?>
-      <?php if (!$paid): ?>
-      <a href="/customer/invoices.php" class="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-semibold">Bezahlen</a>
+      <?php if (!$paid && defined('FEATURE_STRIPE') && FEATURE_STRIPE): ?>
+      <button onclick="stripePayInv(<?= (int) $inv['inv_id'] ?>, event)" class="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-semibold flex items-center gap-1">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+        Karte / SEPA
+      </button>
+      <?php endif; ?>
+      <?php if (!$paid && defined('FEATURE_PAYPAL') && FEATURE_PAYPAL): ?>
+      <paypal-button hidden data-inv="<?= (int) $inv['inv_id'] ?>" class="paypal-v6-btn"></paypal-button>
       <?php endif; ?>
     </div>
   </div>
@@ -111,6 +112,89 @@ else: // tab === other
   <h3 class="text-lg font-semibold text-gray-900 mb-2">Keine sonstigen Belege</h3>
   <p class="text-sm text-gray-500 max-w-md mx-auto">Hier erscheinen sonstige Belege wie Gutscheine oder Gutschriften.</p>
 </div>
+<?php endif;
+
+// ============ Stripe + PayPal JS ============
+$apiKey = defined('API_KEY') ? API_KEY : '';
+$paypalId = defined('PAYPAL_CLIENT_ID') ? PAYPAL_CLIENT_ID : '';
+?>
+
+<script>
+function stripePayInv(invId, ev) {
+  const btn = ev?.target?.closest('button') || ev?.target;
+  if (btn) { btn.textContent = 'Wird geladen…'; btn.disabled = true; }
+  fetch('/api/index.php?action=stripe/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': <?= json_encode($apiKey) ?> },
+    body: JSON.stringify({ inv_id: invId })
+  }).then(r => r.json()).then(d => {
+    if (d.success && d.data?.checkout_url) {
+      window.location.href = d.data.checkout_url;
+    } else {
+      alert(d.error || 'Fehler beim Erstellen der Zahlung');
+      if (btn) { btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg> Karte / SEPA'; btn.disabled = false; }
+    }
+  }).catch(() => {
+    alert('Netzwerk-Fehler');
+    if (btn) { btn.textContent = 'Karte / SEPA'; btn.disabled = false; }
+  });
+}
+</script>
+
+<?php if (defined('FEATURE_PAYPAL') && FEATURE_PAYPAL): ?>
+<script>
+(function () {
+  const s = document.createElement('script');
+  s.src = 'https://www.paypal.com/web-sdk/v6/core';
+  s.onload = async function () {
+    try {
+      const sdkInstance = await window.paypal.createInstance({
+        clientId: <?= json_encode($paypalId) ?>,
+        components: ['paypal-payments'],
+        pageType: 'checkout',
+        locale: 'de-DE',
+      });
+      const methods = await sdkInstance.findEligibleMethods({ currencyCode: 'EUR' });
+      if (!methods.isEligible('paypal')) return;
+
+      document.querySelectorAll('.paypal-v6-btn').forEach(btn => {
+        const invId = parseInt(btn.dataset.inv);
+        const session = sdkInstance.createPayPalOneTimePaymentSession({
+          async onApprove(data) {
+            try {
+              const resp = await fetch('/api/paypal-capture.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order_id: data.orderId, inv_id: invId })
+              });
+              const d = await resp.json();
+              if (d.success) location.reload();
+              else alert(d.error || 'Capture fehlgeschlagen');
+            } catch (e) { alert('Netzwerk-Fehler'); }
+          },
+          onCancel() { },
+          onError(err) { console.error('PayPal Error:', err); },
+        });
+
+        btn.removeAttribute('hidden');
+        btn.addEventListener('click', async () => {
+          try {
+            const resp = await fetch('/api/paypal-create.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ inv_id: invId })
+            });
+            const d = await resp.json();
+            if (!d.success) { alert(d.error); return; }
+            await session.start({ presentationMode: 'auto' }, Promise.resolve({ orderId: d.order_id }));
+          } catch (e) { console.error('PayPal start error:', e); }
+        });
+      });
+    } catch (e) { console.error('PayPal v6 init error:', e); }
+  };
+  document.head.appendChild(s);
+})();
+</script>
 <?php endif; ?>
 
 <?php include __DIR__ . '/../../includes/footer-v2.php'; ?>
