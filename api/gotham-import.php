@@ -139,26 +139,49 @@ if (empty($records)) {
 // ============================================================
 // Resolve column mapping — try provided names first, then autodetect
 // ============================================================
-function find_col(array $headers, ?string $wanted, array $fallbacks = []): ?string {
-    if ($wanted && in_array($wanted, $headers, true)) return $wanted;
+// find_col: if explicit mapping provided, honor it exactly (skip auto-detect).
+// When auto-detecting, skip columns already claimed by another explicit mapping
+// to prevent the same header matching multiple roles (e.g. "Name" being picked
+// as both name_col and company_col).
+function find_col(array $headers, ?string $wanted, array $fallbacks, array $claimed, bool $hasExplicit): ?string {
+    if ($wanted !== null && $wanted !== '') {
+        return in_array($wanted, $headers, true) ? $wanted : null;
+    }
+    // Caller gave no explicit mapping for this role — try auto-detect
     foreach ($fallbacks as $fb) {
         foreach ($headers as $h) {
+            if (in_array($h, $claimed, true)) continue; // already used elsewhere
             if (stripos($h, $fb) !== false) return $h;
         }
     }
     return null;
 }
 
+// Collect all explicitly-claimed columns first so auto-detect doesn't
+// steal them for another role
+$claimed = array_filter([
+    $mapping['name_col']    ?? null,
+    $mapping['email_col']   ?? null,
+    $mapping['phone_col']   ?? null,
+    $mapping['address_col'] ?? null,
+    $mapping['company_col'] ?? null,
+    $mapping['domain_col']  ?? null,
+    $mapping['handle_col']  ?? null,
+    $mapping['title_col']   ?? null,
+    $mapping['notes_col']   ?? null,
+]);
+$hasExplicit = !empty($mapping);
+
 $cols = [
-    'name'    => find_col($headers, $mapping['name_col']    ?? null, ['name', 'firstname', 'full name', 'customer', 'kunde']),
-    'email'   => find_col($headers, $mapping['email_col']   ?? null, ['email', 'mail', 'e-mail']),
-    'phone'   => find_col($headers, $mapping['phone_col']   ?? null, ['phone', 'telefon', 'mobil', 'handy', 'tel']),
-    'address' => find_col($headers, $mapping['address_col'] ?? null, ['address', 'adresse', 'street', 'straße']),
-    'company' => find_col($headers, $mapping['company_col'] ?? null, ['company', 'firma', 'organization', 'organisation']),
-    'domain'  => find_col($headers, $mapping['domain_col']  ?? null, ['domain', 'website', 'url', 'site']),
-    'handle'  => find_col($headers, $mapping['handle_col']  ?? null, ['handle', 'username', 'login', 'screen name', 'nick']),
-    'title'   => find_col($headers, $mapping['title_col']   ?? null, ['title', 'role', 'position', 'job']),
-    'notes'   => find_col($headers, $mapping['notes_col']   ?? null, ['notes', 'comment', 'description']),
+    'name'    => find_col($headers, $mapping['name_col']    ?? null, ['name', 'firstname', 'full name', 'customer', 'kunde'], $claimed, $hasExplicit),
+    'email'   => find_col($headers, $mapping['email_col']   ?? null, ['email', 'mail', 'e-mail'], $claimed, $hasExplicit),
+    'phone'   => find_col($headers, $mapping['phone_col']   ?? null, ['phone', 'telefon', 'mobil', 'handy', 'tel'], $claimed, $hasExplicit),
+    'address' => find_col($headers, $mapping['address_col'] ?? null, ['address', 'adresse', 'street', 'straße'], $claimed, $hasExplicit),
+    'company' => find_col($headers, $mapping['company_col'] ?? null, ['company', 'firma', 'organization', 'organisation'], $claimed, $hasExplicit),
+    'domain'  => find_col($headers, $mapping['domain_col']  ?? null, ['domain', 'website', 'url', 'site'], $claimed, $hasExplicit),
+    'handle'  => find_col($headers, $mapping['handle_col']  ?? null, ['handle', 'username', 'login', 'screen name', 'nick'], $claimed, $hasExplicit),
+    'title'   => find_col($headers, $mapping['title_col']   ?? null, ['title', 'role', 'position', 'job'], $claimed, $hasExplicit),
+    'notes'   => find_col($headers, $mapping['notes_col']   ?? null, ['notes', 'comment', 'description'], $claimed, $hasExplicit),
 ];
 
 if (!$cols['name'] && !$cols['email'] && !$cols['phone'] && !$cols['company']) {
@@ -177,6 +200,12 @@ if (!$cols['name'] && !$cols['email'] && !$cols['phone'] && !$cols['company']) {
 $stats = ['rows' => 0, 'objects' => 0, 'links' => 0, 'events' => 0, 'errors' => 0, 'skipped' => 0];
 $sourceTag = 'csv:' . $sourceLabel;
 $startTs = microtime(true);
+// Synthetic scan_id for the ENTIRE import operation: all rows share
+// this ID so dedup inside ontology_upsert_object works correctly
+// (otherwise 432 rows inflate source_count by 432 for shared emails,
+// or worse: null-scanId calls skip increment entirely when the object
+// already has any scan_id in its source_scans array).
+$importScanId = (int)(time() * 1000 + mt_rand(0, 999));
 
 foreach ($records as $rIdx => $row) {
     $stats['rows']++;
@@ -203,37 +232,37 @@ foreach ($records as $rIdx => $row) {
             'notes'          => $notes ?: null,
         ]);
 
-        $rootId = ontology_upsert_object($rootType, $rootValue, $props, null, 0.75);
+        $rootId = ontology_upsert_object($rootType, $rootValue, $props, $importScanId, 0.75);
         if (!$rootId) { $stats['skipped']++; continue; }
         $stats['objects']++;
 
         if ($email && $rootType !== 'email') {
-            $eId = ontology_upsert_object('email', $email, [], null, 0.85);
+            $eId = ontology_upsert_object('email', $email, [], $importScanId, 0.85);
             ontology_upsert_link($rootId, $eId, 'has_email', $sourceTag, 0.9);
             $stats['objects']++; $stats['links']++;
         }
         if ($phone && $rootType !== 'phone') {
-            $pId = ontology_upsert_object('phone', $phone, [], null, 0.85);
+            $pId = ontology_upsert_object('phone', $phone, [], $importScanId, 0.85);
             ontology_upsert_link($rootId, $pId, 'has_phone', $sourceTag, 0.9);
             $stats['objects']++; $stats['links']++;
         }
         if ($address) {
-            $aId = ontology_upsert_object('address', $address, [], null, 0.7);
+            $aId = ontology_upsert_object('address', $address, [], $importScanId, 0.7);
             ontology_upsert_link($rootId, $aId, 'lives_at', $sourceTag, 0.75);
             $stats['objects']++; $stats['links']++;
         }
         if ($company && $rootType !== 'company') {
-            $cId = ontology_upsert_object('company', $company, [], null, 0.8);
+            $cId = ontology_upsert_object('company', $company, [], $importScanId, 0.8);
             ontology_upsert_link($rootId, $cId, 'associated_with', $sourceTag, 0.85);
             $stats['objects']++; $stats['links']++;
         }
         if ($domain) {
-            $dId = ontology_upsert_object('domain', $domain, [], null, 0.7);
+            $dId = ontology_upsert_object('domain', $domain, [], $importScanId, 0.7);
             ontology_upsert_link($rootId, $dId, 'owns_domain', $sourceTag, 0.75);
             $stats['objects']++; $stats['links']++;
         }
         if ($handle) {
-            $hId = ontology_upsert_object('handle', $handle, [], null, 0.7);
+            $hId = ontology_upsert_object('handle', $handle, [], $importScanId, 0.7);
             ontology_upsert_link($rootId, $hId, 'uses_handle', $sourceTag, 0.75);
             $stats['objects']++; $stats['links']++;
         }

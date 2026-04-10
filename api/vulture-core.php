@@ -191,6 +191,53 @@ function vps_call(string $tool, array $params, bool $useCache = true): ?array {
 }
 
 // ============================================================
+// GROK (x.ai) — direct call, grok-4-fast-reasoning or similar.
+// Requires GROK_API_KEY from includes/llm-keys.php. If not
+// configured, returns {error: "not configured"} and
+// ai_crosscheck gracefully skips. Same 24h file cache.
+// ============================================================
+function grok_chat(string $prompt, int $maxTokens = 400): ?array {
+    if (!defined('GROK_API_KEY') || !GROK_API_KEY) {
+        return ['error' => 'GROK_API_KEY not configured'];
+    }
+    $cacheDir = sys_get_temp_dir() . '/vulture_vps_cache';
+    if (!is_dir($cacheDir)) @mkdir($cacheDir, 0700, true);
+    $cacheFile = $cacheDir . '/grok_' . md5($prompt . '|' . $maxTokens) . '.json';
+    if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 86400) {
+        $cached = json_decode(@file_get_contents($cacheFile), true);
+        if (is_array($cached)) { $cached['_cache_hit'] = true; return $cached; }
+    }
+    $payload = [
+        'model' => 'grok-2-latest',
+        'messages' => [['role' => 'user', 'content' => $prompt]],
+        'max_tokens' => $maxTokens,
+        'temperature' => 0.2,
+    ];
+    $ch = curl_init('https://api.x.ai/v1/chat/completions');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . GROK_API_KEY,
+        ],
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($code !== 200 || !$resp) return ['error' => "Grok HTTP $code"];
+    $decoded = json_decode($resp, true);
+    if (!is_array($decoded)) return ['error' => 'invalid JSON'];
+    $content = $decoded['choices'][0]['message']['content'] ?? '';
+    $out = ['content' => $content, 'model' => $decoded['model'] ?? '', 'usage' => $decoded['usage'] ?? null];
+    if ($content) @file_put_contents($cacheFile, json_encode($out));
+    return $out;
+}
+
+// ============================================================
 // GROQ LLM — direct call (no VPS intermediate). Free tier,
 // llama-3.3-70b-versatile, ~0.5s responses. Used as 4th
 // independent AI source alongside Perplexity. Requires
@@ -272,6 +319,7 @@ function ai_crosscheck(array $initialSeed, array $rawLayers): array {
     $pplx1 = vps_call('perplexity', ['query' => $q1]);
     $pplx2 = vps_call('perplexity', ['query' => $q2]);
     $groq  = groq_chat($q1);  // 4th triangulation source (free llama-3.3-70b)
+    $grok  = grok_chat($q1);  // 5th source (x.ai, opt-in via GROK_API_KEY)
     // SearXNG = local aggregator over 250 engines — independent of Google rate limits.
     // Two queries: one profile-oriented, one risk-oriented.
     $sx1 = vps_call('searxng', ['query' => $anchor, 'categories' => 'general', 'limit' => 10]);
@@ -290,6 +338,13 @@ function ai_crosscheck(array $initialSeed, array $rawLayers): array {
         $out['sources_queried'][] = 'groq_profile';
     } elseif (is_array($groq) && !empty($groq['error'])) {
         $out['errors']['groq'] = $groq['error'];
+    }
+    // Grok x.ai (5th triangulation source — opt-in)
+    if ($grok && !empty($grok['content'])) {
+        $out['grok_profile'] = $grok['content'];
+        $out['sources_queried'][] = 'grok_profile';
+    } elseif (is_array($grok) && !empty($grok['error']) && $grok['error'] !== 'GROK_API_KEY not configured') {
+        $out['errors']['grok'] = $grok['error'];
     }
 
     if ($pplx1 && !isset($pplx1['error'])) {
@@ -342,7 +397,7 @@ function ai_crosscheck(array $initialSeed, array $rawLayers): array {
     $matches = 0;
     $scanBlob = '';
     foreach ($rawLayers as $layer) { $scanBlob .= json_encode($layer['data'] ?? []); }
-    $aiBlob = ($out['perplexity_profile'] ?? '') . ' ' . ($out['perplexity_risk'] ?? '') . ' ' . ($out['groq_profile'] ?? '');
+    $aiBlob = ($out['perplexity_profile'] ?? '') . ' ' . ($out['perplexity_risk'] ?? '') . ' ' . ($out['groq_profile'] ?? '') . ' ' . ($out['grok_profile'] ?? '');
     foreach (($out['searxng_top'] ?? []) as $r) {
         $aiBlob .= ' ' . ($r['title'] ?? '') . ' ' . ($r['snippet'] ?? '');
     }
@@ -482,6 +537,33 @@ function extract_seeds(array $scan, array &$graph, int $layer, array $initialSee
                 }
             }
         }
+    }
+
+    // ========================================================
+    // AUTO-IP CASCADE — resolve every newly harvested public
+    // domain to its A record and add the IP as a first-class
+    // node linked to the domain. Caches DNS lookups per-request
+    // to avoid duplicate resolves. Skips if A record is private.
+    // ========================================================
+    $dnsCache = [];
+    foreach ($graph['nodes'] as $nid => $node) {
+        if ($node['type'] !== 'domain') continue;
+        $d = $node['value'];
+        if (isset($dnsCache[$d])) continue;
+        $dnsCache[$d] = true;
+        // Short DNS timeout — don't block the cascade
+        $ip = @gethostbyname($d);
+        if (!$ip || $ip === $d) continue;
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) continue;
+        // Filter private/reserved (reuse same logic as harvest)
+        $parts = explode('.', $ip);
+        $first = (int)$parts[0]; $second = (int)$parts[1];
+        if ($first === 10 || $first === 127 || $first === 0 || $first >= 224) continue;
+        if ($first === 172 && $second >= 16 && $second <= 31) continue;
+        if ($first === 192 && $second === 168) continue;
+        if ($first === 169 && $second === 254) continue;
+        // Upsert IP node + link
+        add_node($graph, 'ip', $ip, 'dns_resolve', 0.85);
     }
 
     // Layer-cap to prevent exponential blowup
