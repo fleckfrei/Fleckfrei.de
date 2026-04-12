@@ -107,6 +107,56 @@ if (!defined('LLM_HELPERS_LOADED')) {
     }
 
     // ============================================================
+    // GROQ VISION — image analysis via llama-3.2-90b-vision-preview
+    // Accepts a base64 image or URL. Returns structured JSON analysis.
+    // ============================================================
+    function groq_vision(string $imageBase64OrUrl, string $prompt, int $maxTokens = 800): ?array {
+        if (!defined('GROQ_API_KEY') || !GROQ_API_KEY) {
+            return ['error' => 'GROQ_API_KEY not configured'];
+        }
+        // Determine if URL or base64
+        $isUrl = str_starts_with($imageBase64OrUrl, 'http');
+        $imageContent = $isUrl
+            ? ['type' => 'image_url', 'image_url' => ['url' => $imageBase64OrUrl]]
+            : ['type' => 'image_url', 'image_url' => ['url' => 'data:image/jpeg;base64,' . $imageBase64OrUrl]];
+
+        $payload = [
+            'model' => 'llama-3.2-90b-vision-preview',
+            'messages' => [
+                ['role' => 'user', 'content' => [
+                    ['type' => 'text', 'text' => $prompt],
+                    $imageContent,
+                ]],
+            ],
+            'max_tokens' => $maxTokens,
+            'temperature' => 0.1,
+        ];
+        $ch = curl_init('https://api.groq.com/openai/v1/chat/completions');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . GROQ_API_KEY,
+            ],
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code !== 200 || !$resp) return ['error' => "Groq Vision HTTP $code", 'raw' => $resp];
+        $decoded = json_decode($resp, true);
+        $content = $decoded['choices'][0]['message']['content'] ?? '';
+        return [
+            'content' => $content,
+            'model' => $decoded['model'] ?? 'llama-3.2-90b-vision-preview',
+            'usage' => $decoded['usage'] ?? null,
+        ];
+    }
+
+    // ============================================================
     // SHODAN HOST — enrich IP nodes with services/ports/certs
     // Free tier: 100 host lookups/month with API plan, $0 for SSL
     // Returns null on failure (graceful skip).

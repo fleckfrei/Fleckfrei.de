@@ -401,6 +401,38 @@ include __DIR__ . '/../includes/layout.php';
         <input type="file" name="photos[]" multiple accept="image/*" capture="environment" class="w-full px-3 py-2 border rounded-xl text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-brand/10 file:text-brand file:font-medium"/>
         <p class="text-xs text-gray-400 mt-1">Max. 10MB pro Foto. JPG, PNG, WebP.</p>
       </div>
+
+      <!-- KI Foto-Check (vor dem Abschließen) -->
+      <div x-data="photoAI_<?= $j['j_id'] ?>()" class="bg-purple-50 border border-purple-200 rounded-xl p-3">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-lg">🤖</span>
+          <span class="text-xs font-bold text-purple-800 uppercase tracking-wider">KI Sauberkeits-Check</span>
+        </div>
+        <div class="flex gap-2">
+          <label class="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-white border border-purple-200 hover:border-purple-400 rounded-lg cursor-pointer text-xs font-semibold text-purple-700 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <span x-text="analyzing ? 'Analysiere...' : 'Foto prüfen lassen'"></span>
+            <input type="file" accept="image/*" capture="environment" class="hidden" @change="analyzePhoto($event, <?= $j['j_id'] ?>, 'after')" :disabled="analyzing"/>
+          </label>
+        </div>
+        <!-- Result -->
+        <div x-show="result" x-cloak class="mt-3 p-3 rounded-lg" :class="result?.analysis?.passed ? 'bg-green-50 border border-green-200' : (result?.analysis?.score >= 7 ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200')">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-sm" :class="(result?.analysis?.score || 0) >= 7 ? 'text-green-800' : 'text-amber-800'" x-text="(result?.analysis?.score || 0) >= 7 ? '✓ Sauber' : '⚠ Nachbessern'"></span>
+            <span class="text-2xl font-extrabold" :class="(result?.analysis?.score || 0) >= 7 ? 'text-green-600' : 'text-amber-600'" x-text="(result?.analysis?.score || '?') + '/10'"></span>
+          </div>
+          <div class="text-xs text-gray-700" x-text="result?.analysis?.verdict || result?.analysis?.empfehlung || ''"></div>
+          <template x-if="result?.analysis?.issues?.length > 0">
+            <ul class="mt-2 text-xs text-gray-600 space-y-0.5">
+              <template x-for="issue in result.analysis.issues" :key="issue">
+                <li class="flex items-start gap-1"><span class="text-amber-500">•</span><span x-text="issue"></span></li>
+              </template>
+            </ul>
+          </template>
+        </div>
+        <div x-show="error" x-cloak class="mt-2 text-xs text-red-600" x-text="error"></div>
+      </div>
+
       <button type="submit" class="w-full py-3 bg-red-600 text-white rounded-xl font-semibold text-lg hover:bg-red-700 transition">
         <?= t('jobs.stop') ?>
       </button>
@@ -696,5 +728,30 @@ function openCamera(jid) {
     input.click();
 }
 JS;
+
+// Photo AI analysis functions (one per job to avoid Alpine scope issues)
+foreach ($todayJobs as $j) {
+    $jid = (int)$j['j_id'];
+    echo "<script>function photoAI_{$jid}() { return {
+      analyzing: false, result: null, error: null,
+      async analyzePhoto(event, jobId, type) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        this.analyzing = true; this.error = null; this.result = null;
+        const fd = new FormData();
+        fd.append('photo', file);
+        fd.append('job_id', jobId);
+        fd.append('type', type);
+        try {
+          const r = await fetch('/api/photo-analysis.php', { method: 'POST', body: fd, credentials: 'same-origin' });
+          const d = await r.json();
+          if (d.success) { this.result = d; }
+          else { this.error = d.error || 'Analyse fehlgeschlagen'; }
+        } catch (e) { this.error = 'Netzwerk-Fehler: ' + e.message; }
+        this.analyzing = false;
+      }
+    }; }</script>\n";
+}
+
 include __DIR__ . '/../includes/footer.php';
 ?>
