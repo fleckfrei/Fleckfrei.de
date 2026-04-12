@@ -34,9 +34,9 @@ function cust_fetchTransport(string $url, int $timeout = 6): ?array {
 }
 
 // Station selector — default Berlin Hbf
-$stationId  = $_GET['station'] ?? '8011160';  // DB IBNR for Berlin Hbf
-$bvgStopId  = $_GET['bvg'] ?? '900003201';    // BVG S+U Hauptbahnhof
-$duration   = (int) ($_GET['duration'] ?? 60);
+$stationId  = preg_match('/^\d{5,10}$/', $_GET['station'] ?? '') ? $_GET['station'] : '8011160';
+$bvgStopId  = preg_match('/^\d{5,12}$/', $_GET['bvg'] ?? '') ? $_GET['bvg'] : '900003201';
+$duration   = max(10, min(120, (int) ($_GET['duration'] ?? 60)));
 
 // Preset stations (major Berlin arrival points)
 $presetStations = [
@@ -112,7 +112,7 @@ include __DIR__ . '/../includes/layout-customer.php';
   <div class="text-right">
     <div class="text-[11px] text-gray-500 uppercase font-semibold tracking-wider">Stand</div>
     <div class="text-sm font-mono text-gray-700"><?= $fetchedAt ?></div>
-    <button onclick="location.reload()" class="mt-1 text-[11px] px-2 py-1 bg-brand-light text-brand rounded font-semibold hover:bg-brand hover:text-white transition">↻ Aktualisieren</button>
+    <button type="button" onclick="location.reload()" class="mt-1 text-[11px] px-2 py-1 bg-brand-light text-brand rounded font-semibold hover:bg-brand hover:text-white transition">↻ Aktualisieren</button>
   </div>
 </div>
 

@@ -173,7 +173,7 @@ include __DIR__ . '/../includes/layout-customer.php';
 <div class="mb-4 p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-800 flex items-center justify-between gap-3" x-data="{ undone: false }">
   <span x-show="!undone">✓ Vorlage importiert — <?= (int)$_GET['imported'] ?> Aufgaben hinzugefügt.</span>
   <span x-show="undone" x-cloak>Rückgängig gemacht.</span>
-  <button x-show="!undone" @click="fetch('/api/checklist-undo.php?service_id=<?= $serviceId ?>&count=<?= (int)$_GET['imported'] ?>', {credentials:'same-origin'}).then(() => { undone = true; setTimeout(() => location.reload(), 800); })" class="text-xs font-semibold text-green-700 hover:text-green-900 underline whitespace-nowrap">Rückgängig</button>
+  <button type="button" x-show="!undone" @click="fetch('/api/checklist-undo.php?service_id=<?= $serviceId ?>&count=<?= (int)$_GET['imported'] ?>', {credentials:'same-origin'}).then(() => { undone = true; setTimeout(() => location.reload(), 800); })" class="text-xs font-semibold text-green-700 hover:text-green-900 underline whitespace-nowrap">Rückgängig</button>
 </div>
 <?php endif; ?>
 <?php if (!empty($_GET['ai_added'])): ?>
@@ -203,9 +203,9 @@ include __DIR__ . '/../includes/layout-customer.php';
     <div class="text-[11px] font-bold text-purple-900 uppercase tracking-wide flex items-center justify-between">
       <span x-text="ideas.length + ' Vorschläge · ' + source"></span>
       <div class="flex gap-1">
-        <button @click="ideas.forEach(i => i.selected = true)" class="text-purple-700 hover:text-purple-900 normal-case font-semibold">Alle auswählen</button>
+        <button type="button" @click="ideas.forEach(i => i.selected = true)" class="text-purple-700 hover:text-purple-900 normal-case font-semibold">Alle auswählen</button>
         <span class="text-purple-300">·</span>
-        <button @click="ideas.forEach(i => i.selected = false)" class="text-purple-700 hover:text-purple-900 normal-case font-semibold">Keine</button>
+        <button type="button" @click="ideas.forEach(i => i.selected = false)" class="text-purple-700 hover:text-purple-900 normal-case font-semibold">Keine</button>
       </div>
     </div>
 

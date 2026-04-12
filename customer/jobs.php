@@ -275,6 +275,22 @@ function countdown(string $date, string $time): string {
     return "in $mins Min";
 }
 
+// Pre-load checklist data for all jobs (avoid N+1 queries)
+$allServiceIds = array_unique(array_filter(array_column($jobs, 's_id_fk')));
+$allJobIds = array_column($jobs, 'j_id');
+$checklistByService = [];
+$completionsByJob = [];
+if (!empty($allServiceIds)) {
+    $sidList = implode(',', array_map('intval', $allServiceIds));
+    $clItems = all("SELECT checklist_id, s_id_fk, title, priority FROM service_checklists WHERE s_id_fk IN ($sidList) AND is_active=1 ORDER BY position");
+    foreach ($clItems as $cl) $checklistByService[(int)$cl['s_id_fk']][] = $cl;
+}
+if (!empty($allJobIds)) {
+    $jidList = implode(',', array_map('intval', $allJobIds));
+    $comps = all("SELECT job_id_fk, checklist_id_fk, completed, photo FROM checklist_completions WHERE job_id_fk IN ($jidList)");
+    foreach ($comps as $c) $completionsByJob[(int)$c['job_id_fk']][(int)$c['checklist_id_fk']] = $c;
+}
+
 include __DIR__ . '/../includes/layout-customer.php';
 ?>
 
@@ -672,13 +688,11 @@ $lastGroupKey = null;
     <?php endif; ?>
 
     <?php
-    // Checklist completion status — only show if service has a checklist
+    // Checklist completion status — pre-loaded above (no N+1)
     if (!empty($j['s_id_fk'])):
-        $checklistItems = all("SELECT checklist_id, title, priority FROM service_checklists WHERE s_id_fk=? AND is_active=1 ORDER BY position", [$j['s_id_fk']]);
+        $checklistItems = $checklistByService[(int)$j['s_id_fk']] ?? [];
         if (!empty($checklistItems)):
-            $completionsForJob = all("SELECT checklist_id_fk, completed, photo FROM checklist_completions WHERE job_id_fk=?", [$j['j_id']]);
-            $compMap = [];
-            foreach ($completionsForJob as $c) $compMap[$c['checklist_id_fk']] = $c;
+            $compMap = $completionsByJob[(int)$j['j_id']] ?? [];
             $doneCount = count(array_filter($compMap, fn($c) => !empty($c['completed'])));
             $totalCount = count($checklistItems);
             $pctChk = $totalCount > 0 ? round(($doneCount / $totalCount) * 100) : 0;

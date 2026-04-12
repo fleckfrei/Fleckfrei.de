@@ -60,7 +60,7 @@ $_SESSION['nuki_oauth_state'] = $authState;
 $_SESSION['nuki_oauth_cid'] = $cid;
 $authUrl = $nukiConfigured ? nukiAuthorizeUrl($authState) : null;
 
-$savedMsg = $_GET['saved'] ?? '';
+$savedMsg = in_array($_GET['saved'] ?? '', ['connected', 'synced', 'disconnected', '1', ''], true) ? ($_GET['saved'] ?? '') : '';
 
 include __DIR__ . '/../includes/layout-customer.php';
 ?>

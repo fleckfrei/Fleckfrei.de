@@ -4,7 +4,7 @@ requireCustomer();
 if (!customerCan('documents')) { header('Location: /customer/'); exit; }
 $title = 'Dokumente & Schlüssel'; $page = 'documents';
 $cid = me()['id'];
-$tab = $_GET['tab'] ?? 'schluessel';
+$tab = in_array($_GET['tab'] ?? '', ['schluessel', 'dokumente', 'vertraege'], true) ? $_GET['tab'] : 'schluessel';
 
 $customer = one("SELECT * FROM customer WHERE customer_id=?", [$cid]);
 
