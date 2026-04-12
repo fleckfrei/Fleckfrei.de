@@ -205,7 +205,7 @@ $startTs = microtime(true);
 // (otherwise 432 rows inflate source_count by 432 for shared emails,
 // or worse: null-scanId calls skip increment entirely when the object
 // already has any scan_id in its source_scans array).
-$importScanId = (int)(time() * 1000 + mt_rand(0, 999));
+$importScanId = (int)(time() * 1000 + random_int(0, 999));
 
 foreach ($records as $rIdx => $row) {
     $stats['rows']++;

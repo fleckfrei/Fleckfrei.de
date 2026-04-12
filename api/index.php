@@ -153,7 +153,7 @@ try {
             foreach (['customer_id_fk','j_date','j_time','j_hours'] as $r) { if (empty($d[$r])) throw new Exception("Missing: $r"); }
             global $db;
             $jobFor = $d['job_for'] ?? '';
-            $recurGroup = $jobFor ? uniqid('rec_') : null;
+            $recurGroup = $jobFor ? 'rec_' . bin2hex(random_bytes(8)) : null;
 
             // Calculate dates: single or recurring until user-chosen end date
             $dates = [$d['j_date']];

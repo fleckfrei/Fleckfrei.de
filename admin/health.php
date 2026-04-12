@@ -56,10 +56,10 @@ function checkGroq(): array {
 }
 
 function tailErrorLog(string $path, int $lines = 50): array {
-    if (!is_readable($path)) return [];
-    $content = @shell_exec('tail -n ' . (int)$lines . ' ' . escapeshellarg($path));
-    if (!$content) return [];
-    return array_values(array_filter(explode("\n", $content)));
+    if (!is_readable($path) || !is_file($path)) return [];
+    $allLines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if (!$allLines) return [];
+    return array_values(array_slice($allLines, -$lines));
 }
 
 // ============================================================
