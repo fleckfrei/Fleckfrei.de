@@ -121,7 +121,7 @@ if (!defined('LLM_HELPERS_LOADED')) {
             : ['type' => 'image_url', 'image_url' => ['url' => 'data:image/jpeg;base64,' . $imageBase64OrUrl]];
 
         $payload = [
-            'model' => 'llama-3.2-90b-vision-preview',
+            'model' => 'meta-llama/llama-4-scout-17b-16e-instruct',
             'messages' => [
                 ['role' => 'user', 'content' => [
                     ['type' => 'text', 'text' => $prompt],
