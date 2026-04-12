@@ -27,58 +27,21 @@ if (!$isAdmin && $cronSecret !== (defined('CRON_SECRET') ? CRON_SECRET : 'flk_sc
 // Known competitors in Berlin — search queries + fallback prices
 // ============================================================
 $competitors = [
-    [
-        'name' => 'Helpling',
-        'queries' => [
-            'Helpling Berlin Preis pro Stunde Reinigung',
-            'Helpling Berlin Stundenlohn Reinigungskraft',
-        ],
-        'fallback' => 16.90,
-        'source_url' => 'https://www.helpling.de',
-    ],
-    [
-        'name' => 'Book-a-Tiger',
-        'queries' => [
-            'Book a Tiger Berlin Preis Stunde Reinigung',
-            '"Book a Tiger" Berlin Stundenpreis',
-        ],
-        'fallback' => 23.90,
-        'source_url' => 'https://www.book-a-tiger.com',
-    ],
-    [
-        'name' => 'Batmaid',
-        'queries' => [
-            'Batmaid Berlin Preis Stunde',
-            'Batmaid Berlin Stundenlohn',
-        ],
-        'fallback' => 29.90,
-        'source_url' => 'https://www.batmaid.de',
-    ],
-    [
-        'name' => 'Holmes Cleaning',
-        'queries' => [
-            'Holmes Cleaning Berlin Preis Stunde',
-            'Holmes Cleaning Stundenlohn',
-        ],
-        'fallback' => 24.90,
-        'source_url' => 'https://www.holmes-cleaning.de',
-    ],
-    [
-        'name' => 'Putzperle',
-        'queries' => [
-            'Putzperle Berlin Preis Stunde',
-        ],
-        'fallback' => 22.50,
-        'source_url' => 'https://www.putzperle.de',
-    ],
-    [
-        'name' => 'Jobruf',
-        'queries' => [
-            'Jobruf Berlin Reinigungskraft Stundenlohn',
-        ],
-        'fallback' => 15.50,
-        'source_url' => 'https://www.jobruf.de',
-    ],
+    // Plattform-Vermittler (Privat)
+    ['name' => 'Helpling',          'queries' => ['Helpling Berlin Preis pro Stunde Reinigung 2026'],       'fallback' => 18.50, 'source_url' => 'https://www.helpling.de',       'type' => 'platform'],
+    ['name' => 'Book a Tiger',      'queries' => ['Book a Tiger Berlin Preis Stunde Reinigung 2026'],       'fallback' => 19.90, 'source_url' => 'https://www.bookatiger.com',    'type' => 'platform'],
+    ['name' => 'Batmaid',           'queries' => ['Batmaid Berlin Preis Stunde 2026'],                      'fallback' => 24.90, 'source_url' => 'https://www.batmaid.de',        'type' => 'platform'],
+    ['name' => 'Wecasa',            'queries' => ['Wecasa Berlin Putzfrau Preis Stunde 2026'],              'fallback' => 24.90, 'source_url' => 'https://www.wecasa.de',         'type' => 'platform'],
+    ['name' => 'Putzperle',         'queries' => ['Putzperle Berlin Preis Stunde'],                         'fallback' => 14.50, 'source_url' => 'https://www.putzperle.de',      'type' => 'platform'],
+    ['name' => 'CleanWhale',        'queries' => ['CleanWhale Berlin Reinigung Preis Stunde'],              'fallback' => 22.00, 'source_url' => 'https://www.cleanwhale.de',     'type' => 'platform'],
+    // Professionelle Reinigungsfirmen
+    ['name' => 'Immo Clean',        'queries' => ['Immo Clean Berlin Reinigungsfirma Preis Stunde'],        'fallback' => 30.00, 'source_url' => 'https://www.immo-clean.de',     'type' => 'company'],
+    ['name' => 'WMS Gebäudereinigung', 'queries' => ['WMS Gebäudereinigung Berlin Stundensatz'],            'fallback' => 25.00, 'source_url' => 'https://www.wms-gebaeudereinigung.de', 'type' => 'company'],
+    // Airbnb/Turnover-Spezialisten
+    ['name' => 'A4ord (Airbnb)',    'queries' => ['A4ord Berlin Airbnb Cleaning Preis Stunde'],             'fallback' => 20.00, 'source_url' => 'https://a4ord.de',              'type' => 'airbnb'],
+    ['name' => 'ECO Hotelservice',  'queries' => ['ECO Hotelservice Airbnb Turnover Berlin Preis'],         'fallback' => 25.00, 'source_url' => 'https://eco-hotelservice.de',   'type' => 'airbnb'],
+    // Privat/Kleinanzeigen
+    ['name' => 'Privatmarkt (Kleinanzeigen)', 'queries' => ['Reinigungskraft Berlin privat Stundenlohn'],   'fallback' => 15.00, 'source_url' => 'https://www.kleinanzeigen.de',  'type' => 'private'],
 ];
 
 // ============================================================

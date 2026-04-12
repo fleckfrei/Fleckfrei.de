@@ -23,9 +23,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $configs = all("SELECT * FROM pricing_config ORDER BY customer_type");
-$competitors = all("SELECT * FROM market_competitors WHERE city='Berlin' ORDER BY hourly_price ASC LIMIT 20");
+$competitors = all("SELECT * FROM market_competitors WHERE city='Berlin' ORDER BY hourly_price ASC LIMIT 30");
 $cheapest = !empty($competitors) ? min(array_column($competitors, 'hourly_price')) : null;
+$mostExpensive = !empty($competitors) ? max(array_column($competitors, 'hourly_price')) : null;
 $avgCompetitor = !empty($competitors) ? round(array_sum(array_column($competitors, 'hourly_price')) / count($competitors), 2) : null;
+
+// Segment analysis
+$platformPrices = array_column(array_filter($competitors, fn($c) => str_contains($c['source'], 'platform')), 'hourly_price');
+$companyPrices = array_column(array_filter($competitors, fn($c) => str_contains($c['source'], 'company')), 'hourly_price');
+$airbnbPrices = array_column(array_filter($competitors, fn($c) => str_contains($c['source'], 'airbnb')), 'hourly_price');
+$avgPlatform = !empty($platformPrices) ? round(array_sum($platformPrices) / count($platformPrices), 2) : null;
+$avgCompany = !empty($companyPrices) ? round(array_sum($companyPrices) / count($companyPrices), 2) : null;
+$avgAirbnb = !empty($airbnbPrices) ? round(array_sum($airbnbPrices) / count($airbnbPrices), 2) : null;
+$fleckfreiRate = (float)($configs[0]['base_hourly_netto'] ?? 24.29);
 
 include __DIR__ . '/../includes/layout.php';
 ?>
@@ -40,23 +50,67 @@ include __DIR__ . '/../includes/layout.php';
 </div>
 
 <!-- Market overview -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-  <div class="bg-white rounded-xl border p-5">
-    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Fleckfrei Basis</div>
-    <div class="text-3xl font-bold text-brand"><?= number_format($configs[0]['base_hourly_netto'] ?? 24.29, 2, ',', '.') ?> €</div>
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white rounded-xl border p-5 ring-2 ring-brand/20">
+    <div class="text-xs font-semibold text-brand uppercase tracking-wider mb-1">Fleckfrei</div>
+    <div class="text-3xl font-bold text-brand"><?= number_format($fleckfreiRate, 2, ',', '.') ?> €</div>
     <div class="text-xs text-gray-500 mt-1">netto / Stunde</div>
+    <div class="text-xs font-semibold mt-2 <?= $fleckfreiRate <= $avgCompetitor ? 'text-green-600' : 'text-red-600' ?>">
+      <?= $avgCompetitor ? ($fleckfreiRate <= $avgCompetitor ? '✓ unter Markt-Ø' : '⚠ über Markt-Ø') : '' ?>
+    </div>
   </div>
   <div class="bg-white rounded-xl border p-5">
-    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Günstigster Wettbewerber</div>
+    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Günstigster</div>
     <div class="text-3xl font-bold text-gray-900"><?= $cheapest !== null ? number_format($cheapest, 2, ',', '.') . ' €' : '—' ?></div>
-    <div class="text-xs text-gray-500 mt-1"><?= count($competitors) ?> erfasst in Berlin</div>
+    <div class="text-xs text-gray-500 mt-1"><?= count($competitors) ?> erfasst</div>
   </div>
   <div class="bg-white rounded-xl border p-5">
     <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Markt-Ø</div>
     <div class="text-3xl font-bold text-gray-900"><?= $avgCompetitor !== null ? number_format($avgCompetitor, 2, ',', '.') . ' €' : '—' ?></div>
-    <div class="text-xs text-gray-500 mt-1">Durchschnittspreis</div>
+    <div class="text-xs text-gray-500 mt-1">Durchschnitt Berlin</div>
+  </div>
+  <div class="bg-white rounded-xl border p-5">
+    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Teuerster</div>
+    <div class="text-3xl font-bold text-gray-900"><?= $mostExpensive !== null ? number_format($mostExpensive, 2, ',', '.') . ' €' : '—' ?></div>
+    <div class="text-xs text-gray-500 mt-1">Professionell</div>
   </div>
 </div>
+
+<!-- Segment breakdown -->
+<?php if ($avgPlatform || $avgCompany || $avgAirbnb): ?>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+  <?php if ($avgPlatform): ?>
+  <div class="bg-blue-50 rounded-xl border border-blue-200 p-4">
+    <div class="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Plattformen (Helpling, Wecasa...)</div>
+    <div class="text-xl font-bold text-blue-900"><?= number_format($avgPlatform, 2, ',', '.') ?> €/h Ø</div>
+    <div class="text-xs text-blue-700 mt-1"><?= count($platformPrices) ?> Anbieter · Spanne <?= number_format(min($platformPrices), 2, ',', '.') ?>–<?= number_format(max($platformPrices), 2, ',', '.') ?> €</div>
+    <div class="mt-2 text-xs font-semibold <?= $fleckfreiRate > $avgPlatform ? 'text-amber-600' : 'text-green-600' ?>">
+      Fleckfrei: <?= $fleckfreiRate > $avgPlatform ? '+' . number_format($fleckfreiRate - $avgPlatform, 2, ',', '.') . ' € drüber' : number_format($avgPlatform - $fleckfreiRate, 2, ',', '.') . ' € drunter' ?>
+    </div>
+  </div>
+  <?php endif; ?>
+  <?php if ($avgCompany): ?>
+  <div class="bg-purple-50 rounded-xl border border-purple-200 p-4">
+    <div class="text-[10px] font-bold text-purple-600 uppercase tracking-wider mb-1">Reinigungsfirmen</div>
+    <div class="text-xl font-bold text-purple-900"><?= number_format($avgCompany, 2, ',', '.') ?> €/h Ø</div>
+    <div class="text-xs text-purple-700 mt-1"><?= count($companyPrices) ?> Anbieter · Spanne <?= number_format(min($companyPrices), 2, ',', '.') ?>–<?= number_format(max($companyPrices), 2, ',', '.') ?> €</div>
+    <div class="mt-2 text-xs font-semibold <?= $fleckfreiRate > $avgCompany ? 'text-amber-600' : 'text-green-600' ?>">
+      Fleckfrei: <?= $fleckfreiRate > $avgCompany ? '+' . number_format($fleckfreiRate - $avgCompany, 2, ',', '.') . ' € drüber' : number_format($avgCompany - $fleckfreiRate, 2, ',', '.') . ' € drunter' ?>
+    </div>
+  </div>
+  <?php endif; ?>
+  <?php if ($avgAirbnb): ?>
+  <div class="bg-red-50 rounded-xl border border-red-200 p-4">
+    <div class="text-[10px] font-bold text-red-600 uppercase tracking-wider mb-1">Airbnb Turnover</div>
+    <div class="text-xl font-bold text-red-900"><?= number_format($avgAirbnb, 2, ',', '.') ?> €/h Ø</div>
+    <div class="text-xs text-red-700 mt-1"><?= count($airbnbPrices) ?> Anbieter · Spanne <?= number_format(min($airbnbPrices), 2, ',', '.') ?>–<?= number_format(max($airbnbPrices), 2, ',', '.') ?> €</div>
+    <div class="mt-2 text-xs font-semibold <?= $fleckfreiRate > $avgAirbnb ? 'text-amber-600' : 'text-green-600' ?>">
+      Fleckfrei: <?= $fleckfreiRate > $avgAirbnb ? '+' . number_format($fleckfreiRate - $avgAirbnb, 2, ',', '.') . ' € drüber' : number_format($avgAirbnb - $fleckfreiRate, 2, ',', '.') . ' € drunter' ?>
+    </div>
+  </div>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
 
 <!-- Strategy explanation -->
 <div class="bg-gradient-to-br from-brand/5 to-transparent border border-brand/20 rounded-xl p-6 mb-6">
@@ -199,6 +253,9 @@ include __DIR__ . '/../includes/layout.php';
   <?php endif; ?>
 </div>
 
-<div class="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-  <strong>Roadmap:</strong> Auto-Scraping der Berlin-Konkurrenten (Helpling, Book-a-Tiger, Holmes, Batmaid) läuft über ein separates OSINT-Modul (n8n Workflow). Preise werden täglich in <code>market_competitors</code> geschrieben. Fleckfrei unterbietet dann automatisch um 0,50 € — sichtbar als "Günstigster Preis in Berlin ✓" im Booking-Flow.
+<div class="mt-6 p-4 bg-brand-light border border-brand/20 rounded-xl text-xs text-gray-700">
+  <strong>Stand April 2026:</strong> 15 Wettbewerber in Berlin erfasst (<?= count($competitors) ?> aktiv). Markt-Ø <?= number_format($avgCompetitor, 2, ',', '.') ?> €/h.
+  Fleckfrei positioniert sich bei <?= number_format($fleckfreiRate, 2, ',', '.') ?> €/h im oberen Segment (Qualität + Pauschal-Transparenz).
+  <br><br>
+  <strong>Nächste Schritte:</strong> Cron-Job für tägliches Auto-Scraping via <code>/api/market-scraper.php?cron=flk_scrape_2026</code> in Hostinger hPanel einrichten. Proximity-Discount wenn Partner-GPS in 2km-Radius.
 </div>
