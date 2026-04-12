@@ -128,33 +128,26 @@ $db_result['related_jobs'] = all("SELECT j_id, j_date, job_status, address, job_
     [$likeQ, $likeQ]);
 $db_result['total_hits'] += count($db_result['related_jobs']);
 
-// 1i. GOOGLE SHEETS — search in master credentials sheet (433 accounts)
+// 1i. GOOGLE SHEETS — search in indexed sheet_index table (675 entries from 3 sheets)
 $db_result['google_sheets'] = [];
 try {
-    $sheetCsv = @file_get_contents('https://docs.google.com/spreadsheets/d/1ZlYmCgmchDRZMbqqwz_EDHC6rrsbQPtRX4XAiexcs4E/export?format=csv&gid=0');
-    if ($sheetCsv) {
-        $lines = explode("\n", $sheetCsv);
-        $headers = str_getcsv(array_shift($lines));
-        $searchLower = strtolower($query);
-        foreach ($lines as $line) {
-            if (stripos($line, $query) !== false) {
-                $cols = str_getcsv($line);
-                $row = [];
-                foreach ($headers as $i => $h) {
-                    if (isset($cols[$i]) && $cols[$i] !== '') $row[trim($h)] = $cols[$i];
-                }
-                // Don't expose passwords in results — only name, link, description
-                $db_result['google_sheets'][] = [
-                    'name' => $row['Name'] ?? '',
-                    'description' => $row['Ws ist das'] ?? $row['Was ist das'] ?? '',
-                    'link' => $row['Link'] ?? '',
-                    'firma' => $row['Firma _aktiv'] ?? '',
-                ];
-                if (count($db_result['google_sheets']) >= 10) break;
-            }
-        }
-        $db_result['total_hits'] += count($db_result['google_sheets']);
+    $sheetHits = all("SELECT sheet_name, tab_name, row_data, searchable_text FROM sheet_index WHERE MATCH(searchable_text) AGAINST(? IN BOOLEAN MODE) LIMIT 15",
+        [$query . '*']);
+    // Fallback to LIKE if fulltext returns nothing
+    if (empty($sheetHits)) {
+        $sheetHits = all("SELECT sheet_name, tab_name, row_data FROM sheet_index WHERE searchable_text LIKE ? LIMIT 15", [$likeQ]);
     }
+    foreach ($sheetHits as $sh) {
+        $rowData = json_decode($sh['row_data'], true) ?: [];
+        $db_result['google_sheets'][] = [
+            'sheet' => $sh['sheet_name'],
+            'name' => $rowData['Name'] ?? $rowData['name'] ?? array_values($rowData)[0] ?? '',
+            'description' => $rowData['Ws ist das'] ?? $rowData['Was ist das'] ?? $rowData['wat_its'] ?? '',
+            'link' => $rowData['Link'] ?? $rowData['website_link'] ?? '',
+            'firma' => $rowData['Firma _aktiv'] ?? $rowData['Firma_aktiv'] ?? '',
+        ];
+    }
+    $db_result['total_hits'] += count($db_result['google_sheets']);
 } catch (Exception $e) {}
 
 $result['db'] = $db_result;
