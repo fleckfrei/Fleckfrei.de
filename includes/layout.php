@@ -166,9 +166,7 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/availability.php', 'Verfügbarkeit', 'availability', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>', ''],
         ]);
         if (FEATURE_OSINT) array_splice($menu, -2, 0, [
-          ['/admin/scanner.php', 'OSI', 'scanner', $iconSearch, ''],
-          ['/admin/vulture.php', 'Vulture', 'vulture', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>', ''],
-          ['/admin/osint-dashboard.php', 'OSINT API', 'osint-dashboard', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>', ''],
+          ['/admin/osi.php', 'OSI', 'scanner', $iconSearch, ''],
         ]);
         array_splice($menu, -2, 0, [
           ['/admin/pricing.php', 'Pricing', 'pricing', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', ''],
@@ -210,7 +208,7 @@ $user = me(); $page = $page ?? ''; ?>
           'services' => 'Services', 'checklists' => 'Services', 'optional-products' => 'Services', 'pricing' => 'Services',
           'invoices' => 'Finanzen', 'reports' => 'Finanzen',
           'messages' => 'Kommunikation', 'whatsapp' => 'Kommunikation', 'email-inbox' => 'Kommunikation',
-          'live-map' => 'Tools', 'arrivals' => 'Tools', 'scanner' => 'Tools', 'vulture' => 'Tools', 'osint-dashboard' => 'Tools',
+          'live-map' => 'Tools', 'arrivals' => 'Tools', 'scanner' => 'Tools',
           'audit' => 'System', 'health' => 'System', 'settings' => 'System',
         ];
         $groups = []; $topItems = [];
