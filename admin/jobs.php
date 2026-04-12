@@ -114,6 +114,44 @@ include __DIR__ . '/../includes/layout.php';
         <?php endforeach; ?>
       </div>
       <?php endif; ?>
+      <?php
+      // KI Foto-Score für diesen Job
+      try {
+          $photoScores = all("SELECT * FROM photo_analyses WHERE job_id_fk=? ORDER BY created_at DESC", [$j['j_id']]);
+      } catch (Exception $e) { $photoScores = []; }
+      if (!empty($photoScores)):
+          $latestScore = $photoScores[0];
+          $analysis = json_decode($latestScore['analysis_json'] ?? '', true) ?: [];
+          $sc = (int)$latestScore['score'];
+          $scColor = $sc >= 8 ? 'bg-green-500' : ($sc >= 6 ? 'bg-amber-500' : 'bg-red-500');
+      ?>
+      <div class="mt-3 p-3 rounded-lg border <?= $sc >= 7 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200' ?>">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg <?= $scColor ?> text-white flex items-center justify-center font-bold text-lg flex-shrink-0"><?= $sc ?></div>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs font-bold <?= $sc >= 7 ? 'text-green-800' : 'text-red-800' ?>">
+              KI-Score: <?= $sc ?>/10 · <?= $sc >= 7 ? '✓ Bestanden' : '✕ Nachbessern' ?>
+              <span class="text-[10px] font-normal text-gray-500 ml-1">(<?= e($latestScore['photo_type']) ?>)</span>
+            </div>
+            <?php if (!empty($analysis['verdict'])): ?>
+            <div class="text-[11px] text-gray-600 mt-0.5"><?= e($analysis['verdict']) ?></div>
+            <?php endif; ?>
+            <?php if (!empty($analysis['issues'])): ?>
+            <div class="flex flex-wrap gap-1 mt-1">
+              <?php foreach (array_slice($analysis['issues'], 0, 3) as $issue): ?>
+              <span class="px-1.5 py-0.5 bg-white/80 text-[9px] text-gray-600 rounded"><?= e($issue) ?></span>
+              <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+          </div>
+          <?php if ($latestScore['photo_path']): ?>
+          <a href="<?= e($latestScore['photo_path']) ?>" target="_blank" class="flex-shrink-0">
+            <img src="<?= e($latestScore['photo_path']) ?>" class="w-12 h-12 rounded-lg object-cover border"/>
+          </a>
+          <?php endif; ?>
+        </div>
+      </div>
+      <?php endif; ?>
     </div>
   </div>
 </div>

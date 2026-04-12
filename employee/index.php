@@ -359,6 +359,25 @@ include __DIR__ . '/../includes/layout.php';
 
     <!-- Action Buttons -->
     <?php if ($j['job_status'] === 'PENDING' || $j['job_status'] === 'CONFIRMED'): ?>
+
+    <!-- KI VORHER-Foto (vor dem Start) -->
+    <div x-data="photoAI_before_<?= $j['j_id'] ?>()" class="mb-3 bg-blue-50 border border-blue-200 rounded-xl p-3">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="text-lg">📸</span>
+        <span class="text-xs font-bold text-blue-800 uppercase tracking-wider">Vorher-Foto (optional)</span>
+      </div>
+      <label class="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-blue-200 hover:border-blue-400 rounded-lg cursor-pointer text-xs font-semibold text-blue-700 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span x-text="analyzing ? 'Analysiere...' : 'Zustand dokumentieren'"></span>
+        <input type="file" accept="image/*" capture="environment" class="hidden" @change="analyzePhoto($event, <?= $j['j_id'] ?>, 'before')" :disabled="analyzing"/>
+      </label>
+      <div x-show="result" x-cloak class="mt-2 p-2 rounded-lg text-xs" :class="(result?.analysis?.score||0) >= 5 ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'">
+        <span class="font-bold" x-text="'Zustand: ' + (result?.analysis?.score||'?') + '/10'"></span>
+        <span x-text="' — ' + (result?.analysis?.verdict || '')"></span>
+      </div>
+      <div x-show="error" x-cloak class="mt-1 text-[10px] text-red-600" x-text="error"></div>
+    </div>
+
     <form method="POST" onsubmit="return getLocationAndSubmit(this, 'start')">
       <input type="hidden" name="action" value="start_job"/>
       <input type="hidden" name="j_id" value="<?= $j['j_id'] ?>"/>
@@ -732,6 +751,27 @@ JS;
 // Photo AI analysis functions (one per job to avoid Alpine scope issues)
 foreach ($todayJobs as $j) {
     $jid = (int)$j['j_id'];
+    // Before photo function (pre-start)
+    echo "<script>function photoAI_before_{$jid}() { return {
+      analyzing: false, result: null, error: null,
+      async analyzePhoto(event, jobId, type) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        this.analyzing = true; this.error = null; this.result = null;
+        const fd = new FormData();
+        fd.append('photo', file);
+        fd.append('job_id', jobId);
+        fd.append('type', type);
+        try {
+          const r = await fetch('/api/photo-analysis.php', { method: 'POST', body: fd, credentials: 'same-origin' });
+          const d = await r.json();
+          if (d.success) { this.result = d; }
+          else { this.error = d.error || 'Analyse fehlgeschlagen'; }
+        } catch (e) { this.error = 'Netzwerk-Fehler: ' + e.message; }
+        this.analyzing = false;
+      }
+    }; }</script>\n";
+    // After photo function (post-completion)
     echo "<script>function photoAI_{$jid}() { return {
       analyzing: false, result: null, error: null,
       async analyzePhoto(event, jobId, type) {
