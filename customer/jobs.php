@@ -64,23 +64,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($job && $action === 'edit') {
         $isCheckOnly = !empty($_POST['is_check_only']);
-        $newPeople = $isCheckOnly ? 1 : max(1, (int)($_POST['no_people'] ?? 1)); // NEVER 0
-        $newChildren = max(0, (int)($_POST['no_children'] ?? 0));
-        $newPets = max(0, (int)($_POST['no_pets'] ?? 0));
+        $newPeople = $isCheckOnly ? 1 : max(1, min(20, (int)($_POST['no_people'] ?? 1)));
+        $newChildren = max(0, min(20, (int)($_POST['no_children'] ?? 0)));
+        $newPets = max(0, min(10, (int)($_POST['no_pets'] ?? 0))); // cap at 10
+        // Hours: enforce MIN_HOURS for pricing (2h minimum)
+        $newHours = !empty($_POST['j_hours']) ? max(MIN_HOURS, min(12, (float)$_POST['j_hours'])) : null;
         $hasSeparateBeds = !empty($_POST['has_separate_beds']) ? 1 : 0;
         $hasSofaBed = !empty($_POST['has_sofa_bed']) ? 1 : 0;
         $extrasNote = trim(mb_substr($_POST['extras_note'] ?? '', 0, 500));
         $newNote = trim($_POST['job_note'] ?? '');
         $newCode = trim($_POST['code_door'] ?? '');
         $newAddress = trim($_POST['address'] ?? $job['address']);
-        q("UPDATE jobs SET no_people=?, no_children=?, no_pets=?, has_separate_beds=?, has_sofa_bed=?, extras_note=?, job_note=?, code_door=?, address=?, is_check_only=?, updated_at=NOW() WHERE j_id=?",
-          [$newPeople, $newChildren, $newPets, $hasSeparateBeds, $hasSofaBed, $extrasNote, $newNote, $newCode, $newAddress, $isCheckOnly ? 1 : 0, $jid]);
-        // If the customer entered a new door code AND the job has a linked service,
-        // persist it to services.box_code for future auto-fill
-        if ($newCode !== '' && !empty($job['s_id_fk']) && $newCode !== ($job['code_door'] ?? '')) {
-            q("UPDATE services SET box_code=? WHERE s_id=? AND customer_id_fk=?", [$newCode, (int)$job['s_id_fk'], $cid]);
-            audit('update', 'services', (int)$job['s_id_fk'], "Türcode aus Job-Edit übernommen: $newCode");
+        if ($newHours !== null) {
+            q("UPDATE jobs SET j_hours=?, no_people=?, no_children=?, no_pets=?, has_separate_beds=?, has_sofa_bed=?, extras_note=?, job_note=?, code_door=?, address=?, is_check_only=?, updated_at=NOW() WHERE j_id=?",
+              [$newHours, $newPeople, $newChildren, $newPets, $hasSeparateBeds, $hasSofaBed, $extrasNote, $newNote, $newCode, $newAddress, $isCheckOnly ? 1 : 0, $jid]);
+        } else {
+            q("UPDATE jobs SET no_people=?, no_children=?, no_pets=?, has_separate_beds=?, has_sofa_bed=?, extras_note=?, job_note=?, code_door=?, address=?, is_check_only=?, updated_at=NOW() WHERE j_id=?",
+              [$newPeople, $newChildren, $newPets, $hasSeparateBeds, $hasSofaBed, $extrasNote, $newNote, $newCode, $newAddress, $isCheckOnly ? 1 : 0, $jid]);
         }
+        // NOTE: Code is saved ONLY to the job, NOT to services.box_code (keeps service master code intact)
         audit('update', 'jobs', $jid, 'Job-Details vom Kunden geändert' . ($isCheckOnly ? ' (Kontrolle)' : ''));
         header('Location: /customer/jobs.php?saved=edit'); exit;
     }
@@ -176,7 +178,7 @@ for ($i = 0; $i < 60; $i++) {
 $cancelledClause = $showCancelled ? "" : " AND j.job_status != 'CANCELLED' ";
 if ($tab === 'zukunft') {
     $jobs = all("
-        SELECT j.*, s.title as stitle, s.street, s.city, s.total_price,
+        SELECT j.*, s.title as stitle, s.street, s.number AS s_number, s.postal_code AS s_postal, s.city, s.total_price, s.box_code AS s_box_code,
                e.display_name as edisplay, e.profile_pic as eavatar, e.phone as ephone,
                ev.start_date AS ext_checkin, ev.end_date AS ext_checkout,
                ev.source_platform AS ext_platform, ev.description AS ext_desc,
@@ -195,7 +197,7 @@ if ($tab === 'zukunft') {
     ", [$cid, $today]);
 } else {
     $jobs = all("
-        SELECT j.*, s.title as stitle, s.street, s.city, s.total_price,
+        SELECT j.*, s.title as stitle, s.street, s.number AS s_number, s.postal_code AS s_postal, s.city, s.total_price, s.box_code AS s_box_code,
                e.display_name as edisplay, e.profile_pic as eavatar, e.phone as ephone,
                ev.start_date AS ext_checkin, ev.end_date AS ext_checkout,
                ev.source_platform AS ext_platform, ev.description AS ext_desc,
@@ -450,18 +452,23 @@ $lastGroupKey = null;
         $canRate = $hoursSince < 24;
         $canReklamation = $hoursSince >= 24 && $hoursSince < 48 && !$hasReklamation;
     }
+    // Service-address: join from services record (the job belongs ONLY to this one service)
+    $serviceAddress = trim(trim(($j['street'] ?? '') . ' ' . ($j['s_number'] ?? '')) . ', ' . trim(($j['s_postal'] ?? '') . ' ' . ($j['city'] ?? '')), ', ');
     $jobJson = htmlspecialchars(json_encode([
         'j_id' => (int)$j['j_id'],
         'j_date' => $j['j_date'],
         'j_time' => substr($j['j_time'] ?? '', 0, 5),
         'no_people' => (int)($j['no_people'] ?? 1),
+        'hours' => max(MIN_HOURS, (float)($j['total_hours'] ?: $j['j_hours'] ?: MIN_HOURS)),
         'no_children' => (int)($j['no_children'] ?? 0),
         'no_pets' => (int)($j['no_pets'] ?? 0),
         'has_separate_beds' => (int)($j['has_separate_beds'] ?? 0),
         'has_sofa_bed' => (int)($j['has_sofa_bed'] ?? 0),
         'extras_note' => $j['extras_note'] ?? '',
         'address' => $j['address'] ?? '',
+        'service_address' => $serviceAddress,  // nur diese eine Adresse, gehört zum Service
         'code_door' => $j['code_door'] ?? '',
+        'service_code' => $j['s_box_code'] ?? '',  // master-code aus services, nicht überschrieben
         'job_note' => $j['job_note'] ?? '',
         'stitle' => $j['stitle'] ?? 'Reinigung',
         'ical_adults' => (int)($icalInfo['adults'] ?? 0) ?: null,
@@ -489,7 +496,7 @@ $lastGroupKey = null;
         <h3 class="font-bold text-gray-900 text-base sm:text-lg truncate"><?= e($j['stitle'] ?: 'Reinigungsservice') ?></h3>
         <div class="flex items-center gap-2 mt-1 text-xs text-gray-500">
           <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          <span><?= substr($j['j_time'], 0, 5) ?> · <?= (float) $j['j_hours'] ?> Std</span>
+          <span><?= substr($j['j_time'], 0, 5) ?> · <?= max(MIN_HOURS, (float) ($j['total_hours'] ?: $j['j_hours'])) ?> Std</span>
         </div>
       </div>
       <span class="inline-flex items-center px-2.5 py-1 rounded-full border <?= $badgeBg ?> <?= $badgeText ?> <?= $badgeBorder ?> text-[11px] font-semibold whitespace-nowrap"><?= $badgeLabel ?></span>
@@ -658,10 +665,15 @@ $lastGroupKey = null;
 
   <!-- Right: price + actions -->
   <div class="flex sm:flex-col items-end justify-between sm:justify-start sm:w-32 flex-shrink-0 pt-2 sm:pt-0">
-    <?php if (!empty($j['total_price'])): ?>
+    <?php
+    $displayHours = max(MIN_HOURS, (float)($j['total_hours'] ?: $j['j_hours']));
+    $hourlyRate = (float)($j['total_price'] ?? 0);
+    $jobTotal = $displayHours * $hourlyRate;
+    if ($jobTotal > 0): ?>
     <div class="text-right">
       <div class="text-[11px] text-gray-400 uppercase font-semibold">Preis</div>
-      <div class="text-lg font-bold text-gray-900"><?= money($j['total_price']) ?></div>
+      <div class="text-lg font-bold text-gray-900"><?= money($jobTotal) ?></div>
+      <div class="text-[10px] text-gray-400"><?= $displayHours ?>h × <?= money($hourlyRate) ?></div>
     </div>
     <?php endif; ?>
 
@@ -815,7 +827,7 @@ $lastGroupKey = null;
   </form>
 
   <!-- EDIT MODAL -->
-  <form x-show="modal === 'edit'" method="POST" class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden max-h-[90vh] overflow-y-auto" @click.stop x-transition x-data="{ checkOnly: false, people: 1, pets: 0, children: 0, separateBeds: false, sofaBed: false, extrasNote: '' }" x-effect="if (modal === 'edit' && modalJob) { people = modalJob.no_people || 1; children = modalJob.no_children || 0; pets = modalJob.no_pets || 0; separateBeds = !!modalJob.has_separate_beds; sofaBed = !!modalJob.has_sofa_bed; extrasNote = modalJob.extras_note || ''; }">
+  <form x-show="modal === 'edit'" method="POST" class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden max-h-[90vh] overflow-y-auto" @click.stop x-transition x-data="{ checkOnly: false, people: 1, pets: 0, children: 0, hours: 2, separateBeds: false, sofaBed: false, extrasNote: '' }" x-effect="if (modal === 'edit' && modalJob) { people = modalJob.no_people || 1; children = modalJob.no_children || 0; pets = modalJob.no_pets || 0; hours = Math.max(2, modalJob.hours || 2); separateBeds = !!modalJob.has_separate_beds; sofaBed = !!modalJob.has_sofa_bed; extrasNote = modalJob.extras_note || ''; }">
     <?= csrfField() ?>
     <input type="hidden" name="action" value="edit"/>
     <input type="hidden" name="j_id" :value="modalJob?.j_id"/>
@@ -857,6 +869,20 @@ $lastGroupKey = null;
         </div>
       </template>
 
+      <!-- Dauer (min 2h) -->
+      <div x-show="!checkOnly">
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Dauer</label>
+        <select name="j_hours" x-model.number="hours" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none bg-white">
+          <option value="2">2 Stunden</option>
+          <option value="3">3 Stunden</option>
+          <option value="4">4 Stunden</option>
+          <option value="5">5 Stunden</option>
+          <option value="6">6 Stunden</option>
+          <option value="8">8 Stunden (Ganztag)</option>
+        </select>
+        <p class="text-[10px] text-gray-400 mt-0.5">Minimum 2 Stunden</p>
+      </div>
+
       <!-- People / Pets / Children — hidden when check-only -->
       <div x-show="!checkOnly" class="grid grid-cols-3 gap-3">
         <div>
@@ -896,31 +922,22 @@ $lastGroupKey = null;
         <p class="text-[10px] text-gray-400 mt-0.5">Kurze Hinweise die der Partner beim Job sehen soll</p>
       </div>
 
+      <!-- Adresse: nur die des zugehörigen Services (z.B. ROD 2 = Rodenbergstraße 21) -->
       <div>
-        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Adresse / Standort</label>
-        <?php if (count($customerAddresses) > 1): ?>
-        <!-- Multi-location dropdown -->
-        <select name="address" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none bg-white mb-2">
-          <option value="">— Standort wählen —</option>
-          <?php foreach ($customerAddresses as $a):
-            $full = trim($a['street'] . ' ' . $a['number'] . ', ' . $a['postal_code'] . ' ' . $a['city']);
-            $type = $a['address_for'] === 'Billing Address' ? '🧾' : '📍';
-          ?>
-          <option value="<?= e($full) ?>"><?= $type ?> <?= e($full) ?></option>
-          <?php endforeach; ?>
-        </select>
-        <details class="text-xs">
-          <summary class="text-gray-500 cursor-pointer hover:text-brand">oder freie Eingabe</summary>
-          <input type="text" name="address_custom" :value="modalJob?.address" placeholder="Adresse manuell eingeben" class="w-full px-3 py-2.5 mt-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
-        </details>
-        <?php else: ?>
-        <input type="text" name="address" :value="modalJob?.address" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
-        <p class="text-[11px] text-gray-400 mt-1">💡 In <a href="/customer/profile.php?section=addresses" class="text-brand hover:underline">Adressen</a> können Sie weitere Standorte hinterlegen</p>
-        <?php endif; ?>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Adresse</label>
+        <div class="px-3 py-2.5 bg-brand-light border border-brand/20 rounded-lg text-sm font-semibold text-brand-dark flex items-center gap-2">
+          <span>📍</span>
+          <span x-text="modalJob?.service_address || modalJob?.address || '—'"></span>
+        </div>
+        <input type="hidden" name="address" :value="modalJob?.service_address || modalJob?.address"/>
+        <p class="text-[10px] text-gray-400 mt-1">Gehört zu <strong x-text="modalJob?.stitle"></strong> — aus Service-Einstellungen</p>
       </div>
+
+      <!-- Türcode: prefill from service.box_code, editable, saved only to job -->
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Türcode / Schlüsselkasten</label>
-        <input type="text" name="code_door" :value="modalJob?.code_door" placeholder="z.B. 1234 oder Kasten Links" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+        <input type="text" name="code_door" :value="modalJob?.code_door || modalJob?.service_code || ''" placeholder="z.B. 1234 oder Kasten Links" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none font-mono"/>
+        <p class="text-[10px] text-gray-400 mt-1" x-show="modalJob?.service_code && !modalJob?.code_door">Aus Service-Profil übernommen · Sie können ihn hier ändern, das Service-Profil bleibt unverändert</p>
       </div>
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Notiz für den Partner</label>

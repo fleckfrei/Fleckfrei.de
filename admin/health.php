@@ -111,7 +111,7 @@ $fatalLines = array_filter($errorLog, fn($l) => stripos($l, 'fatal') !== false);
 $warningLines = array_filter($errorLog, fn($l) => stripos($l, 'warning') !== false);
 
 // Backup listing
-$backupDir = '/home/u860899303/backups/session13';
+$backupDir = '/home/u860899303/backups/fleckfrei.de';
 $backups = is_dir($backupDir) ? glob($backupDir . '/*') : [];
 
 include __DIR__ . '/../includes/layout.php';

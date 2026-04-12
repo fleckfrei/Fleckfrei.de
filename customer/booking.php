@@ -439,7 +439,7 @@ function bookingForm() {
     }, $addresses), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>,
     form: {
       service: <?= json_encode((string)$prefillServiceId ?: '') ?>,
-      hours: <?= json_encode((string)($prefillHours ?: (int)($lastJobDefaults['total_hours'] ?? $lastJobDefaults['j_hours'] ?? 3))) ?>,
+      hours: <?= json_encode((string) max(MIN_HOURS, ($prefillHours ?: (int)($lastJobDefaults['total_hours'] ?? $lastJobDefaults['j_hours'] ?? 3)))) ?>,
       no_people: <?= json_encode((string)($lastJobDefaults['no_people'] ?? '1')) ?>,
       frequency: 'einmalig',
       date: <?= json_encode($prefillDate) ?>,

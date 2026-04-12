@@ -23,6 +23,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'submi
     header('Location: /customer/invoices.php?saved=note'); exit;
 }
 
+// Delete note
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_note') {
+    if (!verifyCsrf()) { header('Location: /customer/invoices.php'); exit; }
+    $noteId = (int)($_POST['note_id'] ?? 0);
+    q("DELETE FROM invoice_notes WHERE note_id=? AND customer_id_fk=?", [$noteId, $cid]);
+    header('Location: /customer/invoices.php?saved=note_deleted'); exit;
+}
+
+// Edit note
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'edit_note') {
+    if (!verifyCsrf()) { header('Location: /customer/invoices.php'); exit; }
+    $noteId = (int)($_POST['note_id'] ?? 0);
+    $newContent = trim($_POST['content'] ?? '');
+    if ($noteId && $newContent !== '') {
+        q("UPDATE invoice_notes SET content=? WHERE note_id=? AND customer_id_fk=?", [$newContent, $noteId, $cid]);
+    }
+    header('Location: /customer/invoices.php?saved=note_edited'); exit;
+}
+
 $tab = $_GET['tab'] ?? 'service';
 $allInvoices = all("SELECT * FROM invoices WHERE customer_id_fk=? ORDER BY issue_date DESC", [$cid]);
 $invoices = $allInvoices;
@@ -181,7 +200,7 @@ include __DIR__ . '/../includes/layout-customer.php';
   <p class="text-sm text-gray-500 max-w-md mx-auto">Nach Ihrem ersten Termin werden Ihnen hier Ihre Rechnungen angezeigt.</p>
 </div>
 <?php else: ?>
-<div class="grid gap-3" x-data="{ noteModal: null, noteModalData: null }">
+<div class="grid gap-3" x-data="{ noteModal: null, noteModalData: null, aiLoading: false, aiContext: '', aiType: 'comment' }">
 <?php foreach ($invoices as $inv):
     $paid = $inv['invoice_paid'] === 'yes';
     $partial = !$paid && (float) $inv['remaining_price'] < (float) $inv['total_price'];
@@ -313,7 +332,31 @@ include __DIR__ . '/../includes/layout-customer.php';
         <span class="px-1.5 py-0.5 rounded text-[9px] font-semibold <?= $statusLabel[1] ?>"><?= $statusLabel[0] ?></span>
         <span class="text-gray-400 text-[10px]"><?= date('d.m.Y H:i', strtotime($n['created_at'])) ?></span>
       </div>
-      <div class="text-gray-700"><?= e($n['content']) ?></div>
+      <div class="text-gray-700" x-data="{ editing: false }" x-show="!editing"><?= e($n['content']) ?></div>
+      <!-- Edit inline -->
+      <div x-data="{ editing: false, val: <?= json_encode($n['content'], JSON_HEX_APOS|JSON_HEX_QUOT) ?> }">
+        <template x-if="editing">
+          <form method="POST" class="mt-1">
+            <?= csrfField() ?>
+            <input type="hidden" name="action" value="edit_note"/>
+            <input type="hidden" name="note_id" value="<?= (int)$n['note_id'] ?>"/>
+            <textarea name="content" x-model="val" rows="2" class="w-full px-2 py-1.5 border border-brand rounded text-xs focus:ring-1 focus:ring-brand outline-none"></textarea>
+            <div class="flex gap-1 mt-1">
+              <button type="submit" class="px-2 py-1 bg-brand text-white rounded text-[10px] font-bold">Speichern</button>
+              <button type="button" @click="editing = false" class="px-2 py-1 border border-gray-200 rounded text-[10px]">Abbrechen</button>
+            </div>
+          </form>
+        </template>
+        <div class="flex gap-2 mt-1.5" x-show="!editing">
+          <button @click="editing = true" class="text-[10px] text-brand hover:underline font-semibold">Bearbeiten</button>
+          <form method="POST" class="inline" onsubmit="return confirm('Notiz löschen?')">
+            <?= csrfField() ?>
+            <input type="hidden" name="action" value="delete_note"/>
+            <input type="hidden" name="note_id" value="<?= (int)$n['note_id'] ?>"/>
+            <button class="text-[10px] text-red-500 hover:underline font-semibold">Löschen</button>
+          </form>
+        </div>
+      </div>
       <?php if (!empty($n['admin_response'])): ?>
       <div class="mt-2 pl-3 border-l-2 border-brand text-gray-600">
         <span class="font-semibold text-brand">Fleckfrei:</span> <?= e($n['admin_response']) ?>
@@ -370,8 +413,9 @@ include __DIR__ . '/../includes/layout-customer.php';
       </div>
       <div>
         <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Was stimmt nicht?</label>
-        <textarea name="content" rows="4" required placeholder="Beschreiben Sie Ihre Anmerkung oder den Fehler in der Rechnung..." class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none text-sm"></textarea>
+        <textarea name="content" id="noteContent" rows="4" required placeholder="Beschreiben Sie Ihre Anmerkung oder den Fehler in der Rechnung..." class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none text-sm"></textarea>
       </div>
+
       <div class="text-xs p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
         ℹ Ihre Notiz wird an unser Team gesendet. Wir prüfen und melden uns zeitnah. Bei berechtigten Einwänden wird die Rechnung korrigiert.
       </div>

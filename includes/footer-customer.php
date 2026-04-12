@@ -51,5 +51,45 @@
   </div>
 </footer>
 
+<!-- PWA: Service Worker + Install Prompt -->
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+// Install prompt — capture beforeinstallprompt
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  // Show install banner
+  const banner = document.getElementById('pwa-install-banner');
+  if (banner) banner.classList.remove('hidden');
+});
+function installPWA() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then((r) => {
+    deferredPrompt = null;
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.classList.add('hidden');
+  });
+}
+</script>
+
+<!-- PWA Install Banner (hidden by default, shown when browser offers install) -->
+<div id="pwa-install-banner" class="hidden fixed bottom-20 left-4 right-4 sm:left-auto sm:right-5 sm:w-80 z-50 bg-white rounded-2xl shadow-2xl border border-brand/20 p-4 animate-bounce-once">
+  <div class="flex items-start gap-3">
+    <div class="w-12 h-12 rounded-xl bg-brand text-white flex items-center justify-center text-xl font-extrabold flex-shrink-0">F</div>
+    <div class="flex-1 min-w-0">
+      <div class="font-bold text-gray-900 text-sm">Fleckfrei als App installieren</div>
+      <div class="text-xs text-gray-500 mt-0.5">Schneller Zugriff direkt vom Homescreen — kein App Store nötig.</div>
+      <div class="flex gap-2 mt-3">
+        <button onclick="installPWA()" class="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-bold">Installieren</button>
+        <button onclick="this.closest('#pwa-install-banner').classList.add('hidden')" class="px-3 py-2 text-xs text-gray-500 hover:text-gray-700">Später</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
