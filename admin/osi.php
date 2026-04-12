@@ -381,6 +381,73 @@ include __DIR__ . '/../includes/layout.php';
         </template>
       </div>
 
+      <!-- FINANZ-CHECK — Bonität / Insolvenz / Schulden -->
+      <div x-show="result?.db?.finance?.bonitaet_score" class="mb-3 p-3 rounded-lg border-2"
+           :class="{'border-red-300 bg-red-50': result?.db?.finance?.bonitaet_score?.color==='red', 'border-amber-300 bg-amber-50': result?.db?.finance?.bonitaet_score?.color==='amber', 'border-green-300 bg-green-50': result?.db?.finance?.bonitaet_score?.color==='green', 'border-gray-200 bg-gray-50': result?.db?.finance?.bonitaet_score?.color==='gray'}">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-[10px] font-bold uppercase tracking-wider" :class="'text-'+result?.db?.finance?.bonitaet_score?.color+'-700'">Finanz-Check</div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold" :class="'bg-'+result?.db?.finance?.bonitaet_score?.color+'-200 text-'+result?.db?.finance?.bonitaet_score?.color+'-800'" x-text="result?.db?.finance?.bonitaet_score?.level"></span>
+        </div>
+        <div class="text-xs text-gray-600" x-text="result?.db?.finance?.bonitaet_score?.text"></div>
+
+        <!-- Insolvenz -->
+        <template x-if="result?.db?.finance?.insolvenz?.length > 0">
+          <div class="mt-2 pt-2 border-t border-red-200">
+            <div class="text-[9px] font-bold text-red-700 uppercase mb-1">INSOLVENZ</div>
+            <template x-for="f in result.db.finance.insolvenz" :key="f.url">
+              <a :href="f.url" target="_blank" class="block text-xs text-red-800 hover:underline truncate" x-text="f.title"></a>
+            </template>
+          </div>
+        </template>
+
+        <!-- Schulden -->
+        <template x-if="result?.db?.finance?.schulden_hinweise?.length > 0">
+          <div class="mt-2 pt-2 border-t border-amber-200">
+            <div class="text-[9px] font-bold text-amber-700 uppercase mb-1">Schulden/Bonität</div>
+            <template x-for="f in result.db.finance.schulden_hinweise" :key="f.url">
+              <a :href="f.url" target="_blank" class="block text-xs text-amber-800 hover:underline truncate" x-text="f.title"></a>
+            </template>
+          </div>
+        </template>
+
+        <!-- Handelsregister -->
+        <template x-if="result?.db?.finance?.handelsregister?.length > 0">
+          <div class="mt-2 pt-2 border-t border-gray-200">
+            <div class="text-[9px] font-bold text-gray-600 uppercase mb-1">Handelsregister</div>
+            <template x-for="f in result.db.finance.handelsregister" :key="f.url">
+              <a :href="f.url" target="_blank" class="block text-xs text-gray-700 hover:underline truncate" x-text="f.title"></a>
+            </template>
+          </div>
+        </template>
+
+        <!-- Bewertungen -->
+        <template x-if="result?.db?.finance?.bewertungen?.length > 0">
+          <div class="mt-2 pt-2 border-t border-gray-200">
+            <div class="text-[9px] font-bold text-gray-600 uppercase mb-1">Bewertungen / Warnungen</div>
+            <template x-for="f in result.db.finance.bewertungen" :key="f.url">
+              <a :href="f.url" target="_blank" class="block text-xs hover:underline truncate" :class="f.severity==='high'?'text-red-700':'text-gray-700'" x-text="f.title"></a>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      <!-- OpenCorporates -->
+      <div x-show="result?.db?.opencorporates?.length > 0" class="mb-3 p-3 bg-cyan-50 rounded-lg">
+        <div class="text-[10px] font-bold text-cyan-700 uppercase mb-1">OpenCorporates (<span x-text="result?.db?.opencorporates?.length"></span>)</div>
+        <template x-for="c in (result?.db?.opencorporates || [])" :key="c.number">
+          <div class="text-xs py-1 border-b border-cyan-100 last:border-0">
+            <a :href="c.url" target="_blank" class="font-medium text-brand hover:underline" x-text="c.name"></a>
+            <span class="text-gray-400 ml-1" x-text="c.number + ' · ' + c.status + ' · seit ' + c.incorporation_date"></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- Wayback Machine -->
+      <div x-show="result?.db?.wayback" class="mb-3 p-3 bg-gray-50 rounded-lg">
+        <div class="text-[10px] font-bold text-gray-600 uppercase mb-1">Wayback Machine</div>
+        <a :href="result?.db?.wayback?.url" target="_blank" class="text-xs text-brand hover:underline" x-text="'Snapshot vom ' + result?.db?.wayback?.timestamp"></a>
+      </div>
+
       <!-- Google not connected hint -->
       <div x-show="result?.db?.google_status === 'not_connected'" class="mb-3 p-3 bg-gray-50 rounded-lg text-center">
         <a href="/api/google-callback.php" class="text-xs font-semibold text-brand hover:underline">Google verbinden → Gmail, Kontakte, Drive, Calendar durchsuchen</a>

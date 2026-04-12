@@ -362,15 +362,116 @@ if ($primaryEmail) {
     } catch (Exception $e) {}
 }
 
-// 1S. AIRBNB — listing search (via MCP if available)
-try {
-    $db_result['airbnb'] = []; // Placeholder — requires Airbnb MCP tool
-} catch (Exception $e) {}
+// 1S. FINANZ-CHECK — Insolvenz, Schulden, Handelsregister, Bonität (KOSTENLOS)
+$db_result['finance'] = ['insolvenz' => [], 'handelsregister' => [], 'schulden_hinweise' => [], 'bewertungen' => []];
+$searchName = $cust['name'] ?? ($isEmail ? '' : $query);
+if ($searchName && strlen($searchName) > 2) {
+    $financeQueries = [
+        'insolvenz' => $searchName . ' Insolvenz OR insolvent OR Insolvenzverfahren site:insolvenzbekanntmachungen.de OR site:bundesanzeiger.de',
+        'vollstreckung' => $searchName . ' Vollstreckung OR Pfändung OR Schuldner OR Mahnung Berlin',
+        'handelsregister' => $searchName . ' Handelsregister OR HRB OR Geschäftsführer OR GmbH site:handelsregister.de OR site:northdata.de OR site:unternehmensregister.de',
+        'schufa' => $searchName . ' Schufa OR Bonität OR Zahlungsverzug OR Inkasso OR Mahnverfahren',
+        'betrug' => $searchName . ' Betrug OR Scam OR Warnung OR Abzocke OR "nicht bezahlt" OR Bewertung',
+    ];
 
-// 1T. HOSTINGER — domain/hosting info (if domain matches)
+    foreach ($financeQueries as $type => $fQuery) {
+        try {
+            $fResp = vps_call('searxng', ['query' => $fQuery, 'categories' => 'general', 'limit' => 10], true);
+            if (is_array($fResp) && !empty($fResp['results'])) {
+                foreach (array_slice($fResp['results'], 0, 5) as $r) {
+                    $title = $r['title'] ?? '';
+                    $url = $r['url'] ?? '';
+                    $snippet = $r['snippet'] ?? $r['content'] ?? '';
+                    // Skip irrelevant results
+                    if (!$title || str_contains($url, 'fleckfrei.de')) continue;
+
+                    $category = match($type) {
+                        'insolvenz' => 'insolvenz',
+                        'vollstreckung' => 'schulden_hinweise',
+                        'handelsregister' => 'handelsregister',
+                        'schufa' => 'schulden_hinweise',
+                        'betrug' => 'bewertungen',
+                    };
+                    $severity = 'info';
+                    if (preg_match('/insolvenz|bankrott|pleite/i', $title . $snippet)) $severity = 'critical';
+                    elseif (preg_match('/vollstreckung|pfändung|mahnung|inkasso|schuld/i', $title . $snippet)) $severity = 'high';
+                    elseif (preg_match('/betrug|scam|warnung|abzocke/i', $title . $snippet)) $severity = 'high';
+
+                    $db_result['finance'][$category][] = [
+                        'title' => mb_substr($title, 0, 120),
+                        'url' => $url,
+                        'snippet' => mb_substr($snippet, 0, 200),
+                        'severity' => $severity,
+                        'source' => parse_url($url, PHP_URL_HOST) ?: '',
+                    ];
+                }
+            }
+        } catch (Exception $e) {}
+    }
+
+    $totalFinance = array_sum(array_map('count', $db_result['finance']));
+    $db_result['total_hits'] += $totalFinance;
+
+    // Quick Bonität-Score based on findings
+    $criticalCount = 0; $highCount = 0;
+    foreach ($db_result['finance'] as $cat => $items) {
+        foreach ($items as $item) {
+            if ($item['severity'] === 'critical') $criticalCount++;
+            if ($item['severity'] === 'high') $highCount++;
+        }
+    }
+    $db_result['finance']['bonitaet_score'] = match(true) {
+        $criticalCount > 0 => ['level' => 'KRITISCH', 'color' => 'red', 'text' => 'Insolvenz/Vollstreckung gefunden'],
+        $highCount > 0 => ['level' => 'WARNUNG', 'color' => 'amber', 'text' => 'Negative Einträge gefunden'],
+        $totalFinance > 0 => ['level' => 'NEUTRAL', 'color' => 'gray', 'text' => 'Einige Erwähnungen, keine Risiken'],
+        default => ['level' => 'SAUBER', 'color' => 'green', 'text' => 'Keine negativen Einträge gefunden'],
+    };
+}
+
+// 1T. OPENCORPORATES — free company API (200 requests/day)
 try {
-    $db_result['hosting'] = []; // Placeholder — requires Hostinger MCP
-} catch (Exception $e) {}
+    if ($searchName && strlen($searchName) > 2) {
+        $ocUrl = 'https://api.opencorporates.com/v0.4/companies/search?' . http_build_query([
+            'q' => $searchName, 'jurisdiction_code' => 'de', 'per_page' => 3,
+        ]);
+        $ch = curl_init($ocUrl);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8]);
+        $ocResp = json_decode(curl_exec($ch), true);
+        curl_close($ch);
+        $db_result['opencorporates'] = array_map(fn($c) => [
+            'name' => $c['company']['name'] ?? '',
+            'number' => $c['company']['company_number'] ?? '',
+            'status' => $c['company']['current_status'] ?? '',
+            'jurisdiction' => $c['company']['jurisdiction_code'] ?? '',
+            'url' => $c['company']['opencorporates_url'] ?? '',
+            'incorporation_date' => $c['company']['incorporation_date'] ?? '',
+        ], $ocResp['results']['companies'] ?? []);
+        $db_result['total_hits'] += count($db_result['opencorporates']);
+    }
+} catch (Exception $e) { $db_result['opencorporates'] = []; }
+
+// 1U. WAYBACK MACHINE — historical snapshots
+if ($isDomain || ($emailInfo && $emailInfo['business'])) {
+    $wbDomain = $isDomain ? $query : ($emailInfo['domain'] ?? '');
+    if ($wbDomain) {
+        try {
+            $ch = curl_init("https://web.archive.org/wayback/available?url=$wbDomain&timestamp=" . date('Ymd'));
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5]);
+            $wbResp = json_decode(curl_exec($ch), true);
+            curl_close($ch);
+            $snapshot = $wbResp['archived_snapshots']['closest'] ?? null;
+            if ($snapshot) {
+                $db_result['wayback'] = [
+                    'url' => $snapshot['url'],
+                    'timestamp' => $snapshot['timestamp'],
+                    'status' => $snapshot['status'],
+                    'available' => $snapshot['available'] ?? false,
+                ];
+                $db_result['total_hits']++;
+            }
+        } catch (Exception $e) {}
+    }
+}
 
 $result['db'] = $db_result;
 
