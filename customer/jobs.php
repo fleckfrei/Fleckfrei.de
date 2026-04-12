@@ -5,20 +5,188 @@ if (!customerCan('jobs')) { header('Location: /customer/'); exit; }
 $title = 'Meine Termine'; $page = 'jobs';
 $cid = me()['id'];
 
+// ============================================================
+// POST handlers — job management actions
+// ============================================================
+function ownJob(int $jid, int $cid): ?array {
+    return one("SELECT * FROM jobs WHERE j_id=? AND customer_id_fk=? AND status=1", [$jid, $cid]) ?: null;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrf()) { header('Location: /customer/jobs.php?error=csrf'); exit; }
+    $action = $_POST['action'] ?? '';
+    $jid = (int)($_POST['j_id'] ?? 0);
+    $job = $jid ? ownJob($jid, $cid) : null;
+
+    // Job must be in the future for reschedule/cancel/edit
+    $isPastJob = $job && $job['j_date'] < date('Y-m-d');
+    if ($job && $isPastJob && in_array($action, ['reschedule', 'cancel', 'edit'])) {
+        header('Location: /customer/jobs.php?error=locked_past'); exit;
+    }
+
+    if ($job && $action === 'reschedule') {
+        $newDate = $_POST['new_date'] ?? '';
+        $newTime = $_POST['new_time'] ?? '';
+        $reason = trim($_POST['reschedule_reason'] ?? '');
+        $note = trim($_POST['reschedule_note'] ?? '');
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $newDate) && preg_match('/^\d{2}:\d{2}$/', $newTime)) {
+            if ($newDate < date('Y-m-d')) {
+                header('Location: /customer/jobs.php?error=past_date'); exit;
+            }
+            $oldLabel = date('d.m.Y', strtotime($job['j_date'])) . ' ' . substr($job['j_time'], 0, 5);
+            // Append note to job_note if provided
+            $combinedNote = $job['job_note'] ?: '';
+            if ($note !== '') {
+                $combinedNote = trim(($combinedNote ? $combinedNote . "\n" : '') . "[Umbuchung] $note");
+            }
+            q("UPDATE jobs SET j_date=?, j_time=?, job_note=?, updated_at=NOW() WHERE j_id=?", [$newDate, $newTime . ':00', $combinedNote, $jid]);
+            audit('update', 'jobs', $jid, "Umgebucht: $oldLabel → " . date('d.m.Y', strtotime($newDate)) . " $newTime" . ($reason ? " (Grund: $reason)" : ''));
+            telegramNotify("📅 Kunde #$cid hat Job #$jid umgebucht: $oldLabel → " . date('d.m.Y', strtotime($newDate)) . " $newTime" . ($reason ? " | $reason" : ''));
+            header('Location: /customer/jobs.php?saved=reschedule'); exit;
+        }
+        header('Location: /customer/jobs.php?error=invalid_date'); exit;
+    }
+
+    if ($job && $action === 'cancel') {
+        $reason = trim($_POST['reason'] ?? '');
+        $googleOffer = !empty($_POST['google_review_offer']);
+        if (!in_array($job['job_status'], ['PENDING', 'CONFIRMED'])) {
+            header('Location: /customer/jobs.php?error=cannot_cancel'); exit;
+        }
+        $fullReason = ($reason ?: 'Vom Kunden storniert') . ($googleOffer ? ' [Google-Review-Angebot]' : '');
+        q("UPDATE jobs SET job_status='CANCELLED', cancel_date=NOW(), cancelled_role='customer', cancelled_by=?, j_c_val=?, updated_at=NOW() WHERE j_id=?",
+          [$cid, $fullReason, $jid]);
+        audit('cancel', 'jobs', $jid, "Storniert vom Kunden. Grund: " . $fullReason);
+        $emoji = $googleOffer ? '⭐✕' : '✕';
+        telegramNotify("$emoji Kunde #$cid hat Job #$jid storniert. " . $fullReason);
+        header('Location: /customer/jobs.php?saved=' . ($googleOffer ? 'cancel_google' : 'cancel')); exit;
+    }
+
+    if ($job && $action === 'edit') {
+        $isCheckOnly = !empty($_POST['is_check_only']);
+        $newPeople = $isCheckOnly ? 1 : max(1, (int)($_POST['no_people'] ?? 1)); // NEVER 0
+        $newChildren = max(0, (int)($_POST['no_children'] ?? 0));
+        $newPets = max(0, (int)($_POST['no_pets'] ?? 0));
+        $hasSeparateBeds = !empty($_POST['has_separate_beds']) ? 1 : 0;
+        $hasSofaBed = !empty($_POST['has_sofa_bed']) ? 1 : 0;
+        $extrasNote = trim(mb_substr($_POST['extras_note'] ?? '', 0, 500));
+        $newNote = trim($_POST['job_note'] ?? '');
+        $newCode = trim($_POST['code_door'] ?? '');
+        $newAddress = trim($_POST['address'] ?? $job['address']);
+        q("UPDATE jobs SET no_people=?, no_children=?, no_pets=?, has_separate_beds=?, has_sofa_bed=?, extras_note=?, job_note=?, code_door=?, address=?, is_check_only=?, updated_at=NOW() WHERE j_id=?",
+          [$newPeople, $newChildren, $newPets, $hasSeparateBeds, $hasSofaBed, $extrasNote, $newNote, $newCode, $newAddress, $isCheckOnly ? 1 : 0, $jid]);
+        // If the customer entered a new door code AND the job has a linked service,
+        // persist it to services.box_code for future auto-fill
+        if ($newCode !== '' && !empty($job['s_id_fk']) && $newCode !== ($job['code_door'] ?? '')) {
+            q("UPDATE services SET box_code=? WHERE s_id=? AND customer_id_fk=?", [$newCode, (int)$job['s_id_fk'], $cid]);
+            audit('update', 'services', (int)$job['s_id_fk'], "Türcode aus Job-Edit übernommen: $newCode");
+        }
+        audit('update', 'jobs', $jid, 'Job-Details vom Kunden geändert' . ($isCheckOnly ? ' (Kontrolle)' : ''));
+        header('Location: /customer/jobs.php?saved=edit'); exit;
+    }
+
+    // Reklamation — 24-48h window after completion
+    if ($job && $action === 'reklamation') {
+        if ($job['job_status'] !== 'COMPLETED') {
+            header('Location: /customer/jobs.php?error=cannot_reklamation'); exit;
+        }
+        $completedAt = $job['completed_at'] ?: $job['updated_at'];
+        $hoursSince = (time() - strtotime($completedAt)) / 3600;
+        if ($hoursSince < 24 || $hoursSince > 48) {
+            header('Location: /customer/jobs.php?error=reklamation_window'); exit;
+        }
+        $text = trim($_POST['reklamation_text'] ?? '');
+        if ($text === '') { header('Location: /customer/jobs.php?error=empty_reklamation'); exit; }
+        q("UPDATE jobs SET reklamation_text=?, reklamation_at=NOW(), updated_at=NOW() WHERE j_id=?", [$text, $jid]);
+        audit('reklamation', 'jobs', $jid, 'Reklamation eingereicht');
+        telegramNotify("⚠ REKLAMATION Kunde #$cid Job #$jid: $text");
+        header('Location: /customer/jobs.php?tab=vergangenheit&saved=reklamation'); exit;
+    }
+}
+
 // Filter state
 $tab = $_GET['tab'] ?? 'zukunft'; // 'vergangenheit' | 'zukunft'
 $showCancelled = !empty($_GET['cancelled']);
+$groupBy = $_GET['group'] ?? 'date'; // 'date' | 'property'
 $today = date('Y-m-d');
+$saved = $_GET['saved'] ?? '';
+$error = $_GET['error'] ?? '';
+
+// Customer's saved addresses (for multi-location dropdown in edit modal)
+try {
+    $customerAddresses = all("SELECT ca_id, street, number, postal_code, city, country, address_for FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC", [$cid]);
+} catch (Exception $e) { $customerAddresses = []; }
+
+// ============================================================
+// Partner availability for next 60 days — pre-computed, no API
+// ============================================================
+$totalPartners = max(1, (int) val("SELECT COUNT(*) FROM employee WHERE status=1"));
+$busyByDate = [];
+$busyRows = all("
+    SELECT j_date, COUNT(DISTINCT emp_id_fk) AS busy
+    FROM jobs
+    WHERE j_date BETWEEN ? AND DATE_ADD(?, INTERVAL 60 DAY)
+      AND status = 1
+      AND emp_id_fk IS NOT NULL
+      AND job_status NOT IN ('CANCELLED','COMPLETED')
+    GROUP BY j_date
+", [$today, $today]);
+foreach ($busyRows as $r) $busyByDate[$r['j_date']] = (int)$r['busy'];
+
+// External bookings (from iCal feeds) — block these dates from rescheduling
+$externalBlockDates = [];
+try {
+    $extRows = all("
+        SELECT start_date, end_date, guest_name, source_platform
+        FROM external_events
+        WHERE customer_id_fk = ?
+          AND end_date >= CURDATE()
+    ", [$cid]);
+    foreach ($extRows as $r) {
+        $cur = strtotime($r['start_date']);
+        $endTs = strtotime($r['end_date']);
+        while ($cur <= $endTs) {
+            $d = date('Y-m-d', $cur);
+            $externalBlockDates[$d] = [
+                'guest' => $r['guest_name'] ?: 'Externes Booking',
+                'platform' => $r['source_platform'] ?: 'iCal',
+            ];
+            $cur = strtotime('+1 day', $cur);
+        }
+    }
+} catch (Exception $e) {}
+
+$availability = [];
+for ($i = 0; $i < 60; $i++) {
+    $d = date('Y-m-d', strtotime("+$i days"));
+    $busy = $busyByDate[$d] ?? 0;
+    $free = max(0, $totalPartners - $busy);
+    $hasExt = isset($externalBlockDates[$d]);
+    $availability[$d] = [
+        'free' => $free,
+        'total' => $totalPartners,
+        'ok' => $free > 0 && !$hasExt,
+        'blocked_external' => $hasExt,
+        'guest' => $hasExt ? $externalBlockDates[$d]['guest'] : null,
+        'platform' => $hasExt ? $externalBlockDates[$d]['platform'] : null,
+    ];
+}
 
 // Query jobs based on tab + cancelled filter
 $cancelledClause = $showCancelled ? "" : " AND j.job_status != 'CANCELLED' ";
 if ($tab === 'zukunft') {
     $jobs = all("
         SELECT j.*, s.title as stitle, s.street, s.city, s.total_price,
-               e.name as ename, e.surname as esurname, e.phone as ephone
+               e.display_name as edisplay, e.profile_pic as eavatar, e.phone as ephone,
+               ev.start_date AS ext_checkin, ev.end_date AS ext_checkout,
+               ev.source_platform AS ext_platform, ev.description AS ext_desc,
+               f.label AS ext_property
         FROM jobs j
         LEFT JOIN services s ON j.s_id_fk = s.s_id
         LEFT JOIN employee e ON j.emp_id_fk = e.emp_id
+        LEFT JOIN job_suggestions sg ON sg.resulting_job_id = j.j_id
+        LEFT JOIN external_events ev ON ev.ev_id = sg.external_event_id
+        LEFT JOIN ical_feeds f ON f.id = ev.ical_feed_id
         WHERE j.customer_id_fk = ?
           AND j.j_date >= ?
           AND j.status = 1
@@ -28,10 +196,16 @@ if ($tab === 'zukunft') {
 } else {
     $jobs = all("
         SELECT j.*, s.title as stitle, s.street, s.city, s.total_price,
-               e.name as ename, e.surname as esurname, e.phone as ephone
+               e.display_name as edisplay, e.profile_pic as eavatar, e.phone as ephone,
+               ev.start_date AS ext_checkin, ev.end_date AS ext_checkout,
+               ev.source_platform AS ext_platform, ev.description AS ext_desc,
+               f.label AS ext_property
         FROM jobs j
         LEFT JOIN services s ON j.s_id_fk = s.s_id
         LEFT JOIN employee e ON j.emp_id_fk = e.emp_id
+        LEFT JOIN job_suggestions sg ON sg.resulting_job_id = j.j_id
+        LEFT JOIN external_events ev ON ev.ev_id = sg.external_event_id
+        LEFT JOIN ical_feeds f ON f.id = ev.ical_feed_id
         WHERE j.customer_id_fk = ?
           AND j.j_date < ?
           AND j.status = 1
@@ -63,6 +237,29 @@ function monthDe(string $date): string {
     return $months[(int) date('n', strtotime($date))];
 }
 
+// Extract key fields from iCal description (Smoobu-formatted)
+function parseIcalDesc(string $desc): array {
+    $out = ['nights' => null, 'adults' => null, 'children' => null, 'portal' => null, 'price' => null];
+    if (preg_match('/Nights:\s*(\d+)/i', $desc, $m)) $out['nights'] = (int)$m[1];
+    if (preg_match('/Adults:\s*(\d+)/i', $desc, $m)) $out['adults'] = (int)$m[1];
+    if (preg_match('/Children:\s*(\d+)/i', $desc, $m)) $out['children'] = (int)$m[1];
+    if (preg_match('/Portal:\s*([^\n\r]+)/i', $desc, $m)) $out['portal'] = trim($m[1]);
+    if (preg_match('/Price:\s*([\d.,]+)/i', $desc, $m)) $out['price'] = $m[1];
+    return $out;
+}
+
+// Group jobs by service (Smoobu-folder-like structure)
+function groupJobsByProperty(array $jobs): array {
+    $groups = [];
+    foreach ($jobs as $j) {
+        $key = $j['s_id_fk'] ?: 0;
+        $title = $j['stitle'] ?: 'Andere Unterkünfte';
+        if (!isset($groups[$key])) $groups[$key] = ['title' => $title, 'jobs' => []];
+        $groups[$key]['jobs'][] = $j;
+    }
+    return $groups;
+}
+
 // Countdown helper
 function countdown(string $date, string $time): string {
     $target = strtotime("$date $time");
@@ -79,6 +276,26 @@ function countdown(string $date, string $time): string {
 include __DIR__ . '/../includes/layout-customer.php';
 ?>
 
+<!-- Back button -->
+<div class="mb-4">
+  <a href="/customer/" class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand transition">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+    Zurück
+  </a>
+</div>
+
+<!-- Unified view tabs (Kalender / Liste) -->
+<div class="mb-4 inline-flex bg-white border border-gray-200 rounded-xl p-1">
+  <a href="/customer/calendar.php" class="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+    Kalender
+  </a>
+  <a href="/customer/jobs.php" class="px-4 py-2 rounded-lg text-sm font-semibold bg-brand text-white flex items-center gap-1.5">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+    Liste
+  </a>
+</div>
+
 <!-- Page header -->
 <div class="flex items-start justify-between mb-6 flex-wrap gap-4">
   <div>
@@ -91,9 +308,19 @@ include __DIR__ . '/../includes/layout-customer.php';
   </a>
 </div>
 
-<!-- Toggle: Abgesagte anzeigen -->
-<div class="mb-4">
-  <a href="?tab=<?= $tab ?>&cancelled=<?= $showCancelled ? '0' : '1' ?>"
+<!-- View controls: Group + Show cancelled -->
+<div class="mb-4 flex items-center gap-2 flex-wrap">
+  <!-- Group-by toggle -->
+  <div class="inline-flex bg-white border border-gray-200 rounded-lg p-1 text-xs">
+    <a href="?tab=<?= $tab ?>&group=date<?= $showCancelled ? '&cancelled=1' : '' ?>" class="px-3 py-1.5 rounded-md font-semibold <?= $groupBy === 'date' ? 'bg-brand text-white' : 'text-gray-600 hover:bg-gray-50' ?>">
+      📅 Nach Datum
+    </a>
+    <a href="?tab=<?= $tab ?>&group=property<?= $showCancelled ? '&cancelled=1' : '' ?>" class="px-3 py-1.5 rounded-md font-semibold <?= $groupBy === 'property' ? 'bg-brand text-white' : 'text-gray-600 hover:bg-gray-50' ?>">
+      🏠 Nach Unterkunft
+    </a>
+  </div>
+
+  <a href="?tab=<?= $tab ?>&group=<?= $groupBy ?>&cancelled=<?= $showCancelled ? '0' : '1' ?>"
      class="inline-flex items-center gap-2 px-4 py-2 <?= $showCancelled ? 'bg-brand-light text-brand-dark border-brand' : 'bg-white text-gray-600 border-gray-200' ?> border rounded-lg text-xs font-medium hover:bg-brand-light hover:text-brand-dark hover:border-brand transition">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <?php if ($showCancelled): ?>
@@ -118,6 +345,34 @@ include __DIR__ . '/../includes/layout-customer.php';
     </a>
   </div>
 </div>
+
+<?php if ($saved): ?>
+<div class="mb-4 card-elev border-green-200 bg-green-50 p-4 text-sm text-green-800 flex items-center gap-2">
+  <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+  <?= match($saved) {
+      'reschedule'    => 'Termin wurde umgebucht.',
+      'cancel'        => 'Termin wurde storniert.',
+      'cancel_google' => '✓ Storniert. Bitte hinterlassen Sie jetzt eine Google-Bewertung — nach Prüfung erlassen wir Ihnen die Storno-Gebühr.',
+      'edit'          => 'Änderungen gespeichert.',
+      'reklamation'   => 'Reklamation eingereicht. Wir melden uns zeitnah bei Ihnen.',
+      default         => 'Gespeichert.',
+  } ?>
+</div>
+<?php endif; ?>
+<?php if ($error): ?>
+<div class="mb-4 card-elev border-red-200 bg-red-50 p-4 text-sm text-red-800">
+  <?= match($error) {
+      'past_date'           => 'Das Datum darf nicht in der Vergangenheit liegen.',
+      'invalid_date'        => 'Ungültiges Datum oder Uhrzeit.',
+      'cannot_cancel'       => 'Dieser Termin kann nicht mehr storniert werden.',
+      'locked_past'         => 'Vergangene Termine können nicht mehr bearbeitet werden.',
+      'cannot_reklamation'  => 'Reklamation nicht möglich für diesen Job.',
+      'reklamation_window'  => 'Reklamationsfenster vorbei. Reklamationen sind zwischen 24h und 48h nach Fertigstellung möglich.',
+      'empty_reklamation'   => 'Bitte beschreiben Sie den Grund der Reklamation.',
+      default               => 'Es ist ein Fehler aufgetreten.',
+  } ?>
+</div>
+<?php endif; ?>
 
 <?php if (empty($jobs)): ?>
 
@@ -146,11 +401,72 @@ include __DIR__ . '/../includes/layout-customer.php';
 <?php else: ?>
 
 <!-- JOB CARDS -->
-<div class="grid gap-4">
+<div class="grid gap-4" x-data='{
+  modal: null,
+  modalJob: null,
+  selectedDate: "",
+  availability: <?= json_encode($availability, JSON_UNESCAPED_UNICODE) ?>,
+  availInfo() {
+    if (!this.selectedDate) return null;
+    return this.availability[this.selectedDate] || { free: 0, total: <?= $totalPartners ?>, ok: false };
+  }
+}'>
+<?php
+// Sort jobs by property if group-mode = property (keeps simple flat loop)
+if ($groupBy === 'property') {
+    usort($jobs, function($a, $b) {
+        $keyA = ($a['s_id_fk'] ?? 0) . ' ' . ($a['stitle'] ?? '');
+        $keyB = ($b['s_id_fk'] ?? 0) . ' ' . ($b['stitle'] ?? '');
+        return strcmp($keyA, $keyB) ?: strcmp($a['j_date'], $b['j_date']);
+    });
+}
+$lastGroupKey = null;
+?>
 <?php foreach ($jobs as $j):
+    // Emit group header when grouping by property
+    if ($groupBy === 'property') {
+        $groupKey = $j['s_id_fk'] ?: 0;
+        if ($groupKey !== $lastGroupKey) {
+            $lastGroupKey = $groupKey;
+            $propTitle = $j['stitle'] ?: 'Andere Unterkünfte';
+            echo '<div class="flex items-center gap-2 mb-1 mt-4 first:mt-0"><div class="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center text-lg">🏠</div><h3 class="font-bold text-gray-900 text-base">' . e($propTitle) . '</h3></div>';
+        }
+    }
     [$badgeBg, $badgeText, $badgeBorder, $badgeLabel] = statusColor($j['job_status']);
     $cd = $tab === 'zukunft' ? countdown($j['j_date'], $j['j_time']) : '';
-    $canCancel = customerCan('cancel') && in_array($j['job_status'], ['PENDING', 'CONFIRMED']);
+    $isFuture  = $j['j_date'] >= date('Y-m-d');
+    $canEdit   = $isFuture && in_array($j['job_status'], ['PENDING', 'CONFIRMED']);
+    $canCancel = customerCan('cancel') && $canEdit;
+    // Notes are always editable — Customer can add a note even to running/completed jobs
+    $canNote   = $j['job_status'] !== 'CANCELLED';
+
+    // Time-based rating/reklamation windows (professional policy)
+    $canRate = false;
+    $canReklamation = false;
+    $hasReklamation = !empty($j['reklamation_text']);
+    $completedAt = $j['completed_at'] ?: $j['updated_at'];
+    if ($j['job_status'] === 'COMPLETED' && $completedAt) {
+        $hoursSince = (time() - strtotime($completedAt)) / 3600;
+        $canRate = $hoursSince < 24;
+        $canReklamation = $hoursSince >= 24 && $hoursSince < 48 && !$hasReklamation;
+    }
+    $jobJson = htmlspecialchars(json_encode([
+        'j_id' => (int)$j['j_id'],
+        'j_date' => $j['j_date'],
+        'j_time' => substr($j['j_time'] ?? '', 0, 5),
+        'no_people' => (int)($j['no_people'] ?? 1),
+        'no_children' => (int)($j['no_children'] ?? 0),
+        'no_pets' => (int)($j['no_pets'] ?? 0),
+        'has_separate_beds' => (int)($j['has_separate_beds'] ?? 0),
+        'has_sofa_bed' => (int)($j['has_sofa_bed'] ?? 0),
+        'extras_note' => $j['extras_note'] ?? '',
+        'address' => $j['address'] ?? '',
+        'code_door' => $j['code_door'] ?? '',
+        'job_note' => $j['job_note'] ?? '',
+        'stitle' => $j['stitle'] ?? 'Reinigung',
+        'ical_adults' => (int)($icalInfo['adults'] ?? 0) ?: null,
+        'ical_children' => (int)($icalInfo['children'] ?? 0) ?: null,
+    ]), ENT_QUOTES);
 ?>
 <div class="card-elev p-5 flex flex-col sm:flex-row gap-5 transition">
 
@@ -186,21 +502,97 @@ include __DIR__ . '/../includes/layout-customer.php';
     </div>
     <?php endif; ?>
 
-    <?php if (!empty($j['ename'])): ?>
+    <?php if (!empty($j['emp_id_fk'])):
+      $pName = partnerDisplayName($j);
+      $pAvatar = partnerAvatarUrl($j);
+      $pInitial = partnerInitial($j);
+      $hasName = !empty($j['edisplay']);
+    ?>
     <div class="flex items-center gap-2 mt-2">
+      <?php if ($pAvatar): ?>
+      <img src="<?= e($pAvatar) ?>" alt="" class="w-7 h-7 rounded-full object-cover border border-gray-200"/>
+      <?php else: ?>
       <div class="w-7 h-7 rounded-full bg-gradient-to-br from-brand to-brand-dark text-white flex items-center justify-center text-xs font-bold">
-        <?= strtoupper(substr($j['ename'], 0, 1) . substr($j['esurname'] ?? '', 0, 1)) ?>
+        <?= e($pInitial) ?>
       </div>
+      <?php endif; ?>
       <div class="text-xs">
-        <span class="text-gray-500">Ihr Partner:</span>
-        <span class="font-semibold text-gray-800"><?= e($j['ename'] . ' ' . ($j['esurname'] ?? '')) ?></span>
+        <?php if ($hasName): ?>
+          <span class="text-gray-500">Ihr Partner:</span>
+          <a href="/customer/partner.php?id=<?= (int)$j['emp_id_fk'] ?>" class="font-semibold text-brand hover:underline"><?= e($pName) ?></a>
+        <?php else: ?>
+          <a href="/customer/partner.php?id=<?= (int)$j['emp_id_fk'] ?>" class="font-semibold text-brand hover:underline">Ihr Partner</a>
+          <span class="text-gray-400 ml-1">zugewiesen</span>
+        <?php endif; ?>
       </div>
+    </div>
+    <?php endif; ?>
+
+    <?php
+    // Extras Summary — nur wenn mindestens eins gesetzt ist
+    $hasExtras = !empty($j['no_children']) || !empty($j['no_pets']) || !empty($j['has_separate_beds']) || !empty($j['has_sofa_bed']) || !empty($j['extras_note']);
+    if ($hasExtras): ?>
+    <div class="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+      <?php if (!empty($j['no_children'])): ?><span class="px-2 py-0.5 bg-blue-50 border border-blue-200 text-blue-800 rounded-full font-semibold">👶 <?= (int)$j['no_children'] ?> Kind<?= (int)$j['no_children'] === 1 ? '' : 'er' ?></span><?php endif; ?>
+      <?php if (!empty($j['no_pets'])): ?><span class="px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-full font-semibold">🐾 <?= (int)$j['no_pets'] ?> Tier<?= (int)$j['no_pets'] === 1 ? '' : 'e' ?></span><?php endif; ?>
+      <?php if (!empty($j['has_separate_beds'])): ?><span class="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-full font-semibold">🛏️🛏️ Getrennte Betten</span><?php endif; ?>
+      <?php if (!empty($j['has_sofa_bed'])): ?><span class="px-2 py-0.5 bg-purple-50 border border-purple-200 text-purple-800 rounded-full font-semibold">🛋️ Sofa-Bett</span><?php endif; ?>
+      <?php if (!empty($j['extras_note'])): ?><span class="px-2 py-0.5 bg-gray-100 border border-gray-200 text-gray-700 rounded-full italic truncate max-w-[300px]">💬 <?= e($j['extras_note']) ?></span><?php endif; ?>
     </div>
     <?php endif; ?>
 
     <?php if (!empty($j['job_note'])): ?>
     <div class="mt-3 text-xs text-gray-600 bg-gray-50 border-l-2 border-gray-300 pl-3 py-1.5 italic">
       <?= e($j['job_note']) ?>
+    </div>
+    <?php endif; ?>
+
+    <?php if (!empty($j['ext_checkin']) || !empty($j['ext_platform'])):
+      $icalInfo = parseIcalDesc($j['ext_desc'] ?? '');
+      $platformColors = [
+          'Airbnb' => 'bg-red-100 text-red-700 border-red-200',
+          'Booking.com' => 'bg-blue-100 text-blue-700 border-blue-200',
+          'Smoobu' => 'bg-purple-100 text-purple-700 border-purple-200',
+          'VRBO' => 'bg-yellow-100 text-yellow-700 border-yellow-200',
+      ];
+      $platformClass = $platformColors[$j['ext_platform']] ?? 'bg-gray-100 text-gray-700 border-gray-200';
+    ?>
+    <div class="mt-3 p-3 rounded-lg border <?= $platformClass ?>">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+        <div class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+          Gast-Buchung via <?= e($j['ext_platform'] ?? 'iCal') ?>
+        </div>
+        <?php if ($j['ext_property']): ?><span class="text-[10px] opacity-75"><?= e($j['ext_property']) ?></span><?php endif; ?>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+        <?php if ($j['ext_checkin']): ?>
+        <div>
+          <div class="text-[9px] opacity-60 uppercase font-semibold">↓ Check-in</div>
+          <div class="font-semibold"><?= date('d.m.', strtotime($j['ext_checkin'])) ?></div>
+        </div>
+        <?php endif; ?>
+        <?php if ($j['ext_checkout']): ?>
+        <div>
+          <div class="text-[9px] opacity-60 uppercase font-semibold">↑ Check-out</div>
+          <div class="font-semibold"><?= date('d.m.', strtotime($j['ext_checkout'])) ?></div>
+        </div>
+        <?php endif; ?>
+        <?php if ($icalInfo['nights']): ?>
+        <div>
+          <div class="text-[9px] opacity-60 uppercase font-semibold">🌙 Nächte</div>
+          <div class="font-semibold"><?= $icalInfo['nights'] ?></div>
+        </div>
+        <?php endif; ?>
+        <?php if ($icalInfo['adults']): ?>
+        <div>
+          <div class="text-[9px] opacity-60 uppercase font-semibold">👥 Gäste (laut Buchung)</div>
+          <div class="font-semibold">
+            <?= $icalInfo['adults'] ?><?= $icalInfo['children'] ? ' + ' . $icalInfo['children'] . ' 👶' : '' ?>
+          </div>
+        </div>
+        <?php endif; ?>
+      </div>
     </div>
     <?php endif; ?>
 
@@ -219,6 +611,49 @@ include __DIR__ . '/../includes/layout-customer.php';
       <?php endif; ?>
     </div>
     <?php endif; ?>
+
+    <?php
+    // Checklist completion status — only show if service has a checklist
+    if (!empty($j['s_id_fk'])):
+        $checklistItems = all("SELECT checklist_id, title, priority FROM service_checklists WHERE s_id_fk=? AND is_active=1 ORDER BY position", [$j['s_id_fk']]);
+        if (!empty($checklistItems)):
+            $completionsForJob = all("SELECT checklist_id_fk, completed, photo FROM checklist_completions WHERE job_id_fk=?", [$j['j_id']]);
+            $compMap = [];
+            foreach ($completionsForJob as $c) $compMap[$c['checklist_id_fk']] = $c;
+            $doneCount = count(array_filter($compMap, fn($c) => !empty($c['completed'])));
+            $totalCount = count($checklistItems);
+            $pctChk = $totalCount > 0 ? round(($doneCount / $totalCount) * 100) : 0;
+    ?>
+    <div class="mt-3 p-3 rounded-xl bg-brand-light/50 border border-brand/20">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <div class="flex items-center gap-2">
+          <span class="text-sm">📋</span>
+          <span class="text-xs font-bold text-brand">Check-Liste · <?= $doneCount ?> / <?= $totalCount ?> erledigt</span>
+        </div>
+        <div class="flex-1 max-w-[140px] h-1.5 bg-white rounded-full overflow-hidden">
+          <div class="h-full bg-brand" style="width: <?= $pctChk ?>%"></div>
+        </div>
+      </div>
+      <div class="space-y-1">
+        <?php foreach ($checklistItems as $ci):
+          $comp = $compMap[$ci['checklist_id']] ?? null;
+          $isDone = !empty($comp['completed']);
+        ?>
+        <div class="flex items-center gap-2 text-xs">
+          <span class="w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 <?= $isDone ? 'bg-brand border-brand' : 'border-gray-300 bg-white' ?>">
+            <?php if ($isDone): ?><svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg><?php endif; ?>
+          </span>
+          <span class="flex-1 min-w-0 truncate <?= $isDone ? 'text-gray-500 line-through' : 'text-gray-700' ?>"><?= e($ci['title']) ?></span>
+          <?php if (!empty($comp['photo'])): ?>
+          <a href="<?= e($comp['photo']) ?>" target="_blank" class="flex-shrink-0" title="Beweisfoto">
+            <img src="<?= e($comp['photo']) ?>" class="w-6 h-6 object-cover rounded border border-brand/30"/>
+          </a>
+          <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; endif; ?>
   </div>
 
   <!-- Right: price + actions -->
@@ -230,30 +665,378 @@ include __DIR__ . '/../includes/layout-customer.php';
     </div>
     <?php endif; ?>
 
-    <div class="flex flex-col gap-2 mt-0 sm:mt-4 items-end">
-      <?php if ($j['job_status'] === 'COMPLETED' && customerCan('rate')): ?>
-      <a href="/customer/rate.php?j_id=<?= (int) $j['j_id'] ?>" class="text-xs font-semibold text-brand hover:text-brand-dark flex items-center gap-1">
-        ⭐ Bewerten
-      </a>
+    <div class="flex flex-col gap-2 mt-0 sm:mt-4 items-end w-full">
+      <?php if ($canEdit): ?>
+      <button
+        @click='modalJob = <?= $jobJson ?>; modal = "reschedule"'
+        class="w-full px-3 py-1.5 border border-gray-200 hover:border-brand hover:bg-brand/5 rounded-lg text-xs font-semibold text-gray-700 hover:text-brand flex items-center justify-center gap-1.5 transition">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        Umbuchen
+      </button>
+      <button
+        @click='modalJob = <?= $jobJson ?>; modal = "edit"'
+        class="w-full px-3 py-1.5 border border-gray-200 hover:border-brand hover:bg-brand/5 rounded-lg text-xs font-semibold text-gray-700 hover:text-brand flex items-center justify-center gap-1.5 transition">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        Bearbeiten
+      </button>
       <?php endif; ?>
 
       <?php if ($canCancel): ?>
       <button
-        onclick="if(confirm('Termin wirklich stornieren?\nBei Stornierung weniger als 24 Stunden vor dem Termin fällt eine Gebühr an.')) { fetch('/api/index.php?action=jobs/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ j_id: <?= (int) $j['j_id'] ?>, status: 'CANCELLED' }) }).then(() => location.reload()); }"
-        class="text-xs font-semibold text-red-600 hover:text-red-700 flex items-center gap-1">
-        ✕ Stornieren
+        @click='modalJob = <?= $jobJson ?>; modal = "cancel"'
+        class="w-full px-3 py-1.5 border border-red-200 hover:border-red-400 hover:bg-red-50 rounded-lg text-xs font-semibold text-red-600 flex items-center justify-center gap-1.5 transition">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        Stornieren
       </button>
       <?php endif; ?>
 
-      <?php if ($j['job_status'] === 'COMPLETED' && customerCan('booking')): ?>
-      <a href="/customer/booking.php?repeat=<?= (int) $j['j_id'] ?>" class="text-xs font-semibold text-gray-500 hover:text-brand flex items-center gap-1">
+      <?php if (!$canEdit && $canNote): ?>
+      <!-- Note-only edit for running/completed jobs -->
+      <button
+        @click='modalJob = <?= $jobJson ?>; modal = "edit"'
+        class="w-full px-3 py-1.5 border border-gray-200 hover:border-brand hover:bg-brand/5 rounded-lg text-xs font-semibold text-gray-700 hover:text-brand flex items-center justify-center gap-1.5 transition">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+        Notiz
+      </button>
+      <?php endif; ?>
+
+      <?php if ($canRate): ?>
+      <a href="/customer/workhours.php?month=<?= date('Y-m', strtotime($j['j_date'])) ?>" class="w-full px-3 py-1.5 border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+        ⭐ Bewerten (24h Fenster)
+      </a>
+      <?php endif; ?>
+
+      <?php if ($canReklamation): ?>
+      <button
+        @click='modalJob = <?= $jobJson ?>; modal = "reklamation"'
+        class="w-full px-3 py-1.5 border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+        ⚠ Reklamation
+      </button>
+      <?php endif; ?>
+
+      <?php if ($hasReklamation): ?>
+      <div class="w-full px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-semibold text-gray-500 text-center">
+        Reklamation eingereicht
+      </div>
+      <?php endif; ?>
+
+      <?php if ($j['job_status'] === 'COMPLETED' && customerCan('booking') && !$canRate && !$canReklamation): ?>
+      <a href="/customer/booking.php?repeat=<?= (int) $j['j_id'] ?>" class="w-full px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-brand flex items-center justify-center gap-1.5 transition">
         ↻ Nochmal buchen
       </a>
+      <?php endif; ?>
+
+      <?php if (!$canEdit && !$canCancel && !$canRate && !$canReklamation && !$hasReklamation && $j['job_status'] !== 'COMPLETED' && $tab === 'vergangenheit'): ?>
+      <div class="text-[10px] text-gray-400 text-right flex items-center gap-1">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        Gesperrt
+      </div>
       <?php endif; ?>
     </div>
   </div>
 </div>
 <?php endforeach; ?>
+
+<!-- ============ MODALS ============ -->
+<div x-show="modal" x-cloak @click.self="modal = null" class="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" x-transition.opacity>
+
+  <!-- RESCHEDULE MODAL -->
+  <form x-show="modal === 'reschedule'" method="POST" class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden" @click.stop x-transition>
+    <?= csrfField() ?>
+    <input type="hidden" name="action" value="reschedule"/>
+    <input type="hidden" name="j_id" :value="modalJob?.j_id"/>
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="font-semibold text-gray-900">Termin umbuchen</h3>
+      <button type="button" @click="modal = null; selectedDate = ''" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="text-xs text-gray-500">Aktueller Termin: <span class="font-semibold text-gray-900" x-text="modalJob?.j_date + ' ' + modalJob?.j_time"></span></div>
+
+      <!-- Quick date shortcuts -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider">Schnellauswahl</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button type="button" @click="selectedDate = new Date(Date.now() + 86400000).toISOString().split('T')[0]" class="px-2 py-2 border border-gray-200 hover:border-brand hover:bg-brand/5 rounded-lg text-xs font-semibold text-gray-700 transition">+1 Tag</button>
+          <button type="button" @click="selectedDate = new Date(Date.now() + 7*86400000).toISOString().split('T')[0]" class="px-2 py-2 border border-gray-200 hover:border-brand hover:bg-brand/5 rounded-lg text-xs font-semibold text-gray-700 transition">Nächste Woche</button>
+          <button type="button" @click="selectedDate = new Date(Date.now() + 14*86400000).toISOString().split('T')[0]" class="px-2 py-2 border border-gray-200 hover:border-brand hover:bg-brand/5 rounded-lg text-xs font-semibold text-gray-700 transition">In 2 Wochen</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Neues Datum</label>
+        <input type="date" name="new_date" x-model="selectedDate" :min="new Date().toISOString().split('T')[0]" required class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+
+        <!-- Partner availability display -->
+        <div x-show="selectedDate" x-cloak class="mt-2">
+          <!-- External booking warning (highest priority) -->
+          <div x-show="availInfo()?.blocked_external" class="flex items-start gap-2 px-3 py-2 bg-purple-50 border border-purple-300 rounded-lg">
+            <svg class="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+            <div class="text-xs text-purple-900">
+              <strong>🏠 Externes Booking blockt diesen Tag</strong>
+              <div class="text-purple-700" x-show="availInfo()?.guest">Gast: <span x-text="availInfo()?.guest"></span> · via <span x-text="availInfo()?.platform"></span></div>
+              <div class="text-purple-600 mt-1">Bitte ein anderes Datum wählen — Doppelbuchungen werden vermieden.</div>
+            </div>
+          </div>
+          <div x-show="!availInfo()?.blocked_external && availInfo()?.ok" class="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+            <svg class="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span class="text-xs text-green-800">
+              <strong x-text="availInfo()?.free"></strong>
+              <span>von <span x-text="availInfo()?.total"></span> Partnern verfügbar</span>
+            </span>
+          </div>
+          <div x-show="!availInfo()?.blocked_external && !availInfo()?.ok" class="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+            <svg class="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            <span class="text-xs text-red-800">Alle Partner an diesem Tag ausgebucht. Bitte anderes Datum wählen.</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Neue Uhrzeit</label>
+        <input type="time" name="new_time" required class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Grund (optional)</label>
+        <input type="text" name="reschedule_reason" placeholder="z.B. Gast verlängert, Geschäftsreise..." class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Notiz für den Partner (optional)</label>
+        <textarea name="reschedule_note" rows="2" placeholder="z.B. Schlüssel beim Nachbarn, Hund anwesend..." class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none text-sm"></textarea>
+      </div>
+      <div class="text-[11px] text-gray-400 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+        ⚠ Umbuchungen weniger als 24 Stunden vor dem Termin können eine Gebühr nach sich ziehen.
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button type="button" @click="modal = null; selectedDate = ''" class="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50">Abbrechen</button>
+        <button type="submit" :disabled="selectedDate && !availInfo()?.ok" :class="selectedDate && !availInfo()?.ok ? 'opacity-50 cursor-not-allowed' : ''" class="flex-1 px-4 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold">Umbuchen</button>
+      </div>
+    </div>
+  </form>
+
+  <!-- EDIT MODAL -->
+  <form x-show="modal === 'edit'" method="POST" class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden max-h-[90vh] overflow-y-auto" @click.stop x-transition x-data="{ checkOnly: false, people: 1, pets: 0, children: 0, separateBeds: false, sofaBed: false, extrasNote: '' }" x-effect="if (modal === 'edit' && modalJob) { people = modalJob.no_people || 1; children = modalJob.no_children || 0; pets = modalJob.no_pets || 0; separateBeds = !!modalJob.has_separate_beds; sofaBed = !!modalJob.has_sofa_bed; extrasNote = modalJob.extras_note || ''; }">
+    <?= csrfField() ?>
+    <input type="hidden" name="action" value="edit"/>
+    <input type="hidden" name="j_id" :value="modalJob?.j_id"/>
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="font-semibold text-gray-900">Details bearbeiten</h3>
+      <button type="button" @click="modal = null" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-5 space-y-4">
+
+      <!-- Job type toggle -->
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" @click="checkOnly = false"
+          :class="!checkOnly ? 'bg-brand text-white border-brand' : 'bg-white border-gray-200 text-gray-600 hover:border-brand'"
+          class="px-3 py-2.5 border-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5">
+          🧽 Vollreinigung
+        </button>
+        <button type="button" @click="checkOnly = true"
+          :class="checkOnly ? 'bg-brand text-white border-brand' : 'bg-white border-gray-200 text-gray-600 hover:border-brand'"
+          class="px-3 py-2.5 border-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5">
+          🔍 Nur Kontrolle
+        </button>
+      </div>
+      <input type="hidden" name="is_check_only" :value="checkOnly ? 1 : 0"/>
+      <p x-show="checkOnly" x-cloak class="text-[11px] text-gray-500 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+        ℹ Bei "Nur Kontrolle" kommt der Partner um die Wohnung zu prüfen (z.B. nach Gast-Checkout). Wird als normaler Reinigungstermin abgerechnet.
+      </p>
+
+      <!-- Guest count from iCal (read-only) -->
+      <template x-if="modalJob?.ical_adults">
+        <div class="p-3 rounded-lg bg-orange-50 border border-orange-200">
+          <div class="text-[10px] uppercase font-bold text-orange-700 tracking-wide mb-1">👥 Gäste laut Buchung</div>
+          <div class="text-sm text-orange-900">
+            <span x-text="modalJob.ical_adults"></span> Erwachsene
+            <template x-if="modalJob.ical_children"> + <span x-text="modalJob.ical_children"></span> Kinder</template>
+            <span class="text-[10px] opacity-70">· aus iCal-Feed (nicht änderbar)</span>
+          </div>
+        </div>
+      </template>
+
+      <!-- People / Pets / Children — hidden when check-only -->
+      <div x-show="!checkOnly" class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Personen vor Ort</label>
+          <input type="number" name="no_people" min="1" max="20" x-model.number="people" required class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+          <p class="text-[10px] text-gray-400 mt-0.5">Für die Reinigung</p>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Kinder</label>
+          <input type="number" name="no_children" min="0" max="20" x-model.number="children" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+          <p class="text-[10px] text-gray-400 mt-0.5">optional</p>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Tiere</label>
+          <input type="number" name="no_pets" min="0" max="10" x-model.number="pets" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+          <p class="text-[10px] text-gray-400 mt-0.5">🐕 🐈</p>
+        </div>
+      </div>
+
+      <!-- Bett-Varianten (Airbnb Extras) -->
+      <div x-show="!checkOnly" class="grid grid-cols-2 gap-2">
+        <label class="flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer hover:bg-gray-50"
+               :class="separateBeds ? 'border-brand bg-brand/5' : 'border-gray-200'">
+          <input type="checkbox" name="has_separate_beds" value="1" x-model="separateBeds" class="w-4 h-4 text-brand rounded focus:ring-brand"/>
+          <span class="text-xs">🛏️🛏️ <strong>Getrennte Betten</strong></span>
+        </label>
+        <label class="flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer hover:bg-gray-50"
+               :class="sofaBed ? 'border-brand bg-brand/5' : 'border-gray-200'">
+          <input type="checkbox" name="has_sofa_bed" value="1" x-model="sofaBed" class="w-4 h-4 text-brand rounded focus:ring-brand"/>
+          <span class="text-xs">🛋️ <strong>Extra Sofa-Bett</strong></span>
+        </label>
+      </div>
+
+      <div x-show="!checkOnly">
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Extras für den Partner</label>
+        <input type="text" name="extras_note" x-model="extrasNote" placeholder="z.B. Babybett aufbauen, Fenster öffnen, Gäste-Slippers bereitlegen..." class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+        <p class="text-[10px] text-gray-400 mt-0.5">Kurze Hinweise die der Partner beim Job sehen soll</p>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Adresse / Standort</label>
+        <?php if (count($customerAddresses) > 1): ?>
+        <!-- Multi-location dropdown -->
+        <select name="address" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none bg-white mb-2">
+          <option value="">— Standort wählen —</option>
+          <?php foreach ($customerAddresses as $a):
+            $full = trim($a['street'] . ' ' . $a['number'] . ', ' . $a['postal_code'] . ' ' . $a['city']);
+            $type = $a['address_for'] === 'Billing Address' ? '🧾' : '📍';
+          ?>
+          <option value="<?= e($full) ?>"><?= $type ?> <?= e($full) ?></option>
+          <?php endforeach; ?>
+        </select>
+        <details class="text-xs">
+          <summary class="text-gray-500 cursor-pointer hover:text-brand">oder freie Eingabe</summary>
+          <input type="text" name="address_custom" :value="modalJob?.address" placeholder="Adresse manuell eingeben" class="w-full px-3 py-2.5 mt-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+        </details>
+        <?php else: ?>
+        <input type="text" name="address" :value="modalJob?.address" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+        <p class="text-[11px] text-gray-400 mt-1">💡 In <a href="/customer/profile.php?section=addresses" class="text-brand hover:underline">Adressen</a> können Sie weitere Standorte hinterlegen</p>
+        <?php endif; ?>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Türcode / Schlüsselkasten</label>
+        <input type="text" name="code_door" :value="modalJob?.code_door" placeholder="z.B. 1234 oder Kasten Links" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Notiz für den Partner</label>
+        <textarea name="job_note" rows="3" x-text="modalJob?.job_note" placeholder="Besonderheiten, Allergien, Zugang..." class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"></textarea>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button type="button" @click="modal = null" class="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50">Abbrechen</button>
+        <button type="submit" class="flex-1 px-4 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold">Speichern</button>
+      </div>
+    </div>
+  </form>
+
+  <!-- REKLAMATION MODAL -->
+  <form x-show="modal === 'reklamation'" method="POST" class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden" @click.stop x-transition>
+    <?= csrfField() ?>
+    <input type="hidden" name="action" value="reklamation"/>
+    <input type="hidden" name="j_id" :value="modalJob?.j_id"/>
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="font-semibold text-orange-700">Reklamation einreichen</h3>
+      <button type="button" @click="modal = null" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="text-sm text-gray-700">
+        <span class="font-semibold" x-text="modalJob?.stitle"></span>
+        <span class="text-gray-500">am</span>
+        <span class="font-semibold" x-text="modalJob?.j_date"></span>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Was war das Problem?</label>
+        <textarea name="reklamation_text" rows="4" required placeholder="Beschreiben Sie bitte detailliert was nicht gut war..." class="w-full px-3 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"></textarea>
+      </div>
+      <div class="text-xs p-3 bg-orange-50 border border-orange-200 rounded-lg text-orange-800">
+        ℹ Reklamationen sind nur zwischen 24 und 48 Stunden nach Job-Ende möglich. Wir prüfen Ihre Beschwerde und melden uns zeitnah.
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button type="button" @click="modal = null" class="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50">Abbrechen</button>
+        <button type="submit" class="flex-1 px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-semibold">Einreichen</button>
+      </div>
+    </div>
+  </form>
+
+  <!-- CANCEL MODAL -->
+  <form x-show="modal === 'cancel'" method="POST" class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden max-h-[90vh] overflow-y-auto" @click.stop x-transition x-data="{ confirmed: false, googleAlternative: false }">
+    <?= csrfField() ?>
+    <input type="hidden" name="action" value="cancel"/>
+    <input type="hidden" name="j_id" :value="modalJob?.j_id"/>
+    <input type="hidden" name="google_review_offer" :value="googleAlternative ? 1 : 0"/>
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+      <h3 class="font-semibold text-red-700">Termin stornieren</h3>
+      <button type="button" @click="modal = null; confirmed = false; googleAlternative = false" class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="text-sm text-gray-700">
+        <span class="font-semibold" x-text="modalJob?.stitle"></span>
+        <span class="text-gray-500">am</span>
+        <span class="font-semibold" x-text="modalJob?.j_date + ' ' + modalJob?.j_time"></span>
+      </div>
+
+      <!-- Cost calculation banner -->
+      <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-gray-600">Geplanter Umsatz (brutto):</span>
+          <span class="font-semibold text-gray-900" x-text="(48.58 * 1.19).toFixed(2).replace('.', ',') + ' €'"></span>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-gray-600">Gebühr bei Storno &lt; 24h:</span>
+          <span class="font-semibold text-red-700">50 % = <span x-text="(48.58 * 1.19 * 0.5).toFixed(2).replace('.', ',') + ' €'"></span></span>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Grund (optional)</label>
+        <select name="reason" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-white">
+          <option value="">— Grund wählen —</option>
+          <option>Ich bin nicht zu Hause</option>
+          <option>Zeit passt nicht mehr</option>
+          <option>Service nicht mehr benötigt</option>
+          <option>Kurzfristiger Termin</option>
+          <option>Anderer Grund</option>
+        </select>
+      </div>
+
+      <!-- AGB-Confirmation (German Kleinunternehmer-Regelung) -->
+      <label class="flex items-start gap-2 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+        <input type="checkbox" x-model="confirmed" required class="mt-0.5 w-4 h-4 accent-brand flex-shrink-0"/>
+        <span class="text-xs text-gray-700">
+          Ich bestätige, dass bei einer Stornierung weniger als 24 Stunden vor dem Termin <strong>kein Anspruch auf Rückerstattung</strong> besteht und die Gebühr fällig wird (gem. unseren AGB nach §§ 631, 648 BGB).
+        </span>
+      </label>
+
+      <!-- Google review alternative -->
+      <div class="p-4 bg-gradient-to-br from-blue-50 to-transparent border border-blue-200 rounded-lg">
+        <div class="flex items-start gap-2 mb-2">
+          <span class="text-xl">⭐</span>
+          <div>
+            <h4 class="font-semibold text-gray-900 text-sm">Alternative: Google-Bewertung statt Gebühr</h4>
+            <p class="text-xs text-gray-600 mt-0.5">Hinterlassen Sie eine ehrliche, positive Bewertung auf Google und wir <strong>erlassen Ihnen die Storno-Gebühr</strong> nach Prüfung. Win-Win 🤝</p>
+          </div>
+        </div>
+        <label class="flex items-center gap-2 text-xs cursor-pointer mt-2">
+          <input type="checkbox" x-model="googleAlternative" class="w-4 h-4 accent-blue-600"/>
+          <span class="text-blue-800 font-semibold">Ja, ich gebe Google-Bewertung ab statt Gebühr zu zahlen</span>
+        </label>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <button type="button" @click="modal = null; confirmed = false; googleAlternative = false" class="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50">Doch nicht</button>
+        <button type="submit" :disabled="!confirmed" :class="!confirmed ? 'opacity-50 cursor-not-allowed' : ''" class="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold">Stornieren</button>
+      </div>
+    </div>
+  </form>
+</div>
 </div>
 
 <!-- Count footer -->

@@ -14,14 +14,47 @@ $jobs = all("SELECT j.*, s.title as stitle, c.name as cname
     WHERE j.emp_id_fk=? AND j.job_status='COMPLETED' AND j.j_date LIKE ? AND j.status=1
     ORDER BY j.j_date DESC", [$eid, "$month%"]);
 
+// Checklist bonus rate — 5% bonus when ALL checklist items are completed (with proof photos)
+define('CHECKLIST_BONUS_RATE', 0.05);
+
 $tariff = (float)($emp['tariff'] ?: 0);
 $totalHours = 0;
-$totalEarnings = 0;
-foreach ($jobs as $j) {
+$totalBase = 0;
+$totalBonus = 0;
+$bonusEligibleCount = 0;
+
+// Compute per-job bonus
+foreach ($jobs as $k => $j) {
     $hrs = $j['total_hours'] ?: $j['j_hours'];
+    $base = $hrs * $tariff;
     $totalHours += $hrs;
-    $totalEarnings += $hrs * $tariff;
+    $totalBase += $base;
+
+    // Check if service has a checklist + partner completed ALL items with photos
+    $jobs[$k]['base_pay'] = $base;
+    $jobs[$k]['bonus'] = 0;
+    $jobs[$k]['bonus_reason'] = '';
+
+    if (!empty($j['s_id_fk'])) {
+        $totalItems = (int) val("SELECT COUNT(*) FROM service_checklists WHERE s_id_fk=? AND is_active=1", [$j['s_id_fk']]);
+        if ($totalItems > 0) {
+            // All items done + has photo
+            $doneWithPhoto = (int) val("SELECT COUNT(*) FROM checklist_completions WHERE job_id_fk=? AND completed=1 AND photo IS NOT NULL", [$j['j_id']]);
+            $doneAny = (int) val("SELECT COUNT(*) FROM checklist_completions WHERE job_id_fk=? AND completed=1", [$j['j_id']]);
+            $jobs[$k]['checklist_total'] = $totalItems;
+            $jobs[$k]['checklist_done'] = $doneAny;
+            if ($doneWithPhoto >= $totalItems) {
+                // Full bonus
+                $bonus = round($base * CHECKLIST_BONUS_RATE, 2);
+                $jobs[$k]['bonus'] = $bonus;
+                $jobs[$k]['bonus_reason'] = 'Alle ' . $totalItems . ' Items mit Foto erledigt';
+                $totalBonus += $bonus;
+                $bonusEligibleCount++;
+            }
+        }
+    }
 }
+$totalEarnings = $totalBase + $totalBonus;
 
 // Last 6 months for chart
 $monthlyData = [];
@@ -42,18 +75,39 @@ include __DIR__ . '/../includes/layout.php';
 </div>
 
 <!-- Summary -->
-<div class="grid grid-cols-3 gap-4 mb-6">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
   <div class="bg-white rounded-xl border p-4">
     <div class="text-2xl font-bold text-brand"><?= number_format($totalHours, 1) ?>h</div>
     <div class="text-sm text-gray-500">Stunden</div>
   </div>
   <div class="bg-white rounded-xl border p-4">
     <div class="text-2xl font-bold text-green-600"><?= money($totalEarnings) ?></div>
-    <div class="text-sm text-gray-500">Verdienst</div>
+    <div class="text-sm text-gray-500">Verdienst gesamt</div>
+    <?php if ($totalBonus > 0): ?>
+    <div class="text-[10px] text-amber-600 font-semibold mt-0.5">+ <?= money($totalBonus) ?> Bonus</div>
+    <?php endif; ?>
+  </div>
+  <div class="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-xl border border-amber-200 p-4">
+    <div class="text-2xl font-bold text-amber-600"><?= money($totalBonus) ?></div>
+    <div class="text-sm text-gray-500 flex items-center gap-1">
+      <span>🏆</span> Checklist-Bonus
+    </div>
+    <div class="text-[10px] text-gray-400 mt-0.5"><?= $bonusEligibleCount ?> von <?= count($jobs) ?> Jobs</div>
   </div>
   <div class="bg-white rounded-xl border p-4">
     <div class="text-2xl font-bold"><?= count($jobs) ?></div>
     <div class="text-sm text-gray-500">Jobs</div>
+  </div>
+</div>
+
+<!-- Bonus explanation -->
+<div class="mb-6 p-4 rounded-xl bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 flex items-start gap-3">
+  <span class="text-2xl">🏆</span>
+  <div class="flex-1">
+    <div class="font-bold text-sm text-amber-900">Checklist-Bonus: +5 % auf den Job</div>
+    <div class="text-xs text-amber-800 mt-0.5">
+      Wenn Sie bei einem Job <strong>alle Checklist-Items</strong> abhaken <strong>und jedes mit einem Beweisfoto</strong> belegen, bekommen Sie automatisch <strong>+5 %</strong> auf den Job-Verdienst. Kein Zusatzaufwand — einfach die Fotos direkt beim Job machen.
+    </div>
   </div>
 </div>
 
@@ -72,23 +126,45 @@ include __DIR__ . '/../includes/layout.php';
         <th class="px-4 py-3 text-left font-medium text-gray-600">Datum</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Kunde</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Service</th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600">Checkliste</th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Stunden</th>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">Verdienst</th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600">Basis</th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600">Bonus</th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600">Gesamt</th>
       </tr></thead>
       <tbody class="divide-y">
       <?php foreach ($jobs as $j):
         $hrs = $j['total_hours'] ?: $j['j_hours'];
+        $base = $j['base_pay'] ?? ($hrs * $tariff);
+        $bonus = $j['bonus'] ?? 0;
+        $total = $base + $bonus;
       ?>
-      <tr class="hover:bg-gray-50">
+      <tr class="hover:bg-gray-50 <?= $bonus > 0 ? 'bg-amber-50/30' : '' ?>">
         <td class="px-4 py-3 font-mono"><?= date('d.m.Y', strtotime($j['j_date'])) ?></td>
         <td class="px-4 py-3"><?= employeeCan('can_see_customer_info') ? e($j['cname']) : '***' ?></td>
         <td class="px-4 py-3"><?= e($j['stitle']) ?></td>
+        <td class="px-4 py-3">
+          <?php if (!empty($j['checklist_total'])): ?>
+            <span class="text-xs font-semibold <?= $bonus > 0 ? 'text-green-600' : 'text-gray-500' ?>"><?= $j['checklist_done'] ?? 0 ?>/<?= $j['checklist_total'] ?></span>
+            <?php if ($bonus > 0): ?><span class="ml-1 text-[10px]">✓</span><?php endif; ?>
+          <?php else: ?>
+            <span class="text-[10px] text-gray-300">—</span>
+          <?php endif; ?>
+        </td>
         <td class="px-4 py-3 font-medium"><?= number_format($hrs, 1) ?>h</td>
-        <td class="px-4 py-3 text-green-600 font-medium"><?= money($hrs * $tariff) ?></td>
+        <td class="px-4 py-3 text-gray-700"><?= money($base) ?></td>
+        <td class="px-4 py-3">
+          <?php if ($bonus > 0): ?>
+          <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold">+<?= money($bonus) ?></span>
+          <?php else: ?>
+          <span class="text-[10px] text-gray-300">—</span>
+          <?php endif; ?>
+        </td>
+        <td class="px-4 py-3 font-bold <?= $bonus > 0 ? 'text-amber-700' : 'text-green-600' ?>"><?= money($total) ?></td>
       </tr>
       <?php endforeach; ?>
       <?php if (empty($jobs)): ?>
-      <tr><td colspan="5" class="px-4 py-8 text-center text-gray-400">Keine Jobs in diesem Monat.</td></tr>
+      <tr><td colspan="8" class="px-4 py-8 text-center text-gray-400">Keine Jobs in diesem Monat.</td></tr>
       <?php endif; ?>
       </tbody>
     </table>

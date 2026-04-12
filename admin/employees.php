@@ -33,8 +33,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: /admin/employees.php?added=1"); exit;
     }
     if ($act === 'edit_employee') {
-        q("UPDATE employee SET name=?,surname=?,email=?,phone=?,tariff=?,location=?,nationality=?,status=?,notes=? WHERE emp_id=?",
-          [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['tariff']??0,$_POST['location']??'',$_POST['nationality']??'',$_POST['status'],$_POST['notes']??'',$_POST['emp_id']]);
+        $ptype = in_array($_POST['partner_type'] ?? '', ['mitarbeiter','freelancer','kleinunternehmen'], true) ? $_POST['partner_type'] : null;
+        $ctype = $ptype === 'mitarbeiter' && in_array($_POST['contract_type'] ?? '', ['minijob','midijob','teilzeit','vollzeit'], true) ? $_POST['contract_type'] : null;
+        $cname = $ptype === 'kleinunternehmen' ? trim($_POST['company_name'] ?? '') : null;
+        $csize = $ptype === 'kleinunternehmen' ? min(10, max(1, (int)($_POST['company_size'] ?? 1))) : null;
+        $taxId = trim($_POST['tax_id'] ?? '') ?: null;
+        $maxH  = (int)($_POST['max_hours_month'] ?? 0) ?: null;
+        q("UPDATE employee SET name=?,surname=?,email=?,phone=?,tariff=?,location=?,nationality=?,status=?,notes=?,
+             partner_type=?,contract_type=?,company_name=?,company_size=?,tax_id=?,max_hours_month=?
+           WHERE emp_id=?",
+          [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['tariff']??0,$_POST['location']??'',$_POST['nationality']??'',$_POST['status'],$_POST['notes']??'',
+           $ptype,$ctype,$cname,$csize,$taxId,$maxH,$_POST['emp_id']]);
         audit('update', 'employee', $_POST['emp_id'], 'Bearbeitet');
         header("Location: /admin/employees.php?saved=1"); exit;
     }
@@ -52,9 +61,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $tab = $_GET['tab'] ?? 'active';
 $statusFilter = $tab === 'archive' ? 0 : 1;
-$employees = all("SELECT e.*, COUNT(CASE WHEN j.job_status='COMPLETED' THEN 1 END) as done, COUNT(CASE WHEN j.job_status='PENDING' AND j.j_date>=CURDATE() THEN 1 END) as pending FROM employee e LEFT JOIN jobs j ON j.emp_id_fk=e.emp_id AND j.status=1 WHERE e.status=? GROUP BY e.emp_id ORDER BY e.name", [$statusFilter]);
+$typeFilter = in_array($_GET['type'] ?? '', ['mitarbeiter','freelancer','kleinunternehmen'], true) ? $_GET['type'] : '';
+$typeSql = $typeFilter ? "AND e.partner_type=?" : '';
+$typeParams = $typeFilter ? [$typeFilter] : [];
+
+$employees = all("SELECT e.*, COUNT(CASE WHEN j.job_status='COMPLETED' THEN 1 END) as done, COUNT(CASE WHEN j.job_status='PENDING' AND j.j_date>=CURDATE() THEN 1 END) as pending
+                 FROM employee e LEFT JOIN jobs j ON j.emp_id_fk=e.emp_id AND j.status=1
+                 WHERE e.status=? $typeSql
+                 GROUP BY e.emp_id ORDER BY e.name", array_merge([$statusFilter], $typeParams));
+
 $activeCount = val("SELECT COUNT(*) FROM employee WHERE status=1");
 $archiveCount = val("SELECT COUNT(*) FROM employee WHERE status=0");
+
+// Type counts (for filter tabs)
+$typeCounts = [
+    'mitarbeiter' => (int) val("SELECT COUNT(*) FROM employee WHERE status=1 AND partner_type='mitarbeiter'"),
+    'freelancer' => (int) val("SELECT COUNT(*) FROM employee WHERE status=1 AND partner_type='freelancer'"),
+    'kleinunternehmen' => (int) val("SELECT COUNT(*) FROM employee WHERE status=1 AND partner_type='kleinunternehmen'"),
+    'unset' => (int) val("SELECT COUNT(*) FROM employee WHERE status=1 AND partner_type IS NULL"),
+];
 
 include __DIR__ . '/../includes/layout.php';
 ?>
@@ -62,7 +87,7 @@ include __DIR__ . '/../includes/layout.php';
 <?php if (!empty($_GET['saved']) || !empty($_GET['added'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">Gespeichert.</div><?php endif; ?>
 
 <!-- Tabs -->
-<div class="flex gap-1 mb-4 bg-white rounded-xl border p-1 w-fit">
+<div class="flex gap-1 mb-3 bg-white rounded-xl border p-1 w-fit">
   <a href="/admin/employees.php?tab=active" class="px-4 py-2 rounded-lg text-sm font-medium transition <?= $tab==='active' ? 'bg-brand text-white' : 'text-gray-500 hover:bg-gray-100' ?>">
     Aktive Partner <span class="ml-1 text-xs opacity-75">(<?= $activeCount ?>)</span>
   </a>
@@ -70,6 +95,29 @@ include __DIR__ . '/../includes/layout.php';
     Archiv <span class="ml-1 text-xs opacity-75">(<?= $archiveCount ?>)</span>
   </a>
 </div>
+
+<?php if ($tab === 'active'): ?>
+<!-- Type filter -->
+<div class="flex gap-2 mb-4 flex-wrap">
+  <a href="?tab=active" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= !$typeFilter ? 'bg-brand text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-brand' ?>">
+    Alle <span class="opacity-75">(<?= $activeCount ?>)</span>
+  </a>
+  <a href="?tab=active&type=mitarbeiter" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $typeFilter === 'mitarbeiter' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-500' ?>">
+    👷 Mitarbeiter <span class="opacity-75">(<?= $typeCounts['mitarbeiter'] ?>)</span>
+  </a>
+  <a href="?tab=active&type=freelancer" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $typeFilter === 'freelancer' ? 'bg-purple-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-purple-500' ?>">
+    🧑‍💼 Freelancer <span class="opacity-75">(<?= $typeCounts['freelancer'] ?>)</span>
+  </a>
+  <a href="?tab=active&type=kleinunternehmen" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition <?= $typeFilter === 'kleinunternehmen' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-indigo-500' ?>">
+    🏢 Firma <span class="opacity-75">(<?= $typeCounts['kleinunternehmen'] ?>)</span>
+  </a>
+  <?php if ($typeCounts['unset'] > 0): ?>
+  <span class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 border border-amber-200 text-amber-700">
+    ⚠️ <?= $typeCounts['unset'] ?> ohne Typ
+  </span>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
 
 <div x-data="{ editOpen:false, emp:{} }" class="bg-white rounded-xl border">
   <div class="p-5 border-b flex items-center justify-between">
@@ -88,6 +136,7 @@ include __DIR__ . '/../includes/layout.php';
       <th class="px-4 py-3 text-left font-medium text-gray-600">E-Mail</th>
       <th class="px-4 py-3 text-left font-medium text-gray-600">Telefon</th>
       <th class="px-4 py-3 text-left font-medium text-gray-600">Tarif</th>
+      <th class="px-4 py-3 text-left font-medium text-gray-600">Typ</th>
       <th class="px-4 py-3 text-left font-medium text-gray-600">Erledigt</th>
       <th class="px-4 py-3 text-left font-medium text-gray-600">Offen</th>
       <th class="px-4 py-3 text-left font-medium text-gray-600">Status</th>
@@ -113,6 +162,21 @@ include __DIR__ . '/../includes/layout.php';
       <td class="px-3 py-2">
         <input type="number" value="<?= $e2['tariff'] ?>" step="0.5" onchange="updateEmp(<?=$e2['emp_id']?>,'tariff',this.value)" class="w-20 px-2 py-1 text-sm font-medium border border-transparent rounded-lg hover:border-gray-200 focus:border-brand focus:outline-none bg-transparent text-right"/> <span class="text-xs text-gray-400">€/h</span>
       </td>
+      <td class="px-4 py-3">
+        <?php
+          $ptBadge = match($e2['partner_type'] ?? '') {
+            'mitarbeiter' => ['👷', 'bg-blue-50 text-blue-700', ucfirst($e2['contract_type'] ?? 'MA')],
+            'freelancer'  => ['🧑‍💼', 'bg-purple-50 text-purple-700', 'Freelancer'],
+            'kleinunternehmen' => ['🏢', 'bg-indigo-50 text-indigo-700', 'Firma' . (($e2['company_size'] ?? 0) ? ' ('.(int)$e2['company_size'].')' : '')],
+            default => null,
+          };
+        ?>
+        <?php if ($ptBadge): ?>
+          <span class="px-2 py-1 text-[10px] font-bold rounded <?= $ptBadge[1] ?>"><?= $ptBadge[0] ?> <?= e($ptBadge[2]) ?></span>
+        <?php else: ?>
+          <span class="text-[10px] text-gray-300">—</span>
+        <?php endif; ?>
+      </td>
       <td class="px-4 py-3"><span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700"><?= $e2['done'] ?></span></td>
       <td class="px-4 py-3"><span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700"><?= $e2['pending'] ?></span></td>
       <td class="px-4 py-2">
@@ -127,7 +191,7 @@ include __DIR__ . '/../includes/layout.php';
             <form method="POST" class="inline"><input type="hidden" name="action" value="reactivate_employee"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><?= csrfField() ?><button class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg font-medium">Aktivieren</button></form>
           <?php else: ?>
             <a href="/admin/view-employee.php?id=<?= $e2['emp_id'] ?>" class="px-2 py-1 text-xs bg-brand text-white rounded-lg">Öffnen</a>
-            <button @click='emp=<?= json_encode(["emp_id"=>$e2["emp_id"],"name"=>$e2["name"],"surname"=>$e2["surname"],"email"=>$e2["email"],"phone"=>$e2["phone"],"tariff"=>$e2["tariff"],"location"=>$e2["location"]??"","nationality"=>$e2["nationality"]??"","status"=>$e2["status"],"notes"=>$e2["notes"]??""],JSON_HEX_APOS) ?>; editOpen=true' class="px-2 py-1 text-xs bg-brand/10 text-brand rounded-lg">Edit</button>
+            <button @click='emp=<?= json_encode(["emp_id"=>$e2["emp_id"],"name"=>$e2["name"],"surname"=>$e2["surname"],"email"=>$e2["email"],"phone"=>$e2["phone"],"tariff"=>$e2["tariff"],"location"=>$e2["location"]??"","nationality"=>$e2["nationality"]??"","status"=>$e2["status"],"notes"=>$e2["notes"]??"","partner_type"=>$e2["partner_type"]??"","contract_type"=>$e2["contract_type"]??"","company_name"=>$e2["company_name"]??"","company_size"=>$e2["company_size"]??"","tax_id"=>$e2["tax_id"]??"","max_hours_month"=>$e2["max_hours_month"]??""],JSON_HEX_APOS) ?>; editOpen=true' class="px-2 py-1 text-xs bg-brand/10 text-brand rounded-lg">Edit</button>
             <form method="POST" class="inline"><input type="hidden" name="action" value="impersonate"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><input type="hidden" name="_csrf" value="<?= csrfToken() ?>"/><button class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg">Login</button></form>
             <form method="POST" class="inline" onsubmit="return confirm('Partner archivieren?')"><input type="hidden" name="action" value="delete_employee"/><input type="hidden" name="emp_id" value="<?= $e2['emp_id'] ?>"/><?= csrfField() ?><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Archiv</button></form>
           <?php endif; ?>
@@ -160,6 +224,46 @@ include __DIR__ . '/../includes/layout.php';
           </div>
           <div x-show="emp.emp_id"><label class="block text-sm font-medium text-gray-600 mb-1">Status</label>
             <select name="status" class="w-full px-3 py-2.5 border rounded-xl"><option value="1" :selected="emp.status=='1'">Aktiv</option><option value="0" :selected="emp.status=='0'">Inaktiv</option></select></div>
+
+          <!-- Partner-Typ -->
+          <div>
+            <label class="block text-sm font-medium text-gray-600 mb-2">Partner-Typ</label>
+            <div class="grid grid-cols-3 gap-2 mb-2">
+              <label class="cursor-pointer">
+                <input type="radio" name="partner_type" value="mitarbeiter" x-model="emp.partner_type" class="sr-only peer"/>
+                <div class="p-2 border-2 border-gray-200 rounded-lg text-center text-xs font-bold transition peer-checked:border-brand peer-checked:bg-brand/5">👷 Mitarbeiter</div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="partner_type" value="freelancer" x-model="emp.partner_type" class="sr-only peer"/>
+                <div class="p-2 border-2 border-gray-200 rounded-lg text-center text-xs font-bold transition peer-checked:border-brand peer-checked:bg-brand/5">🧑‍💼 Freelancer</div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="partner_type" value="kleinunternehmen" x-model="emp.partner_type" class="sr-only peer"/>
+                <div class="p-2 border-2 border-gray-200 rounded-lg text-center text-xs font-bold transition peer-checked:border-brand peer-checked:bg-brand/5">🏢 Firma</div>
+              </label>
+            </div>
+            <div x-show="emp.partner_type === 'mitarbeiter'" x-cloak class="grid grid-cols-2 gap-2">
+              <select name="contract_type" class="px-3 py-2 border rounded-xl text-sm">
+                <option value="">— Arbeitsverhältnis —</option>
+                <option value="minijob" :selected="emp.contract_type==='minijob'">Minijob</option>
+                <option value="midijob" :selected="emp.contract_type==='midijob'">Midijob</option>
+                <option value="teilzeit" :selected="emp.contract_type==='teilzeit'">Teilzeit</option>
+                <option value="vollzeit" :selected="emp.contract_type==='vollzeit'">Vollzeit</option>
+              </select>
+              <input type="number" name="max_hours_month" :value="emp.max_hours_month" placeholder="Max Std/Monat" class="px-3 py-2 border rounded-xl text-sm"/>
+            </div>
+            <div x-show="emp.partner_type === 'freelancer'" x-cloak>
+              <input type="text" name="tax_id" :value="emp.tax_id" placeholder="Steuernummer / USt-IdNr" class="w-full px-3 py-2 border rounded-xl text-sm font-mono"/>
+            </div>
+            <div x-show="emp.partner_type === 'kleinunternehmen'" x-cloak class="space-y-2">
+              <input type="text" name="company_name" :value="emp.company_name" placeholder="Firmenname" class="w-full px-3 py-2 border rounded-xl text-sm"/>
+              <div class="grid grid-cols-2 gap-2">
+                <input type="number" name="company_size" :value="emp.company_size" min="1" max="10" placeholder="MA-Anzahl (1-10)" class="px-3 py-2 border rounded-xl text-sm"/>
+                <input type="text" name="tax_id" :value="emp.tax_id" placeholder="USt-IdNr" class="px-3 py-2 border rounded-xl text-sm font-mono"/>
+              </div>
+            </div>
+          </div>
+
           <div><label class="block text-sm font-medium text-gray-600 mb-1">Notizen</label><textarea name="notes" x-text="emp.notes" rows="2" class="w-full px-3 py-2.5 border rounded-xl"></textarea></div>
           <div x-show="!emp.emp_id"><label class="block text-sm font-medium text-gray-600 mb-1">Passwort</label><input name="password" value="<?= bin2hex(random_bytes(4)) ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>
           <div class="flex gap-3"><button type="button" @click="editOpen=false" class="flex-1 px-4 py-2.5 border rounded-xl">Abbrechen</button><button type="submit" class="flex-1 px-4 py-2.5 bg-brand text-white rounded-xl font-medium">Speichern</button></div>

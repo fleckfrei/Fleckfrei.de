@@ -23,6 +23,13 @@ $s = one("SELECT
     [$filterDate, $today, "$month%", "$month%"]);
 $unpaidBrutto = round(($s['unpaid_netto'] ?? 0) * 1.19, 2);
 
+// 1% Rumänien-Hilfe — vom NETTO (price column) aller bezahlten Rechnungen
+$donationRate = 0.01;
+$donationTotalNetto = (float) val("SELECT COALESCE(SUM(price),0) FROM invoices WHERE invoice_paid='yes'");
+$donationMonthNetto = (float) val("SELECT COALESCE(SUM(price),0) FROM invoices WHERE invoice_paid='yes' AND issue_date LIKE ?", ["$month%"]);
+$donationTotal = round($donationTotalNetto * $donationRate, 2);
+$donationMonth = round($donationMonthNetto * $donationRate, 2);
+
 // Data for dropdowns
 $allEmployees = all("SELECT emp_id, name, surname FROM employee WHERE status=1 ORDER BY name");
 $allCustomers = all("SELECT customer_id, name, customer_type FROM customer WHERE status=1 ORDER BY name");
@@ -218,6 +225,30 @@ include __DIR__ . '/../includes/layout.php';
       </div>
       <div class="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
         <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 1% Rumänien-Hilfe — global tracker -->
+<div class="mb-6 rounded-2xl overflow-hidden border border-amber-200 bg-gradient-to-br from-amber-50 via-yellow-50 to-red-50">
+  <div class="p-5 flex items-center gap-4 flex-wrap">
+    <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-red-500 text-white flex items-center justify-center flex-shrink-0 shadow-lg text-3xl">🤝</div>
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2 mb-1 flex-wrap">
+        <h3 class="font-bold text-gray-900 text-lg">Rumänien-Hilfe Spenden</h3>
+        <span class="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 to-red-500 text-white text-[10px] font-bold uppercase tracking-wider">1% auto</span>
+      </div>
+      <p class="text-xs text-gray-600 mb-2">1% vom <strong>Netto</strong> jeder bezahlten Rechnung — Basis: <code class="bg-white/60 px-1 rounded"><?= money($donationTotalNetto) ?></code> Netto-Umsatz.</p>
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="bg-white/80 rounded-xl px-4 py-2 border border-amber-100">
+          <div class="text-[10px] uppercase font-semibold text-amber-700 tracking-wide">Gesamt gespendet</div>
+          <div class="font-extrabold text-xl text-gray-900"><?= money($donationTotal) ?></div>
+        </div>
+        <div class="bg-white/80 rounded-xl px-4 py-2 border border-amber-100">
+          <div class="text-[10px] uppercase font-semibold text-amber-700 tracking-wide"><?= $monthLabel ?></div>
+          <div class="font-bold text-lg text-gray-900"><?= money($donationMonth) ?></div>
+        </div>
       </div>
     </div>
   </div>

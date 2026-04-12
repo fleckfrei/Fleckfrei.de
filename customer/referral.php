@@ -16,10 +16,18 @@ if (!$refCode) {
 }
 
 $refLink = 'https://fleckfrei.de/?ref=' . $refCode;
-$shareText = "Ich nutze " . SITE . " für meine Wohnungsreinigung in Berlin — hier ist mein Einladungscode für 50% Rabatt auf deine erste Buchung: $refCode";
+$shareText = "Ich nutze " . SITE . " für meine Wohnungsreinigung in Berlin — hier ist mein Einladungscode für 50% Rabatt auf Ihre erste Buchung: $refCode";
 
 include __DIR__ . '/../includes/layout-customer.php';
 ?>
+
+<!-- Back button -->
+<div class="mb-4">
+  <a href="/customer/" class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand transition">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+    Zurück
+  </a>
+</div>
 
 <div class="mb-6">
   <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Sauber sparen — 50 % Rabatt</h1>

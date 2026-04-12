@@ -92,6 +92,14 @@ function cust_productIcon(string $product): string {
 include __DIR__ . '/../includes/layout-customer.php';
 ?>
 
+<!-- Back button -->
+<div class="mb-4">
+  <a href="/customer/" class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand transition">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+    Zurück
+  </a>
+</div>
+
 <div class="flex items-start justify-between mb-6 flex-wrap gap-4">
   <div>
     <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Live Transport</h1>

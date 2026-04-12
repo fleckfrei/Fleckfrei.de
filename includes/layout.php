@@ -141,14 +141,23 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/', 'Dashboard', 'dashboard', $iconHome, ''],
           ['/admin/jobs.php', 'Jobs Kalender', 'jobs', $iconCal, $badgePending > 0 ? $badgePending : ''],
           ['/admin/customers.php', 'Kunden', 'customers', $iconUser, ''],
+          ['/admin/leads.php', 'Leads', 'leads', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>', ''],
+          ['/admin/keys.php', 'Schlüssel', 'keys', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>', ''],
+          ['/admin/locks.php', 'Smart Locks', 'locks', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>', ''],
           ['/admin/employees.php', 'Partner', 'employees', $iconGroup, ''],
           ['/admin/services.php', 'Services', 'services', $iconBuild, ''],
+          ['/admin/checklists.php', 'Checklisten', 'checklists', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>', ''],
+          ['/admin/optional-products.php', 'Optionale Produkte', 'optional-products', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>', ''],
+          ['/admin/pricing.php', 'Preis-Strategie', 'pricing', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>', ''],
           ['/admin/invoices.php', 'Rechnungen', 'invoices', $iconInv, $badgeUnpaid > 0 ? $badgeUnpaid : ''],
           ['/admin/messages.php', 'Nachrichten', 'messages', $iconMsg, $badgeMsgs > 0 ? $badgeMsgs : ''],
+          ['/admin/whatsapp.php', 'WhatsApp', 'whatsapp', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>', ''],
           ['/admin/work-hours.php', 'Arbeitszeit', 'work-hours', $iconClock, ''],
+          ['/admin/availability.php', 'Verfügbarkeit', 'availability', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>', ''],
           ['/admin/live-map.php', 'Live-Karte', 'live-map', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>', ''],
           ['/admin/arrivals.php', 'Ankünfte Berlin', 'arrivals', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>', ''],
           ['/admin/audit.php', 'Protokoll', 'audit', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>', ''],
+          ['/admin/health.php', 'Health', 'health', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>', ''],
           ['/admin/settings.php', 'Einstellungen', 'settings', $iconCog, ''],
         ];
         // Conditional features
@@ -183,6 +192,7 @@ $user = me(); $page = $page ?? ''; ?>
         if (employeeCan('portal_jobs')) $menu[] = ['/employee/', 'Meine Jobs', 'dashboard', $iconHome, ''];
         if (employeeCan('portal_earnings')) $menu[] = ['/employee/earnings.php', 'Verdienst', 'earnings', $iconInv, ''];
         if (employeeCan('portal_messages')) $menu[] = ['/employee/messages.php', 'Nachrichten', 'messages', $iconMsg, $badgeEmpMsgs > 0 ? $badgeEmpMsgs : ''];
+        $menu[] = ['/employee/availability.php', 'Verfügbarkeit', 'availability', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>', ''];
         if (employeeCan('portal_profile')) $menu[] = ['/employee/profile.php', 'Profil', 'profile', $iconProfile, ''];
         if (empty($menu)) $menu[] = ['/employee/', 'Meine Jobs', 'dashboard', $iconHome, ''];
       } else {

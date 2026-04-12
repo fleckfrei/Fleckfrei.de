@@ -15,8 +15,21 @@ define('BRAND_DARK', '#235F53');                  // Dunklere Variante
 define('BRAND_LIGHT', '#E8F5F1');                 // Helle Variante
 define('BRAND_RGB', '46,125,107');                // RGB für opacity
 define('LOGO_LETTER', 'F');                       // Buchstabe für Logo-Icon
-define('CONTACT_PHONE', '');                       // WhatsApp/Telefon (removed)
+// Fleckfrei-Kontaktdaten (Max hat diese URLs bestätigt)
+define('CONTACT_PHONE', '');                                              // Direkter tel: Link — leer = Button versteckt
+define('CONTACT_WHATSAPP_URL', 'https://wa.me/message/OVHQQCZT7WYAH1');   // Offizieller WA Business Click-to-Chat Link
+define('CONTACT_WHATSAPP', 'message/OVHQQCZT7WYAH1');                    // Für wa.me/ Prefix Compatibility
+define('CONTACT_TELEGRAM', '@fleckfrei_bot');                             // Telegram bot username
 define('CONTACT_EMAIL', 'info@fleckfrei.de');
+
+// Nuki Smart Lock API Credentials
+// Registriert bei https://web.nuki.io/de/#/admin/web-api
+// Redirect URI muss dort gesetzt sein: https://app.fleckfrei.de/api/nuki-callback.php
+define('NUKI_CLIENT_ID', '');                                             // TODO Max: Client ID von web.nuki.io eintragen (UUID)
+define('NUKI_CLIENT_SECRET', '***REDACTED***');
+define('NUKI_REDIRECT_URI', 'https://app.fleckfrei.de/api/nuki-callback.php');
+define('NUKI_SCOPE', 'account notification smartlock smartlock.readOnly smartlock.action smartlock.auth');
+define('NUKI_API_BASE', 'https://api.nuki.io');
 define('CONTACT_WA', '');                          // Ohne + (removed)
 define('CURRENCY', '€');
 define('CURRENCY_POS', 'after');                   // 'before' ($100) oder 'after' (100 €)
@@ -200,6 +213,10 @@ function all($sql, $p=[]) { return q($sql,$p)->fetchAll(); }
 function one($sql, $p=[]) { return q($sql,$p)->fetch(); }
 function val($sql, $p=[]) { return q($sql,$p)->fetchColumn(); }
 
+// Global helpers for last inserted ID — matches PDO::lastInsertId()
+function lastInsertId() { global $db; return $db->lastInsertId(); }
+function lastInsertIdLocal() { global $dbLocal; return $dbLocal->lastInsertId(); }
+
 function qLocal($sql, $p=[]) {
     global $dbLocal;
     try {
@@ -246,6 +263,35 @@ function badge($status) {
     $labels = ['PENDING'=>'Offen','CONFIRMED'=>'Bestätigt','RUNNING'=>'Laufend','STARTED'=>'Gestartet','COMPLETED'=>'Erledigt','CANCELLED'=>'Storniert'];
     $label = $labels[$status] ?? $status;
     return "<span class=\"px-2 py-1 text-xs font-medium rounded-full bg-{$col}-100 text-{$col}-800\">$label</span>";
+}
+
+// ============================================================
+// PRIVACY: Partner display for customer-facing views
+// ============================================================
+// Customers must NEVER see a partner's real name or private photo.
+// Partner decides in /employee/profile.php what display_name + avatar
+// the customer sees. Until they set one, show generic fallback.
+// Always use these helpers in /customer/* pages.
+function partnerDisplayName(?array $row): string {
+    if (!$row || empty($row['ename']) && empty($row['display_name']) && empty($row['name'])) {
+        return 'Ihr Partner';
+    }
+    $display = trim($row['edisplay'] ?? $row['display_name'] ?? '');
+    if ($display !== '') return $display;
+    return 'Ihr Partner';
+}
+function partnerAvatarUrl(?array $row): ?string {
+    if (!$row) return null;
+    $pic = $row['eavatar'] ?? $row['avatar'] ?? '';
+    if ($pic && !str_starts_with($pic, '/') && !str_starts_with($pic, 'http')) {
+        $pic = '/uploads/' . ltrim($pic, '/');
+    }
+    return $pic ?: null;
+}
+function partnerInitial(?array $row): string {
+    $name = partnerDisplayName($row);
+    if ($name === 'Ihr Partner') return 'P';
+    return strtoupper(mb_substr($name, 0, 1));
 }
 require_once __DIR__ . '/lang.php';
 

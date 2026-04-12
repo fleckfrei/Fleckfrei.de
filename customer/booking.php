@@ -8,29 +8,109 @@ $user = me();
 
 $customer = one("SELECT * FROM customer WHERE customer_id=?", [$cid]);
 $isAirbnb = in_array($customer['customer_type'] ?? '', ['Airbnb', 'Booking', 'Short-Term Rental', 'Company', 'Host']);
+$customerTypeKey = match(true) {
+    in_array($customer['customer_type'] ?? '', ['Airbnb', 'Booking', 'Short-Term Rental', 'Host']) => 'airbnb',
+    in_array($customer['customer_type'] ?? '', ['B2B', 'Company', 'GmbH', 'Business']) => 'business',
+    default => 'private',
+};
+
+// Pricing config for this customer type
+try {
+    $pricingCfg = one("SELECT * FROM pricing_config WHERE customer_type = ? LIMIT 1", [$customerTypeKey]);
+    if (!$pricingCfg) $pricingCfg = one("SELECT * FROM pricing_config WHERE customer_type = 'all' LIMIT 1");
+} catch (Exception $e) { $pricingCfg = null; }
+$lastMinutePct = (float)($pricingCfg['last_minute_discount_pct'] ?? 0);
+$lastMinuteHours = (int)($pricingCfg['last_minute_threshold_hours'] ?? 24);
+$defaultStart = $pricingCfg['default_window_start'] ?? '11:00:00';
+$defaultEnd = $pricingCfg['default_window_end'] ?? '16:00:00';
 
 try { $addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC", [$cid]); } catch (Exception $e) { $addresses = []; }
 
-// Customer-own services first, fall back to shared catalog
-$services = all("SELECT s_id, title, total_price FROM services WHERE customer_id_fk=? AND status=1 ORDER BY title", [$cid]);
+// Customer-own services first (full data so we can pre-fill address/codes/etc.), fall back to shared catalog
+$services = all("SELECT s_id, title, total_price, max_guests, street, number, postal_code, city, box_code, client_code, deposit_code, doorbell_name FROM services WHERE customer_id_fk=? AND status=1 ORDER BY title", [$cid]);
 if (empty($services)) {
-    $services = all("SELECT s_id, title, total_price FROM services WHERE (customer_id_fk IS NULL OR customer_id_fk=0) AND status=1 ORDER BY title");
+    $services = all("SELECT s_id, title, total_price, max_guests, street, number, postal_code, city FROM services WHERE (customer_id_fk IS NULL OR customer_id_fk=0) AND status=1 ORDER BY title");
+}
+$servicesMap = [];
+foreach ($services as $s) {
+    $addr = trim(trim(($s['street'] ?? '') . ' ' . ($s['number'] ?? '')) . ', ' . trim(($s['postal_code'] ?? '') . ' ' . ($s['city'] ?? '')), ', ');
+    $servicesMap[$s['s_id']] = [
+        'max_guests' => (int)($s['max_guests'] ?? 0),
+        'price' => (float)($s['total_price'] ?? 0),
+        'address' => $addr,
+        'box_code' => $s['box_code'] ?? '',
+    ];
+}
+
+// Prefill via URL: ?service_id=X&date=Y&hours=Z
+$prefillServiceId = (int)($_GET['service_id'] ?? 0);
+$prefillDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['date'] ?? '') ? $_GET['date'] : '';
+$prefillHours = (int)($_GET['hours'] ?? 0);
+
+// Compute smart defaults from last completed job on the same service
+$lastJobDefaults = null;
+if ($prefillServiceId) {
+    $lastJobDefaults = one("
+        SELECT j_time, j_hours, total_hours, no_people
+        FROM jobs
+        WHERE customer_id_fk=? AND s_id_fk=? AND status=1 AND job_status='COMPLETED'
+        ORDER BY j_date DESC LIMIT 1
+    ", [$cid, $prefillServiceId]);
+}
+// Also: last job across ALL services → fallback
+if (!$lastJobDefaults) {
+    $lastJobDefaults = one("
+        SELECT j_time, j_hours, total_hours, no_people
+        FROM jobs
+        WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED'
+        ORDER BY j_date DESC LIMIT 1
+    ", [$cid]);
 }
 
 include __DIR__ . '/../includes/layout-customer.php';
 ?>
+
+<!-- Back button -->
+<div class="mb-4">
+  <a href="<?= e($_SERVER['HTTP_REFERER'] ?? '/customer/calendar.php') ?>" class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand transition">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+    Zurück
+  </a>
+</div>
 
 <div class="mb-6">
   <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Neue Buchung</h1>
   <p class="text-gray-500 mt-1 text-sm"><?= $isAirbnb ? 'Turnover-Service für Ihre Unterkunft' : 'Reinigungstermin buchen — Sie sehen den Preis live' ?></p>
 </div>
 
-<div x-data="bookingForm()" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+<?php if ($prefillServiceId || $lastJobDefaults): ?>
+<div class="mb-5 p-3 rounded-xl bg-brand-light border border-brand/20 flex items-center gap-3 text-sm">
+  <svg class="w-5 h-5 text-brand flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+  <div class="flex-1">
+    <div class="font-bold text-brand-dark">Daten automatisch übernommen</div>
+    <div class="text-xs text-gray-600">Service, Adresse, Zugangscode, Dauer und gewohnte Uhrzeit aus Ihrem letzten Termin. Bitte nur noch Datum und ggf. Gästezahl bestätigen.</div>
+  </div>
+</div>
+<?php endif; ?>
+
+<div x-data="bookingForm()" x-init="init()" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
   <!-- ============ MAIN FORM (left, 2 cols) ============ -->
   <div class="lg:col-span-2 space-y-6" x-show="!submitted">
 
-    <!-- 1. Häufigkeit -->
+    <?php if ($isAirbnb): ?>
+    <!-- Stammkunden-Banner statt Frequency-Auswahl -->
+    <div class="card-elev p-5 bg-gradient-to-br from-brand/5 to-transparent border-brand/30">
+      <div class="flex items-start gap-3">
+        <div class="w-10 h-10 rounded-full bg-brand text-white flex items-center justify-center text-lg flex-shrink-0">⭐</div>
+        <div class="flex-1 min-w-0">
+          <h2 class="font-bold text-gray-900">Stammkunde — Sonder-Konditionen aktiv</h2>
+          <p class="text-xs text-gray-600 mt-0.5">Als <strong><?= e($customer['customer_type']) ?>-Kunde</strong> erhalten Sie automatisch Ihre individuellen Preise. Häufigkeitsrabatte sind bereits in Ihrem Tarif enthalten.</p>
+        </div>
+      </div>
+    </div>
+    <?php else: ?>
+    <!-- 1. Häufigkeit (nur für Privatkunden) -->
     <div class="card-elev p-6">
       <h2 class="font-bold text-lg mb-1">1. Wie oft soll gereinigt werden?</h2>
       <p class="text-xs text-gray-500 mb-5">Regelmäßige Termine werden günstiger.</p>
@@ -47,6 +127,7 @@ include __DIR__ . '/../includes/layout-customer.php';
         </template>
       </div>
     </div>
+    <?php endif; ?>
 
     <!-- 2. Service + Details -->
     <div class="card-elev p-6">
@@ -75,6 +156,19 @@ include __DIR__ . '/../includes/layout-customer.php';
               <option value="8">8 Stunden (Ganztag)</option>
             </select>
           </div>
+          <?php if ($isAirbnb): ?>
+          <!-- Host: Anzahl Gäste (basiert auf service.max_guests) -->
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Anzahl Gäste</label>
+            <select x-model="form.no_people" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none">
+              <template x-for="i in (currentMaxGuests || 6)" :key="i">
+                <option :value="i" x-text="i + (i === 1 ? ' Gast' : ' Gäste')"></option>
+              </template>
+            </select>
+            <p x-show="currentMaxGuests" class="text-[10px] text-gray-400 mt-0.5">max. <span x-text="currentMaxGuests"></span> laut Unterkunft</p>
+          </div>
+          <?php else: ?>
+          <!-- Private: Anzahl Reinigungskräfte -->
           <div>
             <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Anzahl Reinigungskräfte</label>
             <select x-model="form.no_people" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none">
@@ -83,6 +177,7 @@ include __DIR__ . '/../includes/layout-customer.php';
               <option value="3">3 Personen</option>
             </select>
           </div>
+          <?php endif; ?>
         </div>
 
         <div class="grid grid-cols-2 gap-4">
@@ -286,6 +381,12 @@ include __DIR__ . '/../includes/layout-customer.php';
           <span class="text-brand">Rabatt (<span x-text="frequencyLabel()"></span>)</span>
           <span class="text-brand">−<span x-text="formatMoney(discount)"></span></span>
         </div>
+        <!-- Last-minute discount badge -->
+        <div x-show="isLastMinute" x-cloak class="flex justify-between p-2 bg-amber-50 border border-amber-200 rounded-lg -mx-1">
+          <span class="text-amber-700 font-semibold text-xs">⏰ Last-Minute-Rabatt (<span x-text="lastMinutePct"></span>%)</span>
+          <span class="text-amber-700 font-bold">−<span x-text="formatMoney(lastMinuteDiscount)"></span></span>
+        </div>
+        <p x-show="isLastMinute" x-cloak class="text-[10px] text-amber-600 -mt-2 px-1">💡 Sie sparen weil Sie kurzfristig gebucht haben — wir füllen freie Kapazität!</p>
         <div class="flex justify-between text-base font-bold pt-2 border-t">
           <span class="text-gray-900">Geschätzter Preis</span>
           <span class="text-brand" x-text="formatMoney(total)"></span>
@@ -337,12 +438,13 @@ function bookingForm() {
         ];
     }, $addresses), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>,
     form: {
-      service: '',
-      hours: '3',
-      no_people: '1',
+      service: <?= json_encode((string)$prefillServiceId ?: '') ?>,
+      hours: <?= json_encode((string)($prefillHours ?: (int)($lastJobDefaults['total_hours'] ?? $lastJobDefaults['j_hours'] ?? 3))) ?>,
+      no_people: <?= json_encode((string)($lastJobDefaults['no_people'] ?? '1')) ?>,
       frequency: 'einmalig',
-      date: '',
-      time: '10:00',
+      date: <?= json_encode($prefillDate) ?>,
+      time: <?= json_encode(substr($lastJobDefaults['j_time'] ?? $defaultStart, 0, 5)) ?>,
+      time_end: '<?= substr($defaultEnd, 0, 5) ?>',
       address: <?= json_encode($addresses[0] ?? null ? trim($addresses[0]['street'].' '.$addresses[0]['number'].', '.$addresses[0]['postal_code'].' '.$addresses[0]['city']) : '', JSON_UNESCAPED_UNICODE) ?>,
       door_code: '',
       notes: '',
@@ -352,6 +454,28 @@ function bookingForm() {
       guest_checkout_date: '',
       check_in_date: '',
       booking_platform: 'airbnb',
+    },
+
+    init() {
+      // If a service is pre-selected, auto-fill its address + door code
+      if (this.form.service) {
+        this.$nextTick(() => this.applyServiceDefaults());
+      }
+      // Watch service changes → auto-fill from service record
+      this.$watch('form.service', () => this.applyServiceDefaults());
+    },
+
+    applyServiceDefaults() {
+      const sid = this.form.service;
+      if (!sid || !this.servicesMap[sid]) return;
+      const svc = this.servicesMap[sid];
+      // Only overwrite if empty — don't clobber user edits
+      if (svc.address && (!this.form.address || this.form.address === '')) {
+        this.form.address = svc.address;
+      }
+      if (svc.box_code && !this.form.door_code) {
+        this.form.door_code = svc.box_code;
+      }
     },
     showNewAddr: <?= empty($addresses) ? 'true' : 'false' ?>,
     newAddr: { street: '', number: '', postal_code: '', city: '', address_for: 'Wohnung' },
@@ -367,16 +491,34 @@ function bookingForm() {
     submitted: false,
     error: null,
     result: null,
+    servicesMap: <?= json_encode($servicesMap, JSON_UNESCAPED_UNICODE) ?>,
     get basePrice() {
       const opt = document.querySelector(`option[value="${this.form.service}"]`);
       return opt ? parseFloat(opt.dataset.price || 0) : 0;
+    },
+    get currentMaxGuests() {
+      if (!this.form.service) return 0;
+      return (this.servicesMap[this.form.service]?.max_guests) || 0;
     },
     get discount() {
       const rates = { woechentlich: 0.07, '2wochen': 0.05, monatlich: 0.03, einmalig: 0 };
       return this.basePrice * parseInt(this.form.hours) * (rates[this.form.frequency] || 0);
     },
+    // Last-minute discount: cheaper if booking within threshold (idle slot fill)
+    lastMinutePct: <?= $lastMinutePct ?>,
+    lastMinuteHours: <?= $lastMinuteHours ?>,
+    get isLastMinute() {
+      if (!this.form.date || !this.form.time || this.lastMinutePct <= 0) return false;
+      const target = new Date(this.form.date + 'T' + this.form.time);
+      const hoursDiff = (target - new Date()) / 3600000;
+      return hoursDiff > 0 && hoursDiff <= this.lastMinuteHours;
+    },
+    get lastMinuteDiscount() {
+      if (!this.isLastMinute) return 0;
+      return (this.basePrice * parseInt(this.form.hours)) * (this.lastMinutePct / 100);
+    },
     get total() {
-      return Math.max(0, this.basePrice * parseInt(this.form.hours) - this.discount);
+      return Math.max(0, this.basePrice * parseInt(this.form.hours) - this.discount - this.lastMinuteDiscount);
     },
     frequencyLabel() {
       return this.frequencies.find(f => f.value === this.form.frequency)?.label || '—';

@@ -56,7 +56,7 @@ function customerCan($perm) {
     if ($perms === null) {
         $raw = val("SELECT email_permissions FROM customer WHERE customer_id=?", [$cid]);
         $perms = json_decode($raw ?: '{}', true);
-        if (!is_array($perms)) $perms = ($raw === 'all' || $raw === '') ? ['dashboard'=>1,'jobs'=>1,'invoices'=>1,'workhours'=>1,'profile'=>1,'booking'=>1,'documents'=>1,'messages'=>1,'cancel'=>0,'recurring'=>0] : [];
+        if (!is_array($perms)) $perms = ($raw === 'all' || $raw === '') ? ['dashboard'=>1,'jobs'=>1,'invoices'=>1,'workhours'=>1,'profile'=>1,'booking'=>1,'documents'=>1,'messages'=>1,'cancel'=>1,'recurring'=>0,'rate'=>1,'calendar'=>1,'wh_umsatz'=>1,'wh_fotos'=>1] : [];
     }
     return !empty($perms[$perm]);
 }

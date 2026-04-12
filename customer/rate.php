@@ -12,7 +12,7 @@ $submitted = false;
 $error = '';
 
 // Validate token (simple hash of job_id + customer_id + date)
-$job = $jid ? one("SELECT j.*, e.name as ename, e.surname as esurname, c.name as cname, c.customer_id as cid, s.title as stitle
+$job = $jid ? one("SELECT j.*, e.display_name as edisplay, e.profile_pic as eavatar, c.name as cname, c.customer_id as cid, s.title as stitle
     FROM jobs j LEFT JOIN employee e ON j.emp_id_fk=e.emp_id LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
     LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.j_id=? AND j.job_status='COMPLETED'", [$jid]) : null;
 
@@ -25,12 +25,39 @@ if (!$job || $token !== $expectedToken) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $job && !$error) {
     $stars = max(1, min(5, (int)($_POST['stars'] ?? 5)));
     $comment = trim(htmlspecialchars($_POST['comment'] ?? '', ENT_QUOTES, 'UTF-8'));
-    $ch = curl_init('https://app.' . SITE_DOMAIN . '/api/index.php?action=ratings/submit');
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_POST=>1, CURLOPT_TIMEOUT=>10,
-        CURLOPT_POSTFIELDS=>json_encode(['j_id'=>$jid, 'stars'=>$stars, 'comment'=>$comment]),
-        CURLOPT_HTTPHEADER=>['Content-Type: application/json', 'X-API-Key: '.API_KEY]]);
-    $result = curl_exec($ch); curl_close($ch);
-    $submitted = true;
+
+    // Photo upload (optional)
+    $photoPath = null;
+    if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
+        $tmp = $_FILES['photo']['tmp_name'];
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($tmp);
+        $allowedMimes = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp','image/heic'=>'heic'];
+        if (isset($allowedMimes[$mime]) && $_FILES['photo']['size'] < 10*1024*1024) {
+            $dir = __DIR__ . '/../uploads/ratings/';
+            if (!is_dir($dir)) @mkdir($dir, 0755, true);
+            $fname = 'r' . $jid . '_' . bin2hex(random_bytes(6)) . '.' . $allowedMimes[$mime];
+            if (move_uploaded_file($tmp, $dir . $fname)) {
+                $photoPath = '/uploads/ratings/' . $fname;
+            }
+        }
+    }
+
+    // Direct MySQL upsert — use the canonical table
+    try {
+        q("INSERT INTO job_ratings (j_id_fk, customer_id_fk, emp_id_fk, stars, comment, photo)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE stars=VALUES(stars), comment=VALUES(comment), photo=COALESCE(VALUES(photo), photo)",
+          [$jid, (int)$job['customer_id_fk'], (int)$job['emp_id_fk'], $stars, $comment, $photoPath]);
+    } catch (Exception $e) {
+        $error = 'Fehler beim Speichern: ' . $e->getMessage();
+    }
+
+    if (function_exists('telegramNotify') && !$error) {
+        $starEmoji = str_repeat('⭐', $stars);
+        telegramNotify("⭐ <b>Neue Bewertung</b>\n\n👤 " . e($job['cname']) . " → 👷 " . e(partnerDisplayName($job)) . "\n{$starEmoji} ({$stars}/5)" . ($comment ? "\n💬 " . e($comment) : '') . ($photoPath ? "\n📸 Foto hochgeladen" : ''));
+    }
+    $submitted = !$error;
 }
 ?>
 <!DOCTYPE html>
@@ -54,8 +81,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $job && !$error) {
     <?php elseif ($submitted): ?>
     <div class="text-center">
       <div class="text-4xl mb-4">&#11088;</div>
-      <h2 class="text-xl font-bold mb-2">Danke fuer deine Bewertung!</h2>
-      <p class="text-gray-500">Dein Feedback hilft uns besser zu werden.</p>
+      <h2 class="text-xl font-bold mb-2">Vielen Dank für Ihre Bewertung!</h2>
+      <p class="text-gray-500">Ihr Feedback hilft uns besser zu werden.</p>
     </div>
     <?php else: ?>
     <div class="text-center mb-6">
@@ -64,16 +91,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $job && !$error) {
       </div>
       <h2 class="text-xl font-bold">Wie war der Service?</h2>
       <p class="text-gray-500 text-sm mt-1"><?= e($job['stitle']) ?> am <?= date('d.m.Y', strtotime($job['j_date'])) ?></p>
-      <p class="text-gray-400 text-xs">Partner: <?= e($job['ename'] . ' ' . ($job['esurname'] ?? '')) ?></p>
+      <p class="text-gray-400 text-xs">Partner: <?= e(partnerDisplayName($job)) ?></p>
     </div>
-    <form method="POST">
-      <div class="flex justify-center gap-3 mb-6" x-data="{stars:5}">
+    <form method="POST" enctype="multipart/form-data">
+      <div class="flex justify-center gap-3 mb-6">
         <?php for ($i=1; $i<=5; $i++): ?>
         <label class="star text-3xl text-gray-300" onclick="this.parentNode.querySelectorAll('.star').forEach((s,j)=>{s.classList.toggle('active',j<<?= $i ?>);s.style.color=j<<?= $i ?>?'#f59e0b':'#d1d5db'});document.getElementById('starsInput').value=<?= $i ?>">&#9733;</label>
         <?php endfor; ?>
         <input type="hidden" name="stars" id="starsInput" value="5"/>
       </div>
-      <textarea name="comment" rows="3" placeholder="Dein Feedback (optional)..." class="w-full px-4 py-3 border rounded-xl mb-4 text-sm"></textarea>
+
+      <textarea name="comment" rows="3" placeholder="Ihr Feedback (optional)..." class="w-full px-4 py-3 border rounded-xl mb-3 text-sm focus:border-brand outline-none"></textarea>
+
+      <!-- Photo upload -->
+      <div class="mb-4">
+        <label class="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">📸 Foto anhängen (optional)</label>
+        <div class="flex items-center gap-3">
+          <label class="flex-1 cursor-pointer">
+            <input type="file" name="photo" accept="image/*" capture="environment" class="hidden" id="ratePhoto" onchange="document.getElementById('ratePhotoLabel').textContent = this.files[0] ? this.files[0].name : 'Kein Foto'"/>
+            <div class="px-3 py-2 border-2 border-dashed border-gray-200 rounded-xl text-center text-xs text-gray-500 hover:border-brand hover:bg-brand/5 transition">
+              <span id="ratePhotoLabel">Foto auswählen</span>
+            </div>
+          </label>
+        </div>
+        <p class="text-[10px] text-gray-400 mt-1">z.B. Bereich der nicht richtig gereinigt wurde, oder ein besonders gutes Ergebnis.</p>
+      </div>
+
       <button type="submit" class="w-full py-3 bg-brand text-white rounded-xl font-bold text-lg hover:opacity-90">Bewertung abgeben</button>
     </form>
     <?php endif; ?>
