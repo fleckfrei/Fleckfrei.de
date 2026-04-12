@@ -787,6 +787,16 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
           </div>
         </template>
 
+        <!-- BOOKING BUTTON — always visible at bottom -->
+        <div class="mt-4 pt-4 border-t border-gray-100">
+          <a :href="'/customer/booking.php?date=' + (selectedDateIso || '')"
+             class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-brand hover:bg-brand-dark text-white rounded-xl font-bold text-sm transition shadow-lg shadow-brand/20">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span x-text="selected?.length > 0 ? 'Weitere Reinigung buchen' : 'Reinigung buchen'"></span>
+          </a>
+          <p class="text-[10px] text-gray-400 text-center mt-2" x-text="'Datum ' + selectedDate + ' wird automatisch vorausgefüllt'"></p>
+        </div>
+
       </div>
     </div>
   </div>
