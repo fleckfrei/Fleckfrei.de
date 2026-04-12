@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$tab = $_GET['tab'] ?? 'active';
+$tab = in_array($_GET['tab'] ?? '', ['active', 'archive'], true) ? $_GET['tab'] : 'active';
 $statusFilter = $tab === 'archive' ? 0 : 1;
 $customers = all("SELECT c.*, COUNT(j.j_id) as jobs, (SELECT COUNT(*) FROM invoices i WHERE i.customer_id_fk=c.customer_id AND i.invoice_paid='no') as unpaid FROM customer c LEFT JOIN jobs j ON j.customer_id_fk=c.customer_id WHERE c.status=? GROUP BY c.customer_id ORDER BY c.name", [$statusFilter]);
 $activeCount = val("SELECT COUNT(*) FROM customer WHERE status=1");

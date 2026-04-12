@@ -5,12 +5,17 @@
  * Returns { success, amount, invoice_paid }
  */
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, X-API-Key');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
-require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/auth.php';
+// Require authenticated session
+$uid = (int)($_SESSION['uid'] ?? 0);
+$utype = $_SESSION['utype'] ?? '';
+if (!$uid || !in_array($utype, ['admin', 'customer'], true)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Not authenticated']);
+    exit;
+}
 
 if (!FEATURE_PAYPAL) {
     http_response_code(503);

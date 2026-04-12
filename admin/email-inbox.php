@@ -159,7 +159,7 @@ function syncEmails(): int {
 $accounts = [];
 try { $accounts = $dbLocal->query("SELECT * FROM email_accounts ORDER BY created_at")->fetchAll(PDO::FETCH_ASSOC); } catch (Exception $e) {}
 
-$filter = $_GET['filter'] ?? 'all';
+$filter = in_array($_GET['filter'] ?? '', ['all', 'unread', 'starred', 'sent'], true) ? $_GET['filter'] : 'all';
 $filterSql = match($filter) {
     'unread' => "AND e.is_read=0",
     'customer' => "AND e.category='customer'",
