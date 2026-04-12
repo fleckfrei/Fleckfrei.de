@@ -250,12 +250,16 @@ function money($n) {
 }
 function audit($action, $entity, $entityId, $details='') {
     if (!FEATURE_AUDIT) return;
+    $user = $_SESSION['uname'] ?? 'API';
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
     try {
-        $user = $_SESSION['uname'] ?? 'API';
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
         qLocal("INSERT INTO audit_log (user_name,action,entity,entity_id,details,ip) VALUES (?,?,?,?,?,?)",
           [$user, $action, $entity, $entityId, $details, $ip]);
     } catch (Exception $e) {}
+    // Shadow log critical operations as flat file backup
+    if (in_array($entity, ['jobs','invoices','customer','employee','services','payments'], true)) {
+        shadow_log($entity, $action, ['id' => $entityId, 'user' => $user, 'ip' => $ip, 'details' => $details]);
+    }
 }
 function badge($status) {
     $c = ['PENDING'=>'yellow','CONFIRMED'=>'blue','RUNNING'=>'indigo','STARTED'=>'indigo','COMPLETED'=>'green','CANCELLED'=>'red'];
@@ -310,9 +314,58 @@ function webhookNotify($event, $data) {
         default => null
     };
     if (!$url) return;
-    @file_get_contents($url, false, stream_context_create([
-        'http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n", 'content'=>json_encode($data), 'timeout'=>3]
+    $payload = json_encode($data);
+    $resp = @file_get_contents($url, false, stream_context_create([
+        'http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n", 'content'=>$payload, 'timeout'=>5]
     ]));
+    // If webhook failed, queue for retry
+    if ($resp === false) {
+        webhook_queue($url, $payload, "event:{$event}");
+    }
+}
+
+/**
+ * Queue a failed webhook for retry (exponential backoff, max 5 attempts)
+ */
+function webhook_queue(string $url, string $payload, string $context = '') {
+    try {
+        q("INSERT INTO failed_webhooks (url, payload, context, next_retry_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 60 SECOND))",
+          [$url, $payload, $context]);
+    } catch (Exception $e) {
+        // Table doesn't exist yet — create it
+        try {
+            q("CREATE TABLE IF NOT EXISTS failed_webhooks (
+                fw_id INT AUTO_INCREMENT PRIMARY KEY, url VARCHAR(500), payload LONGTEXT, context VARCHAR(255),
+                http_code INT DEFAULT 0, error_msg TEXT, attempts TINYINT DEFAULT 0, max_attempts TINYINT DEFAULT 5,
+                status ENUM('pending','success','failed','abandoned') DEFAULT 'pending',
+                next_retry_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_status (status, next_retry_at))");
+            q("INSERT INTO failed_webhooks (url, payload, context, next_retry_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 60 SECOND))",
+              [$url, $payload, $context]);
+        } catch (Exception $e2) { /* silent */ }
+    }
+}
+
+/**
+ * Shadow Log — write critical operations to flat file as backup
+ * If DB crashes, these logs can reconstruct lost data.
+ * Format: TSV (tab-separated), one line per operation.
+ */
+function shadow_log(string $table, string $action, array $data) {
+    static $dir = null;
+    if ($dir === null) {
+        $dir = '/home/u860899303/backups/shadow_log/';
+        if (!is_dir($dir)) @mkdir($dir, 0700, true);
+    }
+    $file = $dir . date('Y-m-d') . '.tsv';
+    $line = implode("\t", [
+        date('Y-m-d H:i:s'),
+        $table,
+        $action,
+        json_encode($data, JSON_UNESCAPED_UNICODE),
+    ]) . "\n";
+    @file_put_contents($file, $line, FILE_APPEND | LOCK_EX);
 }
 
 require_once __DIR__ . '/schema.php';
