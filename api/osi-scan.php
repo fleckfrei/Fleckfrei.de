@@ -428,12 +428,27 @@ if ($searchName && strlen($searchName) > 2) {
             if ($item['severity'] === 'high') $highCount++;
         }
     }
+    // Track which sources were actually checked
+    $checkedSources = [];
+    foreach ($financeQueries as $type => $fq) {
+        $checkedSources[] = match($type) {
+            'insolvenz' => 'Insolvenzbekanntmachungen.de',
+            'vollstreckung' => 'Vollstreckungsportal / Google',
+            'handelsregister' => 'Northdata / Handelsregister / Unternehmensregister',
+            'schufa' => 'Google (Schufa/Inkasso/Mahnung Erwähnungen)',
+            'betrug' => 'Google (Betrug/Scam/Warnung)',
+        };
+    }
+
     $db_result['finance']['bonitaet_score'] = match(true) {
-        $criticalCount > 0 => ['level' => 'KRITISCH', 'color' => 'red', 'text' => 'Insolvenz/Vollstreckung gefunden'],
-        $highCount > 0 => ['level' => 'WARNUNG', 'color' => 'amber', 'text' => 'Negative Einträge gefunden'],
-        $totalFinance > 0 => ['level' => 'NEUTRAL', 'color' => 'gray', 'text' => 'Einige Erwähnungen, keine Risiken'],
-        default => ['level' => 'SAUBER', 'color' => 'green', 'text' => 'Keine negativen Einträge gefunden'],
+        $criticalCount > 0 => ['level' => 'KRITISCH', 'color' => 'red', 'text' => 'Insolvenz/Vollstreckung gefunden — SOFORT PRÜFEN'],
+        $highCount > 0 => ['level' => 'WARNUNG', 'color' => 'amber', 'text' => 'Negative Einträge in öffentlichen Quellen gefunden'],
+        $totalFinance > 0 => ['level' => 'NEUTRAL', 'color' => 'gray', 'text' => 'Erwähnungen gefunden, keine direkten Risiken'],
+        default => ['level' => 'KEINE TREFFER', 'color' => 'green', 'text' => 'In öffentlichen Online-Quellen nichts Negatives gefunden'],
     };
+    $db_result['finance']['checked_sources'] = $checkedSources;
+    $db_result['finance']['disclaimer'] = 'Automatische Suche in öffentlichen Quellen. KEIN Ersatz für eine echte Schufa-Auskunft oder Bonitätsprüfung. Zeigt nur was öffentlich im Internet auffindbar ist.';
+    $db_result['finance']['searched_name'] = $searchName;
 }
 
 // 1T. OPENCORPORATES — free company API (200 requests/day)

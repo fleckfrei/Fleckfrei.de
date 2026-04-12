@@ -389,6 +389,18 @@ include __DIR__ . '/../includes/layout.php';
           <span class="px-2 py-0.5 rounded text-[10px] font-bold" :class="'bg-'+result?.db?.finance?.bonitaet_score?.color+'-200 text-'+result?.db?.finance?.bonitaet_score?.color+'-800'" x-text="result?.db?.finance?.bonitaet_score?.level"></span>
         </div>
         <div class="text-xs text-gray-600" x-text="result?.db?.finance?.bonitaet_score?.text"></div>
+        <div class="text-[9px] text-gray-400 mt-1" x-text="'Gesucht: \"' + (result?.db?.finance?.searched_name || '?') + '\"'"></div>
+
+        <!-- Geprüfte Quellen -->
+        <details class="mt-2">
+          <summary class="text-[9px] text-gray-400 cursor-pointer hover:text-gray-600">Geprüfte Quellen anzeigen</summary>
+          <div class="mt-1 space-y-0.5">
+            <template x-for="src in (result?.db?.finance?.checked_sources || [])" :key="src">
+              <div class="text-[9px] text-gray-500 flex items-center gap-1"><span class="text-green-500">✓</span><span x-text="src"></span></div>
+            </template>
+          </div>
+          <div class="mt-2 text-[8px] text-gray-400 italic" x-text="result?.db?.finance?.disclaimer"></div>
+        </details>
 
         <!-- Insolvenz -->
         <template x-if="result?.db?.finance?.insolvenz?.length > 0">
