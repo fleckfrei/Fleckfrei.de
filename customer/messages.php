@@ -240,9 +240,9 @@ include __DIR__ . '/../includes/layout-customer.php';
             </template>
 
             <!-- Translation -->
-            <template x-if="m.translated && !m.mine">
-              <div class="px-3 pb-2 text-[11px] text-gray-500 italic border-t border-gray-100 pt-1.5">
-                🌐 <span x-text="m.translated"></span>
+            <template x-if="m.translated">
+              <div class="px-3 pb-2 text-[11px] italic border-t border-gray-100 pt-1.5" :class="m.mine ? 'text-green-700/60' : 'text-gray-500'">
+                🌐 <span x-text="m.mine ? 'Übersetzt: ' + m.translated : m.translated"></span>
               </div>
             </template>
 
@@ -371,7 +371,7 @@ function chatApp() {
       this.sending = true;
       const fd = new FormData();
       fd.append('action', 'send');
-      fd.append('_token', '<?= $_SESSION['csrf'] ?? '' ?>');
+      fd.append('_csrf', '<?= csrfToken() ?>');
       fd.append('message', this.draftText);
       for (const f of this.selectedFiles) fd.append('attachments[]', f.file);
 

@@ -24,6 +24,26 @@ $lastMinuteHours = (int)($pricingCfg['last_minute_threshold_hours'] ?? 24);
 $defaultStart = $pricingCfg['default_window_start'] ?? '11:00:00';
 $defaultEnd = $pricingCfg['default_window_end'] ?? '16:00:00';
 
+// Dynamic pricing features
+$floorPrice = 45.0; // Minimum total price (Spontan-Buchungen)
+$minBillableHours = (float)($pricingCfg['min_billable_hours'] ?? 2);
+
+// Loyalty check: customer active 3+ months → 50€ bonus eligible
+$firstJobDate = val("SELECT MIN(j_date) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED'", [$cid]);
+$monthsActive = $firstJobDate ? max(0, (int)((time() - strtotime($firstJobDate)) / (30 * 86400))) : 0;
+$isLoyalCustomer = $monthsActive >= 3;
+$loyaltyBonus = $isLoyalCustomer ? 50.0 : 0;
+
+// Stammkunden: check if customer has a fixed price (override dynamic pricing)
+$hasFixedPrice = isset($customer['fixed_hourly_rate']) && $customer['fixed_hourly_rate'] > 0;
+$fixedRate = (float)($customer['fixed_hourly_rate'] ?? 0);
+// Column may not exist yet — safe fallback
+if (!array_key_exists('fixed_hourly_rate', $customer)) { $hasFixedPrice = false; $fixedRate = 0; }
+
+// Completed jobs count (for "Stammkunde" badge)
+$completedJobs = (int) val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED'", [$cid]);
+$isStammkunde = $completedJobs >= 5;
+
 try { $addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC", [$cid]); } catch (Exception $e) { $addresses = []; }
 
 // Customer-own services first (full data so we can pre-fill address/codes/etc.), fall back to shared catalog
@@ -372,25 +392,59 @@ include __DIR__ . '/../includes/layout-customer.php';
 
       <div class="border-t my-4"></div>
 
+      <?php if ($isStammkunde): ?>
+      <div class="mb-3 p-2.5 rounded-lg bg-brand-light border border-brand/20 flex items-center gap-2 text-xs">
+        <span class="text-base">⭐</span>
+        <div><strong class="text-brand-dark">Stammkunde</strong> · <?= $completedJobs ?> Aufträge · Ihre Konditionen sind gesichert</div>
+      </div>
+      <?php endif; ?>
+      <?php if ($isLoyalCustomer): ?>
+      <div class="mb-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 flex items-center gap-2 text-xs">
+        <span class="text-base">🎁</span>
+        <div><strong class="text-amber-800">Treue-Bonus</strong> · <?= $monthsActive ?> Monate dabei · 50 € Guthaben verfügbar</div>
+      </div>
+      <?php endif; ?>
+
       <div class="space-y-2 text-sm">
-        <div class="flex justify-between" x-show="basePrice > 0">
+        <!-- Pauschal framing: show flat price prominently for standard (2h) bookings -->
+        <div x-show="basePrice > 0 && parseInt(form.hours) === 2" class="p-3 bg-brand-light rounded-lg text-center -mx-1 mb-2">
+          <div class="text-[10px] uppercase font-bold text-brand tracking-wider">Pauschalpreis</div>
+          <div class="text-2xl font-extrabold text-brand" x-text="formatMoney(basePrice * 2)"></div>
+          <div class="text-[10px] text-gray-500">Standard-Reinigung (2 Stunden)</div>
+        </div>
+        <div class="flex justify-between" x-show="basePrice > 0 && parseInt(form.hours) !== 2">
           <span class="text-gray-500">Basis (<span x-text="form.hours"></span>h × <span x-text="formatMoney(basePrice)"></span>)</span>
           <span class="text-gray-900" x-text="formatMoney(basePrice * parseInt(form.hours))"></span>
         </div>
         <div class="flex justify-between" x-show="discount > 0">
           <span class="text-brand">Rabatt (<span x-text="frequencyLabel()"></span>)</span>
-          <span class="text-brand">−<span x-text="formatMoney(discount)"></span></span>
+          <span class="text-brand">-<span x-text="formatMoney(discount)"></span></span>
         </div>
         <!-- Last-minute discount badge -->
         <div x-show="isLastMinute" x-cloak class="flex justify-between p-2 bg-amber-50 border border-amber-200 rounded-lg -mx-1">
-          <span class="text-amber-700 font-semibold text-xs">⏰ Last-Minute-Rabatt (<span x-text="lastMinutePct"></span>%)</span>
-          <span class="text-amber-700 font-bold">−<span x-text="formatMoney(lastMinuteDiscount)"></span></span>
+          <span class="text-amber-700 font-semibold text-xs">⏰ Last-Minute (<span x-text="lastMinutePct"></span>%)</span>
+          <span class="text-amber-700 font-bold">-<span x-text="formatMoney(lastMinuteDiscount)"></span></span>
         </div>
-        <p x-show="isLastMinute" x-cloak class="text-[10px] text-amber-600 -mt-2 px-1">💡 Sie sparen weil Sie kurzfristig gebucht haben — wir füllen freie Kapazität!</p>
+        <p x-show="isLastMinute" x-cloak class="text-[10px] text-amber-600 -mt-2 px-1">Sie sparen weil Sie kurzfristig gebucht haben</p>
+        <!-- Loyalty bonus -->
+        <div x-show="loyaltyBonus > 0 && useLoyalty" x-cloak class="flex justify-between p-2 bg-green-50 border border-green-200 rounded-lg -mx-1">
+          <span class="text-green-700 font-semibold text-xs">🎁 Treue-Bonus</span>
+          <span class="text-green-700 font-bold">-<span x-text="formatMoney(loyaltyBonus)"></span></span>
+        </div>
+        <!-- Floor price notice -->
+        <div x-show="rawTotal > 0 && rawTotal < floorPrice" x-cloak class="text-[10px] text-gray-400 px-1">
+          Mindestpreis <?= money($floorPrice) ?> angewandt
+        </div>
         <div class="flex justify-between text-base font-bold pt-2 border-t">
           <span class="text-gray-900">Geschätzter Preis</span>
           <span class="text-brand" x-text="formatMoney(total)"></span>
         </div>
+        <?php if ($isLoyalCustomer): ?>
+        <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer mt-1">
+          <input type="checkbox" x-model="useLoyalty" class="w-4 h-4 text-brand rounded focus:ring-brand"/>
+          Treue-Bonus (<?= money($loyaltyBonus) ?>) einlösen
+        </label>
+        <?php endif; ?>
       </div>
 
       <button @click="submit()" :disabled="loading || !canSubmit()"
@@ -517,8 +571,16 @@ function bookingForm() {
       if (!this.isLastMinute) return 0;
       return (this.basePrice * parseInt(this.form.hours)) * (this.lastMinutePct / 100);
     },
-    get total() {
+    floorPrice: <?= $floorPrice ?>,
+    loyaltyBonus: <?= $loyaltyBonus ?>,
+    useLoyalty: false,
+    get rawTotal() {
       return Math.max(0, this.basePrice * parseInt(this.form.hours) - this.discount - this.lastMinuteDiscount);
+    },
+    get total() {
+      let t = this.rawTotal;
+      if (this.useLoyalty && this.loyaltyBonus > 0) t = Math.max(0, t - this.loyaltyBonus);
+      return Math.max(this.floorPrice, t);
     },
     frequencyLabel() {
       return this.frequencies.find(f => f.value === this.form.frequency)?.label || '—';
@@ -575,6 +637,8 @@ function bookingForm() {
       payload.phone = '<?= e($customer['phone'] ?? '') ?>';
       payload.type = '<?= e($customer['customer_type'] ?? '') ?>';
       payload.platform = 'customer_portal_v2';
+      payload.use_loyalty_bonus = this.useLoyalty;
+      payload.estimated_price = this.total;
       fetch('/api/index.php?action=webhook/booking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': '<?= API_KEY ?>' },
