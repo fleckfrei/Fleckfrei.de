@@ -147,6 +147,16 @@ foreach ($jobs as $j) {
     $jobsByDate[$j['j_date']][] = $j;
 }
 
+// AVAILABILITY: capacity per day (all customers, not just this one)
+$totalPartners = max(1, (int) val("SELECT COUNT(*) FROM employee WHERE status=1"));
+$busyByDate = [];
+$busyRows = all("SELECT j_date, COUNT(DISTINCT emp_id_fk) AS busy, COUNT(*) as total_jobs
+    FROM jobs WHERE j_date BETWEEN ? AND ? AND status=1 AND job_status NOT IN ('CANCELLED','COMPLETED') AND emp_id_fk IS NOT NULL
+    GROUP BY j_date", [date('Y-m-d', $gridStart), date('Y-m-d', $gridEnd)]);
+foreach ($busyRows as $r) {
+    $busyByDate[$r['j_date']] = ['busy' => (int)$r['busy'], 'jobs' => (int)$r['total_jobs']];
+}
+
 // Pending job suggestions (auto-generated from iCal check-outs)
 $pendingSuggestions = [];
 try {
@@ -634,9 +644,21 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         <span class="text-xs sm:text-sm font-semibold <?= $isToday ? 'w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-brand text-white flex items-center justify-center' : ($isCurrentMonth ? 'text-gray-900' : 'text-gray-400') ?>">
           <?= (int) date('j', $cellTs) ?>
         </span>
-        <?php if (!$hasEvents && !$isPast && $isCurrentMonth): ?>
-        <span class="opacity-0 group-hover:opacity-100 transition text-[9px] font-bold text-brand">+ Buchen</span>
-        <?php endif; ?>
+        <?php
+        // Availability indicator for future days
+        if (!$isPast && $isCurrentMonth) {
+            $dayBusy = $busyByDate[$cellDate] ?? ['busy' => 0, 'jobs' => 0];
+            $freePartners = max(0, $totalPartners - $dayBusy['busy']);
+            $capacityPct = $totalPartners > 0 ? round($dayBusy['busy'] / $totalPartners * 100) : 0;
+            if ($capacityPct >= 90) {
+                echo '<span class="text-[8px] px-1 py-0.5 bg-red-100 text-red-600 rounded font-bold">voll</span>';
+            } elseif ($capacityPct >= 60) {
+                echo '<span class="text-[8px] px-1 py-0.5 bg-amber-100 text-amber-600 rounded font-bold">' . $freePartners . ' frei</span>';
+            } elseif (!$hasEvents) {
+                echo '<span class="opacity-0 group-hover:opacity-100 transition text-[8px] px-1 py-0.5 bg-green-100 text-green-600 rounded font-bold">frei</span>';
+            }
+        }
+        ?>
       </div>
 
       <!-- INTERNAL JOBS: prominent (Fleckfrei work) -->
