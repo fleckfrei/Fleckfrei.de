@@ -244,6 +244,20 @@ include __DIR__ . '/../includes/layout.php';
         </template>
       </div>
 
+      <!-- Google Sheets -->
+      <div x-show="result?.db?.google_sheets?.length > 0" class="mb-3 p-3 bg-green-50 rounded-lg">
+        <div class="text-[10px] font-bold text-green-600 uppercase mb-1">Google Sheets (<span x-text="result?.db?.google_sheets?.length"></span>)</div>
+        <template x-for="g in (result?.db?.google_sheets || [])" :key="g.name">
+          <div class="flex justify-between text-xs py-0.5 border-b border-green-100 last:border-0">
+            <div>
+              <span class="font-medium text-gray-800" x-text="g.name"></span>
+              <span class="text-gray-500 ml-1" x-text="g.description"></span>
+            </div>
+            <a :href="g.link" target="_blank" x-show="g.link" class="text-brand hover:underline text-[10px]">Link</a>
+          </div>
+        </template>
+      </div>
+
       <!-- Stats -->
       <div x-show="result?.db?.stats" class="mt-3 grid grid-cols-3 gap-2 text-center">
         <div class="bg-gray-50 rounded-lg p-2"><div class="text-lg font-bold" x-text="result?.db?.stats?.total_jobs || 0"></div><div class="text-[9px] text-gray-500 uppercase">Jobs</div></div>

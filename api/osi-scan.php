@@ -128,6 +128,35 @@ $db_result['related_jobs'] = all("SELECT j_id, j_date, job_status, address, job_
     [$likeQ, $likeQ]);
 $db_result['total_hits'] += count($db_result['related_jobs']);
 
+// 1i. GOOGLE SHEETS — search in master credentials sheet (433 accounts)
+$db_result['google_sheets'] = [];
+try {
+    $sheetCsv = @file_get_contents('https://docs.google.com/spreadsheets/d/1ZlYmCgmchDRZMbqqwz_EDHC6rrsbQPtRX4XAiexcs4E/export?format=csv&gid=0');
+    if ($sheetCsv) {
+        $lines = explode("\n", $sheetCsv);
+        $headers = str_getcsv(array_shift($lines));
+        $searchLower = strtolower($query);
+        foreach ($lines as $line) {
+            if (stripos($line, $query) !== false) {
+                $cols = str_getcsv($line);
+                $row = [];
+                foreach ($headers as $i => $h) {
+                    if (isset($cols[$i]) && $cols[$i] !== '') $row[trim($h)] = $cols[$i];
+                }
+                // Don't expose passwords in results — only name, link, description
+                $db_result['google_sheets'][] = [
+                    'name' => $row['Name'] ?? '',
+                    'description' => $row['Ws ist das'] ?? $row['Was ist das'] ?? '',
+                    'link' => $row['Link'] ?? '',
+                    'firma' => $row['Firma _aktiv'] ?? '',
+                ];
+                if (count($db_result['google_sheets']) >= 10) break;
+            }
+        }
+        $db_result['total_hits'] += count($db_result['google_sheets']);
+    }
+} catch (Exception $e) {}
+
 $result['db'] = $db_result;
 
 // ============================================================
