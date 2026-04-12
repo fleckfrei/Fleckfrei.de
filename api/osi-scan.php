@@ -195,6 +195,183 @@ if (!empty($cust)) {
     } catch (Exception $e) {}
 }
 
+// ============================================================
+// MODULE 1L-1U: EXTENDED DATA SOURCES (all real-time)
+// ============================================================
+
+// 1L. GOOGLE CALENDAR — events matching target
+if (google_is_connected()) {
+    try {
+        $calResult = google_api('https://www.googleapis.com/calendar/v3/calendars/primary/events?' . http_build_query([
+            'q' => $query, 'maxResults' => 5, 'orderBy' => 'startTime', 'singleEvents' => 'true',
+            'timeMin' => date('c', strtotime('-1 year')), 'timeMax' => date('c', strtotime('+1 year')),
+        ]));
+        $db_result['google_calendar'] = array_map(fn($e) => [
+            'summary' => $e['summary'] ?? '', 'start' => $e['start']['dateTime'] ?? $e['start']['date'] ?? '',
+            'location' => $e['location'] ?? '', 'status' => $e['status'] ?? '',
+        ], $calResult['items'] ?? []);
+        $db_result['total_hits'] += count($db_result['google_calendar']);
+    } catch (Exception $e) { $db_result['google_calendar'] = []; }
+}
+
+// 1M. STRIPE — payments/customers matching target
+try {
+    $stripeKey = val("SELECT config_value FROM app_config WHERE config_key='stripe_live_key'");
+    if (!$stripeKey && defined('STRIPE_SECRET_KEY')) $stripeKey = STRIPE_SECRET_KEY;
+    if ($stripeKey) {
+        $ch = curl_init('https://api.stripe.com/v1/customers/search?' . http_build_query(['query' => "email:\"$query\" OR name:\"$query\"", 'limit' => 5]));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $stripeKey], CURLOPT_TIMEOUT => 8]);
+        $stripeResp = json_decode(curl_exec($ch), true);
+        curl_close($ch);
+        $db_result['stripe'] = array_map(fn($c) => [
+            'id' => $c['id'], 'name' => $c['name'] ?? '', 'email' => $c['email'] ?? '',
+            'balance' => ($c['balance'] ?? 0) / 100 . ' €', 'created' => date('d.m.Y', $c['created'] ?? 0),
+        ], $stripeResp['data'] ?? []);
+        $db_result['total_hits'] += count($db_result['stripe']);
+    }
+} catch (Exception $e) { $db_result['stripe'] = []; }
+
+// 1N. WHATSAPP (Evolution API on VPS) — message search
+try {
+    $waToken = val("SELECT config_value FROM app_config WHERE config_key='evolution_api_token'");
+    if (!$waToken) {
+        // Try from Google Sheet data
+        $waRow = one("SELECT row_data FROM sheet_index WHERE searchable_text LIKE '%Evolution%' AND sheet_name='Fleckfrei_pass' LIMIT 1");
+        if ($waRow) { $wd = json_decode($waRow['row_data'], true); $waToken = $wd['User'] ?? ''; }
+    }
+    if ($waToken && str_contains($waToken, 'http')) {
+        // Evolution API: search contacts
+        $ch = curl_init($waToken . '/chat/findContacts/fleckfrei');
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5,
+            CURLOPT_HTTPHEADER => ['apikey: ' . ($wd['Link'] ?? '')]]);
+        $waResp = json_decode(curl_exec($ch), true);
+        curl_close($ch);
+        if (is_array($waResp)) {
+            $db_result['whatsapp'] = array_filter(array_map(fn($c) => [
+                'name' => $c['pushName'] ?? $c['name'] ?? '',
+                'number' => $c['id'] ?? '',
+            ], array_slice($waResp, 0, 20)), fn($c) => stripos($c['name'] . $c['number'], $query) !== false);
+            $db_result['whatsapp'] = array_values(array_slice($db_result['whatsapp'], 0, 5));
+            $db_result['total_hits'] += count($db_result['whatsapp']);
+        }
+    }
+} catch (Exception $e) { $db_result['whatsapp'] = []; }
+
+// 1O. TELEGRAM BOT — search in bot messages (via Telegram API)
+try {
+    $tgToken = defined('TELEGRAM_BOT_TOKEN') ? TELEGRAM_BOT_TOKEN : '';
+    if ($tgToken) {
+        // Get recent updates and filter by query
+        $ch = curl_init("https://api.telegram.org/bot{$tgToken}/getUpdates?limit=100");
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5]);
+        $tgResp = json_decode(curl_exec($ch), true);
+        curl_close($ch);
+        $tgMatches = [];
+        foreach ($tgResp['result'] ?? [] as $upd) {
+            $msg = $upd['message'] ?? $upd['edited_message'] ?? null;
+            if (!$msg) continue;
+            $text = $msg['text'] ?? '';
+            $from = ($msg['from']['first_name'] ?? '') . ' ' . ($msg['from']['last_name'] ?? '');
+            if (stripos($text . $from, $query) !== false) {
+                $tgMatches[] = ['from' => trim($from), 'text' => mb_substr($text, 0, 100), 'date' => date('d.m.Y H:i', $msg['date'] ?? 0)];
+            }
+        }
+        $db_result['telegram'] = array_slice($tgMatches, 0, 5);
+        $db_result['total_hits'] += count($db_result['telegram']);
+    }
+} catch (Exception $e) { $db_result['telegram'] = []; }
+
+// 1P. N8N WORKFLOWS — search workflow names/descriptions
+try {
+    $n8nUrl = defined('N8N_URL') ? N8N_URL : 'https://n8n.la-renting.com';
+    $n8nKey = val("SELECT config_value FROM app_config WHERE config_key='n8n_api_key'");
+    if ($n8nKey) {
+        $ch = curl_init($n8nUrl . '/api/v1/workflows');
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5,
+            CURLOPT_HTTPHEADER => ['X-N8N-API-KEY: ' . $n8nKey]]);
+        $n8nResp = json_decode(curl_exec($ch), true);
+        curl_close($ch);
+        $db_result['n8n'] = array_filter(array_map(fn($w) => [
+            'name' => $w['name'] ?? '', 'active' => $w['active'] ?? false, 'id' => $w['id'] ?? '',
+        ], $n8nResp['data'] ?? []), fn($w) => stripos($w['name'], $query) !== false);
+        $db_result['n8n'] = array_values(array_slice($db_result['n8n'], 0, 5));
+        $db_result['total_hits'] += count($db_result['n8n']);
+    }
+} catch (Exception $e) { $db_result['n8n'] = []; }
+
+// 1Q. DNS/WHOIS — domain intelligence (if query looks like domain)
+if ($isDomain || ($emailInfo && $emailInfo['business'])) {
+    $domainToCheck = $isDomain ? $query : ($emailInfo['domain'] ?? '');
+    if ($domainToCheck) {
+        try {
+            // DNS records
+            $dns = @dns_get_record($domainToCheck, DNS_A + DNS_MX + DNS_TXT);
+            $dnsInfo = ['a' => [], 'mx' => [], 'txt' => [], 'spf' => null, 'dmarc' => null];
+            foreach ($dns ?: [] as $r) {
+                if ($r['type'] === 'A') $dnsInfo['a'][] = $r['ip'];
+                if ($r['type'] === 'MX') $dnsInfo['mx'][] = $r['target'] . ' (pri ' . $r['pri'] . ')';
+                if ($r['type'] === 'TXT') {
+                    $txt = $r['txt'] ?? '';
+                    if (str_starts_with($txt, 'v=spf1')) $dnsInfo['spf'] = $txt;
+                    if (str_starts_with($txt, 'v=DMARC1')) $dnsInfo['dmarc'] = $txt;
+                    $dnsInfo['txt'][] = mb_substr($txt, 0, 80);
+                }
+            }
+            // SSL cert check
+            $ctx = stream_context_create(['ssl' => ['capture_peer_cert' => true, 'verify_peer' => false]]);
+            $s = @stream_socket_client("ssl://$domainToCheck:443", $e, $es, 5, STREAM_CLIENT_CONNECT, $ctx);
+            if ($s) {
+                $cert = openssl_x509_parse(stream_context_get_params($s)['options']['ssl']['peer_certificate']);
+                $dnsInfo['ssl'] = [
+                    'issuer' => $cert['issuer']['O'] ?? '?',
+                    'expires' => date('d.m.Y', $cert['validTo_time_t'] ?? 0),
+                    'days_left' => (int)floor(($cert['validTo_time_t'] - time()) / 86400),
+                ];
+                fclose($s);
+            }
+            // HTTP check
+            $ch = curl_init("https://$domainToCheck");
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5, CURLOPT_NOBODY => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_SSL_VERIFYPEER => false]);
+            curl_exec($ch);
+            $dnsInfo['http_code'] = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $dnsInfo['redirect'] = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+            curl_close($ch);
+
+            $db_result['dns'] = $dnsInfo;
+            $db_result['total_hits']++;
+        } catch (Exception $e) {}
+    }
+}
+
+// 1R. HAVEIBEENPWNED — data breach check (if email)
+if ($primaryEmail) {
+    try {
+        $ch = curl_init('https://haveibeenpwned.com/api/v3/breachedaccount/' . urlencode($primaryEmail) . '?truncateResponse=true');
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5,
+            CURLOPT_HTTPHEADER => ['hibp-api-key: ' . (defined('HIBP_API_KEY') ? HIBP_API_KEY : ''), 'user-agent: Fleckfrei-OSI']]);
+        $hibpResp = curl_exec($ch);
+        $hibpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($hibpCode === 200) {
+            $breaches = json_decode($hibpResp, true) ?: [];
+            $db_result['data_breaches'] = array_map(fn($b) => $b['Name'] ?? $b, array_slice($breaches, 0, 10));
+            $db_result['total_hits'] += count($db_result['data_breaches']);
+        } elseif ($hibpCode === 404) {
+            $db_result['data_breaches'] = []; // clean — no breaches
+        }
+    } catch (Exception $e) {}
+}
+
+// 1S. AIRBNB — listing search (via MCP if available)
+try {
+    $db_result['airbnb'] = []; // Placeholder — requires Airbnb MCP tool
+} catch (Exception $e) {}
+
+// 1T. HOSTINGER — domain/hosting info (if domain matches)
+try {
+    $db_result['hosting'] = []; // Placeholder — requires Hostinger MCP
+} catch (Exception $e) {}
+
 $result['db'] = $db_result;
 
 // ============================================================

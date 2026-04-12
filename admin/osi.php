@@ -300,9 +300,90 @@ include __DIR__ . '/../includes/layout.php';
         </template>
       </div>
 
+      <!-- Google Calendar -->
+      <div x-show="result?.db?.google_calendar?.length > 0" class="mb-3 p-3 bg-indigo-50 rounded-lg">
+        <div class="text-[10px] font-bold text-indigo-600 uppercase mb-1">Google Calendar (<span x-text="result?.db?.google_calendar?.length"></span>)</div>
+        <template x-for="ev in (result?.db?.google_calendar || [])" :key="ev.summary">
+          <div class="text-xs py-0.5 border-b border-indigo-100 last:border-0">
+            <span class="font-medium" x-text="ev.summary"></span>
+            <span class="text-gray-400 ml-1" x-text="ev.start?.substring(0,10)"></span>
+            <span class="text-gray-400 ml-1" x-text="ev.location"></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- Stripe -->
+      <div x-show="result?.db?.stripe?.length > 0" class="mb-3 p-3 bg-violet-50 rounded-lg">
+        <div class="text-[10px] font-bold text-violet-600 uppercase mb-1">Stripe (<span x-text="result?.db?.stripe?.length"></span>)</div>
+        <template x-for="s in (result?.db?.stripe || [])" :key="s.id">
+          <div class="text-xs py-0.5 flex justify-between"><span x-text="s.name + ' · ' + s.email"></span><span class="text-gray-400" x-text="s.created"></span></div>
+        </template>
+      </div>
+
+      <!-- WhatsApp -->
+      <div x-show="result?.db?.whatsapp?.length > 0" class="mb-3 p-3 bg-green-50 rounded-lg">
+        <div class="text-[10px] font-bold text-green-600 uppercase mb-1">WhatsApp (<span x-text="result?.db?.whatsapp?.length"></span>)</div>
+        <template x-for="w in (result?.db?.whatsapp || [])" :key="w.number">
+          <div class="text-xs py-0.5"><span class="font-medium" x-text="w.name"></span> <span class="text-gray-400" x-text="w.number"></span></div>
+        </template>
+      </div>
+
+      <!-- Telegram -->
+      <div x-show="result?.db?.telegram?.length > 0" class="mb-3 p-3 bg-sky-50 rounded-lg">
+        <div class="text-[10px] font-bold text-sky-600 uppercase mb-1">Telegram (<span x-text="result?.db?.telegram?.length"></span>)</div>
+        <template x-for="t in (result?.db?.telegram || [])" :key="t.date">
+          <div class="text-xs py-0.5"><span class="font-medium" x-text="t.from"></span>: <span class="text-gray-600" x-text="t.text"></span> <span class="text-gray-400" x-text="t.date"></span></div>
+        </template>
+      </div>
+
+      <!-- n8n Workflows -->
+      <div x-show="result?.db?.n8n?.length > 0" class="mb-3 p-3 bg-orange-50 rounded-lg">
+        <div class="text-[10px] font-bold text-orange-600 uppercase mb-1">n8n Workflows (<span x-text="result?.db?.n8n?.length"></span>)</div>
+        <template x-for="w in (result?.db?.n8n || [])" :key="w.id">
+          <div class="text-xs py-0.5 flex justify-between"><span class="font-medium" x-text="w.name"></span><span :class="w.active ? 'text-green-600' : 'text-gray-400'" x-text="w.active ? 'aktiv' : 'inaktiv'"></span></div>
+        </template>
+      </div>
+
+      <!-- DNS/Domain -->
+      <div x-show="result?.db?.dns" class="mb-3 p-3 bg-slate-50 rounded-lg">
+        <div class="text-[10px] font-bold text-slate-600 uppercase mb-1">DNS / Domain</div>
+        <div class="text-xs space-y-0.5">
+          <div x-show="result?.db?.dns?.a?.length"><span class="text-gray-500">IP:</span> <span class="font-mono" x-text="result?.db?.dns?.a?.join(', ')"></span></div>
+          <div x-show="result?.db?.dns?.mx?.length"><span class="text-gray-500">MX:</span> <span class="font-mono" x-text="result?.db?.dns?.mx?.[0]"></span></div>
+          <div x-show="result?.db?.dns?.ssl"><span class="text-gray-500">SSL:</span> <span x-text="result?.db?.dns?.ssl?.issuer + ' · ' + result?.db?.dns?.ssl?.days_left + ' Tage'"></span></div>
+          <div x-show="result?.db?.dns?.http_code"><span class="text-gray-500">HTTP:</span> <span x-text="result?.db?.dns?.http_code"></span></div>
+          <div x-show="result?.db?.dns?.spf"><span class="text-gray-500">SPF:</span> <span class="font-mono text-[9px] truncate block" x-text="result?.db?.dns?.spf"></span></div>
+        </div>
+      </div>
+
+      <!-- Data Breaches -->
+      <div x-show="result?.db?.data_breaches?.length > 0" class="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+        <div class="text-[10px] font-bold text-red-600 uppercase mb-1">DATA BREACHES (<span x-text="result?.db?.data_breaches?.length"></span>)</div>
+        <div class="flex flex-wrap gap-1">
+          <template x-for="b in (result?.db?.data_breaches || [])" :key="b">
+            <span class="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-semibold" x-text="b"></span>
+          </template>
+        </div>
+      </div>
+      <div x-show="result?.db?.data_breaches !== undefined && result?.db?.data_breaches?.length === 0" class="mb-3 p-2 bg-green-50 rounded-lg text-[10px] text-green-700 font-semibold text-center">
+        ✓ Keine Data Breaches gefunden
+      </div>
+
+      <!-- Photo Scores -->
+      <div x-show="result?.db?.photo_scores?.length > 0" class="mb-3 p-3 bg-purple-50 rounded-lg">
+        <div class="text-[10px] font-bold text-purple-600 uppercase mb-1">KI Foto-Scores (<span x-text="result?.db?.photo_scores?.length"></span>)</div>
+        <template x-for="p in (result?.db?.photo_scores || [])" :key="p.pa_id">
+          <div class="flex items-center gap-2 text-xs py-0.5">
+            <span class="w-6 h-6 rounded text-white text-[10px] font-bold flex items-center justify-center" :class="p.score >= 7 ? 'bg-green-500' : 'bg-red-500'" x-text="p.score"></span>
+            <span x-text="p.photo_type"></span>
+            <span class="text-gray-400" x-text="p.j_date"></span>
+          </div>
+        </template>
+      </div>
+
       <!-- Google not connected hint -->
       <div x-show="result?.db?.google_status === 'not_connected'" class="mb-3 p-3 bg-gray-50 rounded-lg text-center">
-        <a href="/api/google-callback.php" class="text-xs font-semibold text-brand hover:underline">Google verbinden → Gmail, Kontakte, Drive durchsuchen</a>
+        <a href="/api/google-callback.php" class="text-xs font-semibold text-brand hover:underline">Google verbinden → Gmail, Kontakte, Drive, Calendar durchsuchen</a>
       </div>
 
       <!-- Stats -->
