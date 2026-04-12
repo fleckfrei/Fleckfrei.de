@@ -43,7 +43,8 @@ if (!defined('LLM_HELPERS_LOADED')) {
                 'Content-Type: application/json',
                 'X-API-Key: ' . API_KEY,
             ],
-            CURLOPT_TIMEOUT => 90,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
         ]);
         $resp = curl_exec($ch);
         curl_close($ch);

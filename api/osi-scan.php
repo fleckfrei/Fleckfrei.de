@@ -396,7 +396,8 @@ $db_result['finance']['identity'] = [
     'confidence' => $searchAddress ? 'HOCH' : ($primaryEmail ? 'MITTEL' : 'NIEDRIG'),
 ];
 
-if ($searchFullName && strlen($searchFullName) > 2) {
+$vpsAvailable = $deep_result['error'] === null; // Set by deep scan check above
+if ($searchFullName && strlen($searchFullName) > 2 && $vpsAvailable) {
     // Use full name + city + address for precise search
     $exactName = '"' . $searchFullName . '"';
     $locationFilter = $searchCity ? ' ' . $searchCity : '';
@@ -557,9 +558,16 @@ $result['email'] = $email_result;
 // ============================================================
 // MODULE 3: Deep Scan (via VPS SearXNG)
 // ============================================================
-$deep_result = ['findings' => [], 'raw' => null];
+$deep_result = ['findings' => [], 'raw' => null, 'error' => null];
 $searchName = $cust['name'] ?? ($isEmail ? $local : $query);
 try {
+    // Quick check: is VPS reachable? (1s connect timeout)
+    $testCh = curl_init('http://89.116.22.185:8900/');
+    curl_setopt_array($testCh, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 2, CURLOPT_CONNECTTIMEOUT => 1, CURLOPT_NOBODY => true]);
+    curl_exec($testCh);
+    $vpsReachable = curl_getinfo($testCh, CURLINFO_HTTP_CODE) > 0;
+    curl_close($testCh);
+    if (!$vpsReachable) { $deep_result['error'] = 'VPS nicht erreichbar'; throw new Exception('VPS offline'); }
     $deepResp = vps_call('searxng', ['query' => $searchName . ' ' . ($primaryEmail ?: '') . ' Berlin', 'categories' => 'general', 'limit' => 15], true);
     if (is_array($deepResp) && !empty($deepResp['results'])) {
         foreach ($deepResp['results'] as $r) {
