@@ -11,11 +11,8 @@
  * 5. AI Synthesis (Groq Llama 3.3 → risk score + summary)
  * 6. Persistence (save to osint_scans, never overwrite)
  */
-ob_start(); // Catch any warnings before JSON output
 set_time_limit(120);
 ini_set('memory_limit', '256M');
-ini_set('display_errors', '0');
-error_reporting(E_ERROR | E_PARSE); // Only fatal errors
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/llm-helpers.php';
 requireAdmin();
@@ -33,6 +30,9 @@ $isEmail = str_contains($query, '@');
 $phoneClean = preg_replace('/[^0-9]/', '', $query);
 $isPhone = strlen($phoneClean) >= 8 && !$isEmail;
 $isDomain = !$isEmail && !$isPhone && preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z]{2,})+$/i', $query);
+$primaryEmail = $isEmail ? $query : '';
+$emailInfo = null;
+$cust = null;
 
 $result = [
     'success' => true,
@@ -399,7 +399,7 @@ $db_result['finance']['identity'] = [
     'confidence' => $searchAddress ? 'HOCH' : ($primaryEmail ? 'MITTEL' : 'NIEDRIG'),
 ];
 
-$vpsAvailable = $deep_result['error'] === null; // Set by deep scan check above
+$vpsAvailable = !isset($deep_result) || ($deep_result['error'] ?? null) === null;
 if ($searchFullName && strlen($searchFullName) > 2 && $vpsAvailable) {
     // Use full name + city + address for precise search
     $exactName = '"' . $searchFullName . '"';
@@ -459,10 +459,11 @@ if ($searchFullName && strlen($searchFullName) > 2 && $vpsAvailable) {
 
     // Quick Bonität-Score based on findings
     $criticalCount = 0; $highCount = 0;
-    foreach ($db_result['finance'] as $cat => $items) {
-        foreach ($items as $item) {
-            if ($item['severity'] === 'critical') $criticalCount++;
-            if ($item['severity'] === 'high') $highCount++;
+    $financeCategories = ['insolvenz', 'handelsregister', 'schulden_hinweise', 'bewertungen'];
+    foreach ($financeCategories as $cat) {
+        foreach ($db_result['finance'][$cat] ?? [] as $item) {
+            if (is_array($item) && ($item['severity'] ?? '') === 'critical') $criticalCount++;
+            if (is_array($item) && ($item['severity'] ?? '') === 'high') $highCount++;
         }
     }
     // Track which sources were actually checked
@@ -750,8 +751,4 @@ if (!empty($cust)) {
     } catch (Exception $e) {}
 }
 
-// Ensure clean JSON output — no PHP warnings/notices breaking the response
-ob_end_clean(); // Clear any buffered warnings
-ob_start();
 echo json_encode($result, JSON_UNESCAPED_UNICODE);
-ob_end_flush();
