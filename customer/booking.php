@@ -92,7 +92,8 @@ include __DIR__ . '/../includes/layout-customer.php';
 
 <!-- Back button -->
 <div class="mb-4">
-  <a href="<?= e($_SERVER['HTTP_REFERER'] ?? '/customer/calendar.php') ?>" class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand transition">
+  <?php $backUrl = '/customer/calendar.php'; if (!empty($_SERVER['HTTP_REFERER']) && str_starts_with($_SERVER['HTTP_REFERER'], 'https://app.fleckfrei.de/')) $backUrl = $_SERVER['HTTP_REFERER']; ?>
+  <a href="<?= e($backUrl) ?>" class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-brand transition">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
     Zurück
   </a>

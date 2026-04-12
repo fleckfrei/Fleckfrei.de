@@ -10,7 +10,7 @@ $user = me();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCsrf()) { header('Location: /employee/'); exit; }
     $act = $_POST['action'] ?? '';
-    $jid = $_POST['j_id'] ?? 0;
+    $jid = (int)($_POST['j_id'] ?? 0);
     if ($act === 'start_job') {
         q("UPDATE jobs SET job_status='RUNNING', start_time=?, start_location=?, is_start_location=1 WHERE j_id=? AND emp_id_fk=?",
           [date('H:i:s'), $_POST['location']??'', $jid, $user['id']]);

@@ -23,3 +23,4 @@ if ($code) {
     exit;
 }
 header("Location: /admin/bank-import.php?error=no_code");
+exit;

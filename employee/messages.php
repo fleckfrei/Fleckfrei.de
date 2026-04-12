@@ -7,8 +7,12 @@ $eid = $user['id'];
 
 // Send message
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'send') {
+    if (!verifyCsrf()) { header('Location: /employee/messages.php'); exit; }
+    $msg = trim(mb_substr($_POST['message'] ?? '', 0, 2000));
+    $jobId = !empty($_POST['job_id']) ? (int)$_POST['job_id'] : null;
+    if ($msg === '') { header('Location: /employee/messages.php'); exit; }
     qLocal("INSERT INTO messages (sender_type,sender_id,sender_name,recipient_type,recipient_id,message,job_id,channel) VALUES ('employee',?,?,'admin',0,?,?,?)",
-      [$eid, $user['name'], $_POST['message'], $_POST['job_id']??null, 'portal']);
+      [$eid, $user['name'], $msg, $jobId, 'portal']);
 
     // n8n webhook for AI processing
     $webhook = 'https://n8n.la-renting.com/webhook/fleckfrei-v2-message';
@@ -43,6 +47,7 @@ include __DIR__ . '/../includes/layout.php';
 <div class="bg-white rounded-xl border p-5 mb-6">
   <h3 class="font-semibold mb-3">Nachricht an <?= SITE ?></h3>
   <form method="POST" class="space-y-3">
+    <?= csrfField() ?>
     <input type="hidden" name="action" value="send"/>
     <div>
       <label class="block text-sm font-medium text-gray-600 mb-1">Job (optional)</label>
