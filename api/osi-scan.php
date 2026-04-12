@@ -36,51 +36,98 @@ $result = [
 ];
 
 // ============================================================
-// MODULE 1: DB Cross-Reference
+// MODULE 1: FULL DB Cross-Reference — searches ALL tables
 // ============================================================
-$db_result = ['customer' => null, 'employee' => null, 'stats' => null, 'jobs' => [], 'invoices' => []];
-$where = []; $params = [];
-if ($isEmail) { $where[] = 'c.email=?'; $params[] = $query; }
-if ($isPhone) { $where[] = 'c.phone LIKE ?'; $params[] = '%'.substr($phoneClean, -8).'%'; }
-if (!$isEmail && !$isPhone) { $where[] = 'c.name LIKE ?'; $params[] = '%'.$query.'%'; }
+$db_result = ['customer' => null, 'employee' => null, 'leads' => [], 'users' => [],
+              'stats' => null, 'jobs' => [], 'invoices' => [], 'addresses' => [],
+              'services' => [], 'osint_history' => [], 'ontology' => [], 'social' => [],
+              'messages' => [], 'total_hits' => 0];
 
-if (!empty($where)) {
-    $cust = one("SELECT c.*, COUNT(j.j_id) as total_jobs, MAX(j.j_date) as last_job, MIN(j.j_date) as first_job
-                 FROM customer c LEFT JOIN jobs j ON j.customer_id_fk=c.customer_id AND j.status=1
-                 WHERE " . implode(' OR ', $where) . " GROUP BY c.customer_id LIMIT 1", $params);
-    if ($cust) {
-        $cid = $cust['customer_id'];
-        $db_result['customer'] = [
-            'id' => $cid, 'name' => $cust['name'], 'email' => $cust['email'],
-            'phone' => $cust['phone'], 'type' => $cust['customer_type'] ?? '',
-            'status' => $cust['status'] ? 'Aktiv' : 'Inaktiv',
-            'since' => $cust['created_at'] ? date('d.m.Y', strtotime($cust['created_at'])) : '',
-            'last_job' => $cust['last_job'] ? date('d.m.Y', strtotime($cust['last_job'])) : '',
-            'total_jobs' => (int)$cust['total_jobs'],
-        ];
-        $stats = one("SELECT
-            (SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1) as total_jobs,
-            (SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED') as done,
-            (SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE customer_id_fk=?) as revenue,
-            (SELECT COALESCE(SUM(remaining_price),0) FROM invoices WHERE customer_id_fk=? AND invoice_paid='no') as open_balance",
-            [$cid, $cid, $cid, $cid]);
-        $db_result['stats'] = [
-            'total_jobs' => (int)$stats['total_jobs'],
-            'completed' => (int)$stats['done'],
-            'revenue' => number_format($stats['revenue'], 2, ',', '.') . ' €',
-            'open_balance' => number_format($stats['open_balance'], 2, ',', '.') . ' €',
-        ];
-        $db_result['jobs'] = all("SELECT j_id, j_date, job_status, j_hours FROM jobs WHERE customer_id_fk=? AND status=1 ORDER BY j_date DESC LIMIT 10", [$cid]);
-    }
+// Build flexible WHERE for name/email/phone search
+$likeQ = '%'.$query.'%';
+$phoneLike = $isPhone ? '%'.substr($phoneClean, -8).'%' : '%impossible%';
+
+// 1a. CUSTOMER — all fields
+$cust = one("SELECT c.*, COUNT(j.j_id) as total_jobs, MAX(j.j_date) as last_job, MIN(j.j_date) as first_job
+             FROM customer c LEFT JOIN jobs j ON j.customer_id_fk=c.customer_id AND j.status=1
+             WHERE c.email LIKE ? OR c.name LIKE ? OR c.phone LIKE ? OR c.surname LIKE ?
+             GROUP BY c.customer_id LIMIT 1",
+            [$likeQ, $likeQ, $phoneLike, $likeQ]);
+if ($cust) {
+    $cid = $cust['customer_id'];
+    $db_result['customer'] = [
+        'id' => $cid, 'name' => $cust['name'], 'surname' => $cust['surname'] ?? '',
+        'email' => $cust['email'], 'phone' => $cust['phone'],
+        'type' => $cust['customer_type'] ?? '', 'status' => $cust['status'] ? 'Aktiv' : 'Inaktiv',
+        'since' => $cust['created_at'] ? date('d.m.Y', strtotime($cust['created_at'])) : '',
+        'last_job' => $cust['last_job'] ? date('d.m.Y', strtotime($cust['last_job'])) : '',
+        'total_jobs' => (int)$cust['total_jobs'],
+    ];
+    $stats = one("SELECT
+        (SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1) as total_jobs,
+        (SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED') as done,
+        (SELECT COALESCE(SUM(total_price),0) FROM invoices WHERE customer_id_fk=?) as revenue,
+        (SELECT COALESCE(SUM(remaining_price),0) FROM invoices WHERE customer_id_fk=? AND invoice_paid='no') as open_balance",
+        [$cid, $cid, $cid, $cid]);
+    $db_result['stats'] = [
+        'total_jobs' => (int)$stats['total_jobs'], 'completed' => (int)$stats['done'],
+        'revenue' => number_format($stats['revenue'], 2, ',', '.') . ' €',
+        'open_balance' => number_format($stats['open_balance'], 2, ',', '.') . ' €',
+    ];
+    $db_result['jobs'] = all("SELECT j_id, j_date, job_status, j_hours, address FROM jobs WHERE customer_id_fk=? AND status=1 ORDER BY j_date DESC LIMIT 10", [$cid]);
+    $db_result['invoices'] = all("SELECT inv_id, invoice_number, issue_date, total_price, remaining_price, invoice_paid FROM invoices WHERE customer_id_fk=? ORDER BY issue_date DESC LIMIT 10", [$cid]);
+    $db_result['addresses'] = all("SELECT * FROM addresses WHERE entity_type='customer' AND entity_id=?", [$cid]);
+    $db_result['services'] = all("SELECT s_id, title, street, city, total_price FROM services WHERE customer_id_fk=? AND status=1", [$cid]);
+    try { $db_result['messages'] = all("SELECT msg_id, sender_type, sender_name, message, created_at FROM messages WHERE (sender_type='customer' AND sender_id=?) OR (recipient_type='customer' AND recipient_id=?) ORDER BY created_at DESC LIMIT 10", [$cid, $cid]); } catch (Exception $e) {}
+    $db_result['total_hits']++;
 }
-// Employee check
-$empWhere = []; $empParams = [];
-if ($isEmail) { $empWhere[] = 'email=?'; $empParams[] = $query; }
-if ($isPhone) { $empWhere[] = 'phone LIKE ?'; $empParams[] = '%'.substr($phoneClean, -8).'%'; }
-if (!empty($empWhere)) {
-    $emp = one("SELECT * FROM employee WHERE " . implode(' OR ', $empWhere) . " LIMIT 1", $empParams);
-    if ($emp) $db_result['employee'] = ['id' => $emp['emp_id'], 'name' => $emp['name'], 'type' => $emp['employee_type'] ?? ''];
+
+// 1b. EMPLOYEE — all fields
+$emp = one("SELECT * FROM employee WHERE email LIKE ? OR name LIKE ? OR phone LIKE ? OR surname LIKE ? LIMIT 1",
+           [$likeQ, $likeQ, $phoneLike, $likeQ]);
+if ($emp) {
+    $db_result['employee'] = [
+        'id' => $emp['emp_id'], 'name' => trim(($emp['name'] ?? '') . ' ' . ($emp['surname'] ?? '')),
+        'email' => $emp['email'] ?? '', 'phone' => $emp['phone'] ?? '',
+        'type' => $emp['employee_type'] ?? '', 'status' => ($emp['status'] ?? 0) ? 'Aktiv' : 'Inaktiv',
+        'language' => $emp['language'] ?? '',
+    ];
+    $db_result['total_hits']++;
 }
+
+// 1c. LEADS — search in leads table (1420 entries!)
+$db_result['leads'] = all("SELECT lead_id, name, email, phone, source, status, created_at FROM leads WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? ORDER BY created_at DESC LIMIT 5",
+    [$likeQ, $likeQ, $phoneLike]);
+$db_result['total_hits'] += count($db_result['leads']);
+
+// 1d. USERS — all registered accounts
+$db_result['users'] = all("SELECT user_id as id, email, type FROM users WHERE email LIKE ? LIMIT 5", [$likeQ]);
+$db_result['total_hits'] += count($db_result['users']);
+
+// 1e. OSINT HISTORY — all previous scans for this target
+$db_result['osint_history'] = all("SELECT scan_id, scan_name, scan_email, scan_phone, created_at,
+    LENGTH(scan_data) as data_size, LENGTH(deep_scan_data) as deep_size
+    FROM osint_scans WHERE scan_name LIKE ? OR scan_email LIKE ? OR scan_phone LIKE ?
+    ORDER BY created_at DESC LIMIT 10",
+    [$likeQ, $likeQ, $phoneLike]);
+$db_result['total_hits'] += count($db_result['osint_history']);
+
+// 1f. ONTOLOGY — graph objects matching this target
+$db_result['ontology'] = all("SELECT obj_id, obj_type, display_name, confidence, source_count FROM ontology_objects WHERE display_name LIKE ? OR obj_key LIKE ? LIMIT 10",
+    [$likeQ, $likeQ]);
+$db_result['total_hits'] += count($db_result['ontology']);
+
+// 1g. SOCIAL LINKS — any social profiles
+try {
+    $db_result['social'] = all("SELECT * FROM social_links WHERE url LIKE ? OR platform LIKE ? LIMIT 10", [$likeQ, $likeQ]);
+    $db_result['total_hits'] += count($db_result['social']);
+} catch (Exception $e) {}
+
+// 1h. JOBS — search by address or note containing target name
+$db_result['related_jobs'] = all("SELECT j_id, j_date, job_status, address, job_note FROM jobs WHERE (address LIKE ? OR job_note LIKE ?) AND status=1 ORDER BY j_date DESC LIMIT 5",
+    [$likeQ, $likeQ]);
+$db_result['total_hits'] += count($db_result['related_jobs']);
+
 $result['db'] = $db_result;
 
 // ============================================================

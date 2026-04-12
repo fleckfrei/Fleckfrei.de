@@ -147,7 +147,8 @@ include __DIR__ . '/../includes/layout.php';
           <span class="px-2 py-0.5 text-[10px] font-bold rounded"
                 :class="(result?.risk_level === 'HIGH') ? 'bg-red-100 text-red-800' : (result?.risk_level === 'MEDIUM' ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800')"
                 x-text="'Risiko: ' + (result?.risk_level || '—')"></span>
-          <span class="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded" x-text="(result?.total_findings || 0) + ' Funde'"></span>
+          <span class="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded" x-text="(result?.total_findings || 0) + ' Web-Funde'"></span>
+          <span class="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded" x-text="(result?.db?.total_hits || 0) + ' DB-Treffer'"></span>
           <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-bold rounded" x-text="(result?.modules_count || 0) + ' Module'"></span>
           <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-mono rounded" x-text="(result?.scan_time || '?') + 's'"></span>
         </div>
@@ -173,25 +174,84 @@ include __DIR__ . '/../includes/layout.php';
   <!-- MODULE RESULTS — Grid -->
   <div x-show="result" x-cloak class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-    <!-- DB Cross-Reference -->
+    <!-- DB Cross-Reference — ALL TABLES -->
     <div class="module-card" x-show="result?.db">
       <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-        <span class="w-2 h-2 bg-brand rounded-full"></span> Kundendaten
+        <span class="w-2 h-2 bg-brand rounded-full"></span> Datenbank
+        <span class="px-1.5 py-0.5 bg-brand/10 text-brand text-[10px] font-bold rounded" x-text="(result?.db?.total_hits || 0) + ' Treffer'"></span>
       </h3>
-      <div x-show="result?.db?.customer" class="space-y-2">
+
+      <!-- Customer -->
+      <div x-show="result?.db?.customer" class="mb-3 p-3 bg-blue-50 rounded-lg">
+        <div class="text-[10px] font-bold text-blue-600 uppercase mb-1">Kunde</div>
         <template x-for="(val, key) in (result?.db?.customer || {})" :key="key">
-          <div class="flex justify-between text-sm border-b border-gray-50 py-1">
+          <div class="flex justify-between text-sm py-0.5">
             <span class="text-gray-500 capitalize" x-text="key.replace(/_/g, ' ')"></span>
             <span class="font-medium text-gray-900 truncate max-w-[200px]" x-text="val"></span>
           </div>
         </template>
       </div>
+
+      <!-- Employee -->
+      <div x-show="result?.db?.employee" class="mb-3 p-3 bg-purple-50 rounded-lg">
+        <div class="text-[10px] font-bold text-purple-600 uppercase mb-1">Partner</div>
+        <template x-for="(val, key) in (result?.db?.employee || {})" :key="key">
+          <div class="flex justify-between text-sm py-0.5">
+            <span class="text-gray-500 capitalize" x-text="key.replace(/_/g, ' ')"></span>
+            <span class="font-medium text-gray-900 truncate max-w-[200px]" x-text="val"></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- Leads -->
+      <div x-show="result?.db?.leads?.length > 0" class="mb-3 p-3 bg-amber-50 rounded-lg">
+        <div class="text-[10px] font-bold text-amber-600 uppercase mb-1">Leads (<span x-text="result?.db?.leads?.length"></span>)</div>
+        <template x-for="l in (result?.db?.leads || [])" :key="l.lead_id">
+          <div class="flex justify-between text-xs py-0.5 border-b border-amber-100 last:border-0">
+            <span class="text-gray-800" x-text="l.name + ' — ' + (l.email || l.phone || '')"></span>
+            <span class="text-gray-500" x-text="l.source"></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- Users -->
+      <div x-show="result?.db?.users?.length > 0" class="mb-3 p-3 bg-gray-50 rounded-lg">
+        <div class="text-[10px] font-bold text-gray-600 uppercase mb-1">User Accounts (<span x-text="result?.db?.users?.length"></span>)</div>
+        <template x-for="u in (result?.db?.users || [])" :key="u.id">
+          <div class="text-xs py-0.5"><span class="font-medium" x-text="u.email"></span> <span class="text-gray-400" x-text="'(' + u.type + ')'"></span></div>
+        </template>
+      </div>
+
+      <!-- Ontology -->
+      <div x-show="result?.db?.ontology?.length > 0" class="mb-3 p-3 bg-emerald-50 rounded-lg">
+        <div class="text-[10px] font-bold text-emerald-600 uppercase mb-1">Ontologie (<span x-text="result?.db?.ontology?.length"></span>)</div>
+        <template x-for="o in (result?.db?.ontology || [])" :key="o.obj_id">
+          <div class="flex justify-between text-xs py-0.5">
+            <span class="text-gray-800" x-text="o.display_name"></span>
+            <span class="px-1 bg-emerald-100 text-emerald-700 rounded text-[9px]" x-text="o.obj_type + ' ' + Math.round(o.confidence*100) + '%'"></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- OSINT History -->
+      <div x-show="result?.db?.osint_history?.length > 0" class="mb-3 p-3 bg-red-50 rounded-lg">
+        <div class="text-[10px] font-bold text-red-600 uppercase mb-1">Vorherige Scans (<span x-text="result?.db?.osint_history?.length"></span>)</div>
+        <template x-for="h in (result?.db?.osint_history || [])" :key="h.scan_id">
+          <div class="flex justify-between text-xs py-0.5">
+            <span class="text-gray-800" x-text="'#' + h.scan_id + ' ' + (h.scan_name || h.scan_email)"></span>
+            <span class="text-gray-400 font-mono" x-text="h.created_at"></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- Stats -->
       <div x-show="result?.db?.stats" class="mt-3 grid grid-cols-3 gap-2 text-center">
         <div class="bg-gray-50 rounded-lg p-2"><div class="text-lg font-bold" x-text="result?.db?.stats?.total_jobs || 0"></div><div class="text-[9px] text-gray-500 uppercase">Jobs</div></div>
         <div class="bg-gray-50 rounded-lg p-2"><div class="text-lg font-bold" x-text="result?.db?.stats?.revenue || '0'"></div><div class="text-[9px] text-gray-500 uppercase">Umsatz</div></div>
         <div class="bg-gray-50 rounded-lg p-2"><div class="text-lg font-bold" x-text="result?.db?.stats?.open_balance || '0'"></div><div class="text-[9px] text-gray-500 uppercase">Offen</div></div>
       </div>
-      <div x-show="!result?.db?.customer" class="text-sm text-gray-400 italic">Kein DB-Treffer</div>
+
+      <div x-show="(result?.db?.total_hits || 0) === 0" class="text-sm text-gray-400 italic">Kein Treffer in der gesamten Datenbank</div>
     </div>
 
     <!-- Email Analysis -->
