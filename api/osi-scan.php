@@ -11,6 +11,8 @@
  * 5. AI Synthesis (Groq Llama 3.3 → risk score + summary)
  * 6. Persistence (save to osint_scans, never overwrite)
  */
+set_time_limit(120); // 2 min max for full scan
+ini_set('memory_limit', '256M');
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/llm-helpers.php';
 requireAdmin();
@@ -409,7 +411,7 @@ if ($searchFullName && strlen($searchFullName) > 2) {
 
     foreach ($financeQueries as $type => $fQuery) {
         try {
-            $fResp = vps_call('searxng', ['query' => $fQuery, 'categories' => 'general', 'limit' => 10], true);
+            $fResp = vps_call('searxng', ['query' => $fQuery, 'categories' => 'general', 'limit' => 5], true);
             if (is_array($fResp) && !empty($fResp['results'])) {
                 foreach (array_slice($fResp['results'], 0, 5) as $r) {
                     $title = $r['title'] ?? '';
@@ -558,7 +560,7 @@ $result['email'] = $email_result;
 $deep_result = ['findings' => [], 'raw' => null];
 $searchName = $cust['name'] ?? ($isEmail ? $local : $query);
 try {
-    $deepResp = vps_call('searxng', ['query' => $searchName . ' ' . ($primaryEmail ?: '') . ' Berlin', 'categories' => 'general', 'limit' => 30], false);
+    $deepResp = vps_call('searxng', ['query' => $searchName . ' ' . ($primaryEmail ?: '') . ' Berlin', 'categories' => 'general', 'limit' => 15], true);
     if (is_array($deepResp) && !empty($deepResp['results'])) {
         foreach ($deepResp['results'] as $r) {
             $title = $r['title'] ?? '';
