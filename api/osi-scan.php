@@ -150,6 +150,39 @@ try {
     $db_result['total_hits'] += count($db_result['google_sheets']);
 } catch (Exception $e) {}
 
+// 1j. GOOGLE SERVICES — Gmail, Contacts, Drive (if connected)
+require_once __DIR__ . '/../includes/google-helpers.php';
+if (google_is_connected()) {
+    // Gmail
+    try {
+        $gmailResults = google_gmail_search($query, 5);
+        $db_result['gmail'] = array_map(fn($m) => [
+            'subject' => $m['subject'], 'from' => $m['from'],
+            'date' => $m['date'], 'snippet' => mb_substr($m['snippet'], 0, 150),
+        ], $gmailResults);
+        $db_result['total_hits'] += count($db_result['gmail']);
+    } catch (Exception $e) { $db_result['gmail'] = []; }
+
+    // Contacts
+    try {
+        $contactResults = google_contacts_search($query, 5);
+        $db_result['google_contacts'] = $contactResults;
+        $db_result['total_hits'] += count($contactResults);
+    } catch (Exception $e) { $db_result['google_contacts'] = []; }
+
+    // Drive
+    try {
+        $driveResults = google_drive_search($query, 5);
+        $db_result['google_drive'] = array_map(fn($f) => [
+            'name' => $f['name'], 'type' => $f['mimeType'] ?? '',
+            'link' => $f['webViewLink'] ?? '', 'modified' => $f['modifiedTime'] ?? '',
+        ], $driveResults);
+        $db_result['total_hits'] += count($db_result['google_drive']);
+    } catch (Exception $e) { $db_result['google_drive'] = []; }
+} else {
+    $db_result['google_status'] = 'not_connected';
+}
+
 $result['db'] = $db_result;
 
 // ============================================================

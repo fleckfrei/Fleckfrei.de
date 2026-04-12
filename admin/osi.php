@@ -5,8 +5,10 @@
  * Combines: Scanner (deep scan) + Vulture (data aggregation) + AI Synthesis
  */
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/google-helpers.php';
 requireAdmin();
 $title = 'OSI'; $page = 'scanner';
+$googleConnected = google_is_connected();
 
 // Target from URL params
 $q = trim($_GET['q'] ?? '');
@@ -256,6 +258,41 @@ include __DIR__ . '/../includes/layout.php';
             <a :href="g.link" target="_blank" x-show="g.link" class="text-brand hover:underline text-[10px]">Link</a>
           </div>
         </template>
+      </div>
+
+      <!-- Gmail -->
+      <div x-show="result?.db?.gmail?.length > 0" class="mb-3 p-3 bg-red-50 rounded-lg">
+        <div class="text-[10px] font-bold text-red-600 uppercase mb-1">Gmail (<span x-text="result?.db?.gmail?.length"></span>)</div>
+        <template x-for="m in (result?.db?.gmail || [])" :key="m.subject">
+          <div class="text-xs py-1 border-b border-red-100 last:border-0">
+            <div class="font-medium text-gray-800" x-text="m.subject"></div>
+            <div class="text-gray-500 flex gap-2"><span x-text="m.from"></span><span x-text="m.date"></span></div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Google Contacts -->
+      <div x-show="result?.db?.google_contacts?.length > 0" class="mb-3 p-3 bg-blue-50 rounded-lg">
+        <div class="text-[10px] font-bold text-blue-600 uppercase mb-1">Google Kontakte (<span x-text="result?.db?.google_contacts?.length"></span>)</div>
+        <template x-for="c in (result?.db?.google_contacts || [])" :key="c.email || c.name">
+          <div class="text-xs py-0.5"><span class="font-medium" x-text="c.name"></span> <span class="text-gray-500" x-text="c.email"></span> <span class="text-gray-400" x-text="c.phone"></span></div>
+        </template>
+      </div>
+
+      <!-- Google Drive -->
+      <div x-show="result?.db?.google_drive?.length > 0" class="mb-3 p-3 bg-yellow-50 rounded-lg">
+        <div class="text-[10px] font-bold text-yellow-700 uppercase mb-1">Google Drive (<span x-text="result?.db?.google_drive?.length"></span>)</div>
+        <template x-for="f in (result?.db?.google_drive || [])" :key="f.name">
+          <div class="text-xs py-0.5 flex justify-between">
+            <a :href="f.link" target="_blank" class="font-medium text-brand hover:underline truncate" x-text="f.name"></a>
+            <span class="text-gray-400 text-[9px]" x-text="f.modified?.substring(0,10)"></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- Google not connected hint -->
+      <div x-show="result?.db?.google_status === 'not_connected'" class="mb-3 p-3 bg-gray-50 rounded-lg text-center">
+        <a href="/api/google-callback.php" class="text-xs font-semibold text-brand hover:underline">Google verbinden → Gmail, Kontakte, Drive durchsuchen</a>
       </div>
 
       <!-- Stats -->
