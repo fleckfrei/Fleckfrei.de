@@ -620,11 +620,13 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         // Empty future/today cells → direct booking link with prefilled date
         $bookingUrl = '/customer/booking.php?date=' . $cellDate;
     ?>
-    <div class="min-h-[100px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1 sm:p-2 relative group <?= $isCurrentMonth ? 'bg-white' : 'bg-gray-50/50' ?> <?= ($hasEvents || !$isPast) ? 'cursor-pointer hover:bg-brand/5 transition' : '' ?>"
+    <div class="min-h-[100px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1 sm:p-2 relative group <?= $isCurrentMonth ? 'bg-white' : 'bg-gray-50/50' ?> <?= !$isPast ? 'cursor-pointer hover:bg-brand/5 transition' : '' ?>"
+         <?php if (!$isPast): ?>
          <?php if ($hasEvents): ?>
          @click="selected = <?= htmlspecialchars(json_encode($payload), ENT_QUOTES) ?>; selectedDate = '<?= date('d.m.Y', $cellTs) ?>'; selectedDateIso = '<?= $cellDate ?>'"
-         <?php elseif (!$isPast): ?>
+         <?php else: ?>
          onclick="window.location.href='<?= $bookingUrl ?>'"
+         <?php endif; ?>
          <?php endif; ?>>
 
       <!-- Top: day number + external indicator strip -->
