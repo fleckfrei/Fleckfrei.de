@@ -11,8 +11,11 @@
  * 5. AI Synthesis (Groq Llama 3.3 → risk score + summary)
  * 6. Persistence (save to osint_scans, never overwrite)
  */
-set_time_limit(120); // 2 min max for full scan
+ob_start(); // Catch any warnings before JSON output
+set_time_limit(120);
 ini_set('memory_limit', '256M');
+ini_set('display_errors', '0');
+error_reporting(E_ERROR | E_PARSE); // Only fatal errors
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/llm-helpers.php';
 requireAdmin();
@@ -561,11 +564,13 @@ $result['email'] = $email_result;
 $deep_result = ['findings' => [], 'raw' => null, 'error' => null];
 $searchName = $cust['name'] ?? ($isEmail ? $local : $query);
 try {
-    // Quick check: is VPS reachable? (1s connect timeout)
+    // Quick check: is VPS reachable? (connect-only test)
     $testCh = curl_init('http://89.116.22.185:8900/');
-    curl_setopt_array($testCh, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 2, CURLOPT_CONNECTTIMEOUT => 1, CURLOPT_NOBODY => true]);
+    curl_setopt_array($testCh, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 3, CURLOPT_CONNECTTIMEOUT => 2, CURLOPT_NOBODY => false,
+        CURLOPT_POST => true, CURLOPT_POSTFIELDS => '{}', CURLOPT_HTTPHEADER => ['Content-Type: application/json']]);
     curl_exec($testCh);
-    $vpsReachable = curl_getinfo($testCh, CURLINFO_HTTP_CODE) > 0;
+    $vpsCode = curl_getinfo($testCh, CURLINFO_HTTP_CODE);
+    $vpsReachable = $vpsCode > 0; // Any response = reachable (even 4xx/5xx)
     curl_close($testCh);
     if (!$vpsReachable) { $deep_result['error'] = 'VPS nicht erreichbar'; throw new Exception('VPS offline'); }
     $deepResp = vps_call('searxng', ['query' => $searchName . ' ' . ($primaryEmail ?: '') . ' Berlin', 'categories' => 'general', 'limit' => 15], true);
@@ -669,13 +674,15 @@ Antworte NUR als JSON:
   \"recommendation\": \"Empfehlung für den Umgang mit dieser Person/Firma\"
 }";
 
-$aiResult = groq_chat($aiPrompt, 600);
 $aiParsed = null;
-if ($aiResult && !empty($aiResult['content'])) {
-    if (preg_match('/\{[\s\S]*\}/u', $aiResult['content'], $jsonMatch)) {
-        $aiParsed = json_decode($jsonMatch[0], true);
+try {
+    $aiResult = groq_chat($aiPrompt, 600);
+    if ($aiResult && !empty($aiResult['content'])) {
+        if (preg_match('/\{[\s\S]*\}/u', $aiResult['content'], $jsonMatch)) {
+            $aiParsed = json_decode($jsonMatch[0], true);
+        }
     }
-}
+} catch (Exception $e) { /* AI timeout — continue without AI */ }
 
 $result['score'] = $aiParsed['score'] ?? 50;
 $result['risk_level'] = $aiParsed['risk_level'] ?? 'MEDIUM';
@@ -743,4 +750,8 @@ if (!empty($cust)) {
     } catch (Exception $e) {}
 }
 
-echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+// Ensure clean JSON output — no PHP warnings/notices breaking the response
+ob_end_clean(); // Clear any buffered warnings
+ob_start();
+echo json_encode($result, JSON_UNESCAPED_UNICODE);
+ob_end_flush();
