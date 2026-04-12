@@ -270,6 +270,11 @@ try {
                 $label = $fieldLabels[$body['field']] ?? $body['field'];
                 telegramNotify("✏️ <b>Job aktualisiert</b>\n\n📋 #{$jid} — {$job['cname']}\n🏠 {$job['stitle']}\n📅 {$job['j_date']} {$job['j_time']}\n\n🔄 {$label}: {$val}");
             }
+            // Granulare Benachrichtigung
+            $actorType = $_SESSION['utype'] ?? 'admin';
+            $actorId = (int)($_SESSION['uid'] ?? 0);
+            $humanMsg = "Job #{$jid} — {$body['field']} geändert zu: " . substr((string)$val, 0, 80);
+            notifyEvent($actorType, $actorId, 'job_edited', 'jobs', $jid, $humanMsg, ['field' => $body['field'], 'value' => $val]);
             return ['updated' => $jid, 'field' => $body['field']];
         })(),
 
@@ -333,8 +338,52 @@ try {
             if ($body['status'] === 'RUNNING') notifyJobStarted($body['j_id']);
             if ($body['status'] === 'COMPLETED') notifyJobCompleted($body['j_id']);
 
+            // Auto-Invoicing: Job erledigt → Rechnung sofort erstellen
+            $autoInvoiceId = null;
+            if ($body['status'] === 'COMPLETED' && $job) {
+                try {
+                    // Only auto-invoice if job has no invoice yet
+                    $hasInvoice = one("SELECT invoice_id FROM jobs WHERE j_id=? AND invoice_id IS NOT NULL", [$body['j_id']]);
+                    if (!$hasInvoice) {
+                        global $db;
+                        $svc = one("SELECT price, total_price FROM services WHERE s_id=?", [$job['s_id_fk'] ?? 0]);
+                        $hours = max(MIN_HOURS, ($job['total_hours'] ?? 0) ?: ($job['j_hours'] ?? 2));
+                        $nettoRate = (float)($svc['price'] ?? 0);
+                        $netto = round($nettoRate * $hours, 2);
+                        if ($netto > 0) {
+                            $tax = round($netto * TAX_RATE, 2);
+                            $brutto = round($netto + $tax, 2);
+                            // Sequential invoice number
+                            $lastNum = val("SELECT invoice_number FROM invoices WHERE invoice_number LIKE 'FF-%' ORDER BY inv_id DESC LIMIT 1");
+                            $nextSeq = 1;
+                            if ($lastNum && preg_match('/FF-(\d+)$/', $lastNum, $m)) { $nextSeq = (int)$m[1] + 1; }
+                            else { $nextSeq = (int)val("SELECT COUNT(*)+1 FROM invoices"); }
+                            $invNum = 'FF-' . str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
+                            q("INSERT INTO invoices (customer_id_fk, invoice_number, issue_date, price, tax, total_price, remaining_price, invoice_paid, start_date, end_date)
+                               VALUES (?,?,?,?,?,?,?,'no',?,?)",
+                              [$job['customer_id_fk'], $invNum, date('Y-m-d'), $netto, $tax, $brutto, $brutto, $job['j_date'], $job['j_date']]);
+                            $autoInvoiceId = $db->lastInsertId();
+                            q("UPDATE jobs SET invoice_id=? WHERE j_id=?", [$autoInvoiceId, $body['j_id']]);
+                            audit('auto_create', 'invoice', $autoInvoiceId, "Auto: $invNum, $brutto €, Job #{$body['j_id']}");
+                            notifyInvoiceCreated($autoInvoiceId);
+                            telegramNotify("💰 <b>Auto-Rechnung</b>\n\n📄 $invNum\n👤 {$job['cname']}\n🏠 {$job['stitle']}\n💶 " . number_format($brutto,2,',','.') . " €\n⏱ {$hours}h × " . number_format($nettoRate,2,',','.') . " €/h");
+                        }
+                    }
+                } catch (Exception $e) {
+                    // Auto-invoice failed — log but don't block status change
+                    audit('error', 'auto_invoice', $body['j_id'], 'Auto-invoice failed: ' . $e->getMessage());
+                }
+            }
+
             audit('status_change', 'job', $body['j_id'], 'Status: '.$body['status']);
-            return ['j_id'=>$body['j_id'], 'new_status'=>$body['status']];
+            // Granulare Benachrichtigung
+            $actorType = $_SESSION['utype'] ?? 'admin';
+            $actorId = (int)($_SESSION['uid'] ?? 0);
+            $eventMap = ['COMPLETED'=>'job_completed','CANCELLED'=>'job_cancelled','RUNNING'=>'job_started','CONFIRMED'=>'job_confirmed','PENDING'=>'job_reopened'];
+            $eventType = $eventMap[$body['status']] ?? 'job_status_change';
+            $humanMsg = "Job #{$body['j_id']}" . (isset($job['cname']) ? " (Kunde: {$job['cname']})" : '') . " → {$body['status']}";
+            notifyEvent($actorType, $actorId, $eventType, 'jobs', (int)$body['j_id'], $humanMsg, ['new_status' => $body['status'], 'old_status' => $body['old_status'] ?? '']);
+            return ['j_id'=>$body['j_id'], 'new_status'=>$body['status'], 'auto_invoice_id'=>$autoInvoiceId];
         })(),
 
         // Auto-generate invoice from completed jobs
@@ -1923,32 +1972,51 @@ try {
         // ============================================================
         $action === 'recurring/process' && $method === 'POST' => (function() {
             $today = date('Y-m-d');
-            $tomorrow = date('Y-m-d', strtotime('+1 day'));
-            $created = 0;
-            // Find recurring groups that need next job
-            $templates = all("SELECT j.*, j.recurring_group as rg, s.title as stitle FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id WHERE j.recurring_group IS NOT NULL AND j.recurring_group != '' AND j.job_for IS NOT NULL AND j.job_for != '' AND j.status=1 AND j.j_date = (SELECT MAX(j2.j_date) FROM jobs j2 WHERE j2.recurring_group=j.recurring_group AND j2.status=1) GROUP BY j.recurring_group");
+            $horizon = date('Y-m-d', strtotime('+7 days')); // Look ahead 7 days
+            $created = 0; $details = [];
+            // Find recurring groups — latest job per group
+            $templates = all("SELECT j.*, j.recurring_group as rg, s.title as stitle, c.name as cname
+                FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
+                WHERE j.recurring_group IS NOT NULL AND j.recurring_group != ''
+                AND j.job_for IS NOT NULL AND j.job_for != '' AND j.status=1
+                AND j.job_status != 'CANCELLED'
+                AND j.j_date = (SELECT MAX(j2.j_date) FROM jobs j2 WHERE j2.recurring_group=j.recurring_group AND j2.status=1 AND j2.job_status != 'CANCELLED')
+                GROUP BY j.recurring_group");
             foreach ($templates as $t) {
                 $lastDate = $t['j_date'];
                 $freq = strtolower($t['job_for']);
-                $nextDate = match(true) {
-                    str_contains($freq, 'week') || str_contains($freq, 'woche') => date('Y-m-d', strtotime($lastDate . ' +7 days')),
-                    str_contains($freq, '2 week') || str_contains($freq, '14') => date('Y-m-d', strtotime($lastDate . ' +14 days')),
-                    str_contains($freq, 'month') || str_contains($freq, 'monat') => date('Y-m-d', strtotime($lastDate . ' +1 month')),
-                    default => null
+                // Exact match first, then fuzzy — order matters
+                $intervalDays = match(true) {
+                    $freq === 'daily' => 1,
+                    $freq === 'weekly4' || str_contains($freq, 'monat') || str_contains($freq, 'month') => 28,
+                    $freq === 'weekly3' => 21,
+                    $freq === 'weekly2' || str_contains($freq, '2 woch') || str_contains($freq, '2 week') || str_contains($freq, '14') => 14,
+                    $freq === 'weekly' || str_contains($freq, 'woche') || str_contains($freq, 'week') => 7,
+                    default => 0
                 };
-                if (!$nextDate || $nextDate > $tomorrow) continue;
-                // Check if already exists
-                $exists = one("SELECT j_id FROM jobs WHERE recurring_group=? AND j_date=? AND status=1", [$t['rg'], $nextDate]);
-                if ($exists) continue;
-                q("INSERT INTO jobs (customer_id_fk, s_id_fk, j_date, j_time, j_hours, job_for, address, emp_id_fk, no_people, code_door, status, job_status, platform, recurring_group) VALUES (?,?,?,?,?,?,?,?,?,?,1,'PENDING',?,?)",
-                    [$t['customer_id_fk'], $t['s_id_fk'], $nextDate, $t['j_time'], $t['j_hours'], $t['job_for'], $t['address'], $t['emp_id_fk'], $t['no_people'], $t['code_door'], $t['platform'], $t['rg']]);
-                $created++;
+                if ($intervalDays === 0) continue;
+                // Generate all missing jobs up to horizon
+                $cur = new DateTime($lastDate);
+                $end = new DateTime($horizon);
+                $cur->modify("+{$intervalDays} days");
+                while ($cur <= $end) {
+                    $nextDate = $cur->format('Y-m-d');
+                    $exists = one("SELECT j_id FROM jobs WHERE recurring_group=? AND j_date=? AND status=1", [$t['rg'], $nextDate]);
+                    if (!$exists) {
+                        q("INSERT INTO jobs (customer_id_fk, s_id_fk, j_date, j_time, j_hours, job_for, address, emp_id_fk, no_people, code_door, status, job_status, platform, recurring_group) VALUES (?,?,?,?,?,?,?,?,?,?,1,'PENDING',?,?)",
+                            [$t['customer_id_fk'], $t['s_id_fk'], $nextDate, $t['j_time'], $t['j_hours'], $t['job_for'], $t['address'], $t['emp_id_fk'], $t['no_people'], $t['code_door'], $t['platform'], $t['rg']]);
+                        $created++;
+                        $details[] = ($t['cname'] ?? '?') . ' ' . $nextDate;
+                    }
+                    $cur->modify("+{$intervalDays} days");
+                }
             }
             if ($created > 0) {
-                telegramNotify("🔄 <b>Recurring Jobs</b>\n\n$created Job(s) automatisch erstellt für morgen");
-                audit('auto_create', 'recurring', 0, "$created jobs created");
+                $list = implode("\n", array_slice($details, 0, 10));
+                telegramNotify("🔄 <b>Recurring Jobs</b>\n\n$created Job(s) erstellt (7-Tage Vorschau):\n$list");
+                audit('auto_create', 'recurring', 0, "$created jobs created (horizon: $horizon)");
             }
-            return ['created' => $created, 'templates_checked' => count($templates)];
+            return ['created' => $created, 'templates_checked' => count($templates), 'horizon' => $horizon, 'details' => $details];
         })(),
 
         // ============================================================
@@ -1960,6 +2028,935 @@ try {
             $_POST['csrf_token'] = ''; // Skip CSRF for API call
             $url = 'https://app.' . SITE_DOMAIN . '/admin/email-inbox.php';
             return ['synced' => 0, 'message' => 'Use admin/email-inbox.php directly'];
+        })(),
+
+        // ============================================================
+        // WHATSAPP AUTO-BOOKING — Parse natural language → create job
+        // Called by n8n when customer sends WhatsApp message
+        // Input: { "phone": "+49...", "message": "Morgen 14 Uhr", "name": "Max" }
+        // ============================================================
+        $action === 'whatsapp/auto-book' && $method === 'POST' => (function() use ($body) {
+            global $db;
+            $phone = trim($body['phone'] ?? '');
+            $msg = trim($body['message'] ?? '');
+            $senderName = trim($body['name'] ?? '');
+            if (!$phone || !$msg) throw new Exception('Need phone + message');
+
+            // Find customer by phone (strip +, spaces, leading 0)
+            $cleanPhone = preg_replace('/[\s\-\+]/', '', $phone);
+            $phoneLike = '%' . substr($cleanPhone, -9) . '%'; // last 9 digits
+            $customer = one("SELECT * FROM customer WHERE REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'+','') LIKE ? AND status=1", [$phoneLike]);
+
+            // Parse date from message (German NLP)
+            $dateStr = null; $timeStr = null;
+            $lower = mb_strtolower($msg);
+
+            // Date patterns
+            if (preg_match('/(\d{1,2})\.(\d{1,2})\.?(\d{2,4})?/', $msg, $dm)) {
+                $y = !empty($dm[3]) ? (strlen($dm[3])===2 ? '20'.$dm[3] : $dm[3]) : date('Y');
+                $dateStr = "$y-" . str_pad($dm[2],2,'0',STR_PAD_LEFT) . "-" . str_pad($dm[1],2,'0',STR_PAD_LEFT);
+            } elseif (str_contains($lower, 'heute')) {
+                $dateStr = date('Y-m-d');
+            } elseif (str_contains($lower, 'morgen')) {
+                $dateStr = date('Y-m-d', strtotime('+1 day'));
+            } elseif (str_contains($lower, 'übermorgen')) {
+                $dateStr = date('Y-m-d', strtotime('+2 days'));
+            } elseif (preg_match('/montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag/i', $lower, $dayM)) {
+                $dayMap = ['montag'=>'monday','dienstag'=>'tuesday','mittwoch'=>'wednesday','donnerstag'=>'thursday','freitag'=>'friday','samstag'=>'saturday','sonntag'=>'sunday'];
+                $dateStr = date('Y-m-d', strtotime('next ' . $dayMap[mb_strtolower($dayM[0])]));
+            }
+
+            // Time patterns
+            if (preg_match('/(\d{1,2})[:\.](\d{2})\s*uhr/i', $msg, $tm)) {
+                $timeStr = str_pad($tm[1],2,'0',STR_PAD_LEFT) . ':' . $tm[2];
+            } elseif (preg_match('/(\d{1,2})\s*uhr/i', $msg, $tm)) {
+                $timeStr = str_pad($tm[1],2,'0',STR_PAD_LEFT) . ':00';
+            } elseif (preg_match('/(\d{1,2})[:\.](\d{2})/', $msg, $tm)) {
+                $h = (int)$tm[1]; $m = $tm[2];
+                if ($h >= 6 && $h <= 22) $timeStr = str_pad($h,2,'0',STR_PAD_LEFT) . ':' . $m;
+            }
+
+            // Hours parsing
+            $hours = MIN_HOURS;
+            if (preg_match('/(\d+(?:[.,]\d+)?)\s*(?:stunden?|std|h)\b/i', $msg, $hm)) {
+                $hours = max(MIN_HOURS, (float)str_replace(',', '.', $hm[1]));
+            }
+
+            if (!$dateStr) throw new Exception('Kein Datum erkannt in: ' . $msg);
+            if (!$timeStr) $timeStr = '10:00'; // Default 10 Uhr
+
+            // Create or find customer
+            $custId = null;
+            if ($customer) {
+                $custId = $customer['customer_id'];
+            } else {
+                // New customer from WhatsApp
+                q("INSERT INTO customer (name, phone, customer_type, status) VALUES (?,?,'Private Person',1)",
+                    [$senderName ?: 'WhatsApp ' . substr($phone, -4), $phone]);
+                $custId = $db->lastInsertId();
+                audit('auto_create', 'customer', $custId, "WhatsApp Auto-Booking: $phone");
+            }
+
+            // Find default service for customer (or first active)
+            $svc = one("SELECT s_id FROM services WHERE customer_id_fk=? AND status=1 ORDER BY s_id DESC LIMIT 1", [$custId])
+                ?: one("SELECT s_id FROM services WHERE status=1 ORDER BY s_id LIMIT 1");
+            $svcId = $svc['s_id'] ?? 0;
+
+            // Address from customer's service
+            $addr = '';
+            if ($svcId) {
+                $svcData = one("SELECT street, city FROM services WHERE s_id=?", [$svcId]);
+                $addr = trim(($svcData['street'] ?? '') . ' ' . ($svcData['city'] ?? ''));
+            }
+
+            // Create job
+            q("INSERT INTO jobs (customer_id_fk, s_id_fk, j_date, j_time, j_hours, address, status, job_status, platform) VALUES (?,?,?,?,?,?,1,'PENDING','whatsapp')",
+                [$custId, $svcId, $dateStr, $timeStr, $hours, $addr]);
+            $jobId = $db->lastInsertId();
+            audit('auto_create', 'job', $jobId, "WhatsApp: $phone → $dateStr $timeStr");
+
+            $custName = $customer['name'] ?? $senderName ?: 'Neukunde';
+            telegramNotify("📱 <b>WhatsApp Auto-Booking</b>\n\n👤 $custName\n📞 $phone\n📅 $dateStr um $timeStr\n⏱ {$hours}h\n💬 <i>" . htmlspecialchars(mb_substr($msg, 0, 80)) . "</i>\n\n" . ($customer ? '✅ Bestandskunde' : '🆕 Neukunde angelegt'));
+
+            return [
+                'job_id' => $jobId,
+                'customer_id' => $custId,
+                'is_new_customer' => !$customer,
+                'parsed' => ['date' => $dateStr, 'time' => $timeStr, 'hours' => $hours],
+                'original_message' => $msg,
+                'confirmation' => "Termin am " . date('d.m.Y', strtotime($dateStr)) . " um $timeStr bestätigt."
+            ];
+        })(),
+
+        // ============================================================
+        // TIMESLOTS — Hourly availability for a given date
+        // GET /api/index.php?action=timeslots&date=2026-04-15&hours=3
+        // ============================================================
+        $action === 'timeslots' && $method === 'GET' => (function() {
+            $date = $_GET['date'] ?? date('Y-m-d');
+            $reqHours = max(MIN_HOURS, (float)($_GET['hours'] ?? 2));
+            $targetAddress = trim($_GET['address'] ?? ''); // optional: für geo-check
+            $customerId = (int)($_GET['customer_id'] ?? 0);
+            $basePrice = (float)($_GET['base_price'] ?? 0);
+            $MAX_TRAVEL_KM = 25;
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) throw new Exception('Invalid date format');
+            if ($date < date('Y-m-d')) throw new Exception('Date in the past');
+
+            // Stammkunden-Check + Host/Airbnb-Check (beide = Festpreis, keine Rabatte)
+            $isStammkunde = false; $isHostType = false;
+            if ($customerId) {
+                $cust = one("SELECT legacy_pricing, customer_type FROM customer WHERE customer_id=?", [$customerId]);
+                $completed = (int)val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED'", [$customerId]);
+                $isStammkunde = ($completed >= 5) || !empty($cust['legacy_pricing']);
+                $isHostType = in_array($cust['customer_type'] ?? '', ['Airbnb','Host','Co-Host','Short-Term Rental','Booking','Company','B2B','Firma','GmbH','Business']);
+            }
+            // Für Preisberechnung: Host/Business wie Stammkunde behandeln (keine dynamischen Multiplikatoren)
+            $fixedPriceMode = $isStammkunde || $isHostType;
+
+            $TRAVEL_BUFFER_H = 0.5; // 30min Puffer zwischen Jobs für Anfahrt
+
+            // 1. Active partners (mit location)
+            $partners = all("SELECT emp_id, name, location FROM employee WHERE status=1");
+            $totalPartners = count($partners);
+            if ($totalPartners === 0) return ['date' => $date, 'slots' => [], 'message' => 'Keine Partner verfügbar'];
+
+            // 2. Partner absences (Urlaub/Krank/Privat) — full-day blocks
+            $absentPartners = [];
+            try {
+                $absences = all("SELECT emp_id_fk FROM employee_availability WHERE ? BETWEEN date_from AND date_to", [$date]);
+                foreach ($absences as $a) $absentPartners[(int)$a['emp_id_fk']] = true;
+            } catch (Exception $e) { /* table missing */ }
+
+            // 2b. Geographic filter: partners too far from target address are excluded
+            $farPartners = [];
+            $geoDebug = ['target' => null, 'partner_distances' => []];
+            if ($targetAddress !== '') {
+                global $dbLocal;
+                $dbLocal->exec("CREATE TABLE IF NOT EXISTS geocode_cache (
+                    address VARCHAR(500) PRIMARY KEY, lat DOUBLE, lng DOUBLE, cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                $geocodeLocal = function(string $addr) use ($dbLocal) {
+                    if (empty(trim($addr))) return null;
+                    $cached = $dbLocal->prepare("SELECT lat, lng FROM geocode_cache WHERE address=?");
+                    $cached->execute([$addr]);
+                    $row = $cached->fetch(PDO::FETCH_ASSOC);
+                    if ($row) return ['lat' => (float)$row['lat'], 'lng' => (float)$row['lng']];
+                    // Only append ", Berlin, Germany" if no PLZ and no city already in address
+                    $hasPlz = preg_match('/\b\d{5}\b/', $addr);
+                    $hasCity = preg_match('/\b(Berlin|Potsdam|Brandenburg|Hamburg|München|Köln|Frankfurt|Deutschland|Germany)\b/i', $addr);
+                    $query = $addr . ($hasPlz || $hasCity ? ', Germany' : ', Berlin, Germany');
+                    $url = 'https://nominatim.openstreetmap.org/search?' . http_build_query([
+                        'q' => $query, 'format' => 'json', 'limit' => 1
+                    ]);
+                    $ctx = stream_context_create(['http' => ['header' => 'User-Agent: Fleckfrei-App/1.0', 'timeout' => 5]]);
+                    $resp = @file_get_contents($url, false, $ctx);
+                    if (!$resp) return null;
+                    $data = json_decode($resp, true);
+                    if (empty($data[0])) return null;
+                    $lat = (float)$data[0]['lat']; $lng = (float)$data[0]['lon'];
+                    $dbLocal->prepare("INSERT INTO geocode_cache (address, lat, lng) VALUES (?,?,?) ON DUPLICATE KEY UPDATE lat=?, lng=?, cached_at=NOW()")
+                        ->execute([$addr, $lat, $lng, $lat, $lng]);
+                    return ['lat' => $lat, 'lng' => $lng];
+                };
+                $haversine = function(float $lat1, float $lon1, float $lat2, float $lon2): float {
+                    $R = 6371; $dLat = deg2rad($lat2 - $lat1); $dLon = deg2rad($lon2 - $lon1);
+                    $a = sin($dLat/2)**2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon/2)**2;
+                    return $R * 2 * atan2(sqrt($a), sqrt(1-$a));
+                };
+                $targetGeo = $geocodeLocal($targetAddress);
+                $geoDebug['target'] = $targetGeo ? $targetAddress : 'geocoding failed';
+                if ($targetGeo) {
+                    foreach ($partners as $p) {
+                        if (empty($p['location'])) continue;
+                        $pGeo = $geocodeLocal($p['location']);
+                        if (!$pGeo) continue;
+                        $dist = $haversine($targetGeo['lat'], $targetGeo['lng'], $pGeo['lat'], $pGeo['lng']);
+                        $geoDebug['partner_distances'][] = ['emp_id' => $p['emp_id'], 'name' => $p['name'], 'distance_km' => round($dist, 1)];
+                        if ($dist > $MAX_TRAVEL_KM) {
+                            $farPartners[(int)$p['emp_id']] = round($dist, 1);
+                        }
+                    }
+                }
+            }
+
+            $effectivePartners = $totalPartners - count($absentPartners) - count($farPartners);
+
+            // 3. All jobs for this date — ECHTZEIT-Tracking mit Partner Start/Stop
+            $booked = all("SELECT emp_id_fk, j_time, j_hours, start_time, end_time, total_hours, job_status FROM jobs WHERE j_date=? AND status=1 AND job_status NOT IN ('CANCELLED')", [$date]);
+
+            $jobsByPartner = []; // emp_id => array of [start, end]
+            $unassignedJobs = [];
+            $timeToDecimal = function($t) { return $t ? (int)substr($t,0,2) + ((int)substr($t,3,2)/60) : null; };
+
+            foreach ($booked as $b) {
+                // === REAL-TIME Verfügbarkeits-Berechnung ===
+                // COMPLETED mit end_time: Partner ist SEIT end_time frei → Slot nach end_time+buffer buchbar
+                // RUNNING mit start_time: nutze tatsächliche Start + ursprüngl. j_hours (aktuelle Schätzung)
+                // Sonst: planmäßig j_time + j_hours
+                $jobStart = null; $jobEnd = null;
+                if ($b['job_status'] === 'COMPLETED' && !empty($b['end_time'])) {
+                    // Tatsächlich erledigt: Partner frei seit end_time
+                    $jobStart = $timeToDecimal($b['start_time'] ?: $b['j_time']);
+                    $jobEnd = $timeToDecimal($b['end_time']);
+                } elseif (in_array($b['job_status'], ['RUNNING','STARTED']) && !empty($b['start_time'])) {
+                    // Läuft gerade: tatsächlicher Start + geplante Dauer (oder total_hours wenn gesetzt)
+                    $jobStart = $timeToDecimal($b['start_time']);
+                    $duration = $b['total_hours'] ?: ($b['j_hours'] ?: 2);
+                    $jobEnd = $jobStart + (float)$duration;
+                } else {
+                    // PENDING/CONFIRMED: planmäßig
+                    $jobStart = $timeToDecimal($b['j_time']);
+                    $jobEnd = $jobStart + (float)($b['j_hours'] ?: 2);
+                }
+                if ($jobStart === null) continue;
+                $jobEnd += $TRAVEL_BUFFER_H; // Fahrt zum nächsten Job
+                $range = ['start' => $jobStart, 'end' => $jobEnd, 'status' => $b['job_status']];
+                if (!empty($b['emp_id_fk'])) $jobsByPartner[(int)$b['emp_id_fk']][] = $range;
+                else $unassignedJobs[] = $range;
+            }
+
+            // 4. Build slot availability
+            $slots = [];
+            for ($h = 7; $h <= 20; $h++) {
+                $slotStart = $h;
+                $slotEnd = $h + $reqHours;
+                if ($slotEnd > 21) continue;
+
+                // Busy partners in this slot (skip far-away partners — bereits abgezogen)
+                $busyAssigned = [];
+                foreach ($jobsByPartner as $empId => $ranges) {
+                    if (isset($farPartners[$empId]) || isset($absentPartners[$empId])) continue;
+                    foreach ($ranges as $r) {
+                        if ($r['start'] < $slotEnd && $r['end'] > $slotStart) {
+                            $busyAssigned[$empId] = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Unassigned jobs overlapping this slot consume 1 partner each
+                $unassignedConsumed = 0;
+                foreach ($unassignedJobs as $r) {
+                    if ($r['start'] < $slotEnd && $r['end'] > $slotStart) $unassignedConsumed++;
+                }
+
+                $free = max(0, $effectivePartners - count($busyAssigned) - $unassignedConsumed);
+                $status = $free <= 0 ? 'full' : ($free <= 1 ? 'limited' : 'available');
+
+                // Dynamic pricing — basePrice ist NETTO (€/h)
+                $slotNetto = null; $slotMwst = null; $slotBrutto = null;
+                $taxRate = TAX_RATE; // 0.19
+                if ($basePrice > 0) {
+                    if ($fixedPriceMode) {
+                        // Stammkunde + Host/Business: Festpreis, keine Rabatte/Aufschläge
+                        $slotNetto = round($basePrice * $reqHours, 2);
+                    } elseif ($free > 0) {
+                        $mult = 1.0;
+                        $wd = (int)date('w', strtotime($date));
+                        if ($wd === 0 || $wd === 6) $mult *= 1.15;
+                        $mon = (int)date('n', strtotime($date));
+                        if ($mon >= 6 && $mon <= 8) $mult *= 1.10;
+                        if ($mon === 12) $mult *= 1.25;
+                        $occupancy = $effectivePartners > 0 ? (1 - $free / $effectivePartners) : 1;
+                        if ($occupancy >= 0.8) $mult *= 1.20;
+                        elseif ($occupancy < 0.3) $mult *= 0.90;
+                        $mult *= 0.95; // Neukunden-Rabatt
+                        $slotNetto = round($basePrice * $reqHours * $mult, 2);
+                    }
+                    if ($slotNetto !== null) {
+                        $slotMwst = round($slotNetto * $taxRate, 2);
+                        $slotBrutto = round($slotNetto + $slotMwst, 2);
+                    }
+                }
+
+                $slots[] = [
+                    'time' => sprintf('%02d:00', $h),
+                    'end' => sprintf('%02d:00', (int)$slotEnd) . ($slotEnd != (int)$slotEnd ? ':30' : ''),
+                    'free_partners' => $free,
+                    'total_partners' => $effectivePartners,
+                    'absent_today' => count($absentPartners),
+                    'pending_assignment' => $unassignedConsumed,
+                    'status' => $status,
+                    'bookable' => $free > 0,
+                    'price' => $slotNetto,       // Legacy — = netto
+                    'price_netto' => $slotNetto,
+                    'price_mwst' => $slotMwst,
+                    'price_brutto' => $slotBrutto,
+                    'tax_rate' => $taxRate
+                ];
+            }
+            return [
+                'date' => $date,
+                'hours' => $reqHours,
+                'is_stammkunde' => $isStammkunde,
+                'is_host_type' => $isHostType,
+                'fixed_price_mode' => $fixedPriceMode,
+                'slots' => $slots,
+                'stats' => [
+                    'total_partners' => $totalPartners,
+                    'effective_partners' => $effectivePartners,
+                    'absent_today' => count($absentPartners),
+                    'too_far' => count($farPartners),
+                    'max_travel_km' => $MAX_TRAVEL_KM,
+                    'travel_buffer_minutes' => $TRAVEL_BUFFER_H * 60,
+                    'geo_check_active' => $targetAddress !== '',
+                ],
+                'geo_debug' => $targetAddress !== '' ? $geoDebug : null
+            ];
+        })(),
+
+        // ============================================================
+        // PARTNER-STATUS — wer ist gerade online / aktiv / frei
+        // GET /api/index.php?action=partners/status
+        // ============================================================
+        // ============================================================
+        // SMART BOOKING — Priorisiert STR-Kunden, schiebt Privatkunden
+        // POST { customer_id, date, time, hours, s_id }
+        // Returns: { booked: job_id } OR { conflict: true, proposals: [...] }
+        // ============================================================
+        $action === 'booking/smart' && $method === 'POST' => (function() use ($body) {
+            global $db;
+            $custId = (int)($body['customer_id'] ?? 0);
+            $date = $body['date'] ?? '';
+            $time = $body['time'] ?? '';
+            $hours = (float)($body['hours'] ?? 2);
+            $sId = (int)($body['s_id'] ?? 0);
+            if (!$custId || !$date || !$time) throw new Exception('Need customer_id + date + time');
+
+            // Kundentyp ermitteln
+            $cust = one("SELECT customer_id, customer_type, name FROM customer WHERE customer_id=?", [$custId]);
+            if (!$cust) throw new Exception('Customer not found');
+            $cType = $cust['customer_type'] ?? 'Private Person';
+
+            // Aktive Priority-Windows laden
+            $windows = all("SELECT * FROM booking_priority_windows WHERE active=1");
+            $isPrio = false; $activeWindow = null;
+            foreach ($windows as $w) {
+                $prioTypes = json_decode($w['priority_customer_types'], true) ?: [];
+                if (in_array($cType, $prioTypes)) {
+                    // Ist die Buchungszeit im Prio-Fenster?
+                    if ($time >= $w['start_time'] && $time < $w['end_time']) {
+                        $isPrio = true;
+                        $activeWindow = $w;
+                        break;
+                    }
+                }
+            }
+
+            // Prüfen ob Slot frei
+            $slotStart = (int)substr($time, 0, 2) + ((int)substr($time, 3, 2) / 60);
+            $slotEnd = $slotStart + $hours;
+            $TRAVEL_BUFFER = 0.5;
+
+            $existingJobs = all("SELECT j.j_id, j.j_time, j.j_hours, j.emp_id_fk, j.customer_id_fk, c.customer_type, c.name as cname
+                FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
+                WHERE j.j_date=? AND j.status=1 AND j.job_status NOT IN ('CANCELLED')", [$date]);
+
+            $totalPartners = (int)val("SELECT COUNT(*) FROM employee WHERE status=1");
+            $conflictingJobs = []; // jobs that overlap
+            foreach ($existingJobs as $ej) {
+                $jobStart = (int)substr($ej['j_time'], 0, 2) + ((int)substr($ej['j_time'], 3, 2) / 60);
+                $jobEnd = $jobStart + (float)($ej['j_hours'] ?: 2) + $TRAVEL_BUFFER;
+                if ($jobStart < $slotEnd && $jobEnd > $slotStart) {
+                    $conflictingJobs[] = $ej;
+                }
+            }
+            $freeCount = $totalPartners - count($conflictingJobs);
+
+            // Einfacher Fall: Slot ist frei → direkt buchen
+            if ($freeCount > 0) {
+                q("INSERT INTO jobs (customer_id_fk, s_id_fk, j_date, j_time, j_hours, status, job_status, platform, created_at) VALUES (?,?,?,?,?,1,'PENDING','admin',NOW())",
+                    [$custId, $sId, $date, $time, $hours]);
+                $newJobId = $db->lastInsertId();
+                audit('smart_book', 'job', $newJobId, "Direkt gebucht: {$cust['name']} {$date} {$time}");
+                notifyEvent('customer', $custId, 'job_created', 'jobs', (int)$newJobId, "Neue Buchung #{$newJobId} für {$cust['name']} am {$date} um {$time}");
+                return ['booked' => true, 'job_id' => (int)$newJobId, 'priority' => $isPrio, 'message' => 'Direkt gebucht'];
+            }
+
+            // Slot voll — ist Kunde Prio-Kunde?
+            if (!$isPrio) {
+                // Normaler Kunde + Slot voll → keine Magie, einfach ablehnen
+                return ['booked' => false, 'conflict' => true, 'message' => 'Slot ausgebucht. Bitte andere Uhrzeit wählen.', 'free_partners' => 0];
+            }
+
+            // STR-Kunde + Slot voll → Shifting-Logik
+            $shiftableTypes = json_decode($activeWindow['shiftable_customer_types'], true) ?: [];
+            $proposals = [];
+            foreach ($conflictingJobs as $ej) {
+                if (!in_array($ej['customer_type'], $shiftableTypes)) continue; // Nicht-shiftbar (z.B. anderer STR-Kunde)
+
+                // Versuche: ±30min, nächster Tag
+                $shiftOptions = [];
+                $origStart = (int)substr($ej['j_time'], 0, 2) + ((int)substr($ej['j_time'], 3, 2) / 60);
+                $candidates = [];
+                // +30min bis +2h schieben
+                for ($m = 30; $m <= 120; $m += 30) {
+                    $newStart = $origStart + ($m / 60);
+                    $newEnd = $newStart + (float)$ej['j_hours'];
+                    if ($newEnd > 20) continue; // Nicht nach 20 Uhr
+                    // Check: im Prio-Fenster? Dann nicht verschieben
+                    if ($newStart < (float)substr($activeWindow['end_time'], 0, 2)) {
+                        $candidates[] = ['type' => 'same_day', 'time' => sprintf('%02d:%02d', floor($newStart), round(($newStart - floor($newStart)) * 60)), 'date' => $date, 'shift_min' => $m];
+                    }
+                }
+                // -30min (vor Prio-Fenster)
+                for ($m = 30; $m <= 120; $m += 30) {
+                    $newStart = $origStart - ($m / 60);
+                    if ($newStart < 7) continue;
+                    if ($newStart + (float)$ej['j_hours'] > (float)substr($activeWindow['start_time'], 0, 2)) continue;
+                    $candidates[] = ['type' => 'same_day_earlier', 'time' => sprintf('%02d:%02d', floor($newStart), round(($newStart - floor($newStart)) * 60)), 'date' => $date, 'shift_min' => -$m];
+                }
+                // Nächster Tag
+                if ($activeWindow['allow_next_day']) {
+                    $candidates[] = ['type' => 'next_day', 'time' => substr($ej['j_time'], 0, 5), 'date' => date('Y-m-d', strtotime($date . ' +1 day')), 'shift_min' => 1440];
+                }
+
+                $proposals[] = [
+                    'conflict_job_id' => (int)$ej['j_id'],
+                    'conflict_customer_id' => (int)$ej['customer_id_fk'],
+                    'conflict_customer_name' => $ej['cname'],
+                    'conflict_customer_type' => $ej['customer_type'],
+                    'original_time' => substr($ej['j_time'], 0, 5),
+                    'options' => $candidates
+                ];
+            }
+
+            if (empty($proposals)) {
+                // Alle Konflikte sind auch Prio-Kunden → keine Verschiebung möglich
+                return [
+                    'booked' => false,
+                    'conflict' => true,
+                    'blocked_by_priority' => true,
+                    'message' => 'Alle belegten Slots sind andere STR-Kunden. Keine Verschiebung möglich. Admin kontaktieren.',
+                    'fallback' => $activeWindow['fallback_mode']
+                ];
+            }
+
+            // Auto-Shift: Erste Option jedes Konflikts als "pending_shifts" vorschlagen
+            $pendingIds = [];
+            foreach ($proposals as $p) {
+                $best = $p['options'][0] ?? null;
+                if (!$best) continue;
+                q("INSERT INTO pending_shifts (job_id_fk, requested_by_customer_id, reason, original_date, original_time, proposed_date, proposed_time, shift_minutes, customer_response, expires_at)
+                   VALUES (?,?,?,?,?,?,?,?,'pending', DATE_ADD(NOW(), INTERVAL 4 HOUR))",
+                  [$p['conflict_job_id'], $custId, 'STR_PRIORITY', $date, $p['original_time'] . ':00',
+                   $best['date'], $best['time'] . ':00', $best['shift_min']]);
+                $pendingIds[] = $db->lastInsertId();
+
+                // Notify betroffenen Kunden
+                notifyEvent('admin', 0, 'shift_proposed', 'jobs', (int)$p['conflict_job_id'],
+                    "Verschiebungs-Vorschlag für {$p['conflict_customer_name']}: {$date} {$p['original_time']} → {$best['date']} {$best['time']}");
+            }
+
+            // STR-Buchung als PENDING mit Flag "awaiting_shifts" anlegen
+            q("INSERT INTO jobs (customer_id_fk, s_id_fk, j_date, j_time, j_hours, status, job_status, platform, job_note, created_at)
+               VALUES (?,?,?,?,?,1,'PENDING','admin','⏳ Wartet auf Verschiebungs-Bestätigung anderer Kunden', NOW())",
+              [$custId, $sId, $date, $time, $hours]);
+            $strJobId = $db->lastInsertId();
+            audit('smart_book_pending', 'job', $strJobId, "STR-Prio-Buchung pending, {count($pendingIds)} Shifts angefragt");
+
+            telegramNotify("🔴 <b>STR-Priorität benötigt Verschiebung</b>\n\n👤 {$cust['name']} ({$cType})\n📅 {$date} um {$time}\n⏱ {$hours}h\n\n" .
+                count($pendingIds) . " andere Kunden müssen verschoben werden.\n" .
+                "Admin: /admin/pending-shifts.php");
+
+            return [
+                'booked' => false,
+                'pending' => true,
+                'str_job_id' => (int)$strJobId,
+                'pending_shift_ids' => $pendingIds,
+                'proposals' => $proposals,
+                'message' => 'STR-Buchung registriert. ' . count($pendingIds) . ' andere Kunden werden um Verschiebung gebeten. Admin entscheidet bei Ablehnung.'
+            ];
+        })(),
+
+        // ============================================================
+        // PENDING SHIFTS — Admin/Customer Response
+        // POST { ps_id, response: "accept"|"reject", admin_override?: bool }
+        // ============================================================
+        $action === 'shifts/respond' && $method === 'POST' => (function() use ($body) {
+            global $db;
+            $psId = (int)($body['ps_id'] ?? 0);
+            $response = $body['response'] ?? '';
+            $isAdmin = !empty($body['admin_override']);
+            if (!$psId || !in_array($response, ['accept','reject'])) throw new Exception('Need ps_id + response');
+
+            $ps = one("SELECT * FROM pending_shifts WHERE ps_id=?", [$psId]);
+            if (!$ps) throw new Exception('Shift not found');
+            if ($ps['customer_response'] !== 'pending' && !$isAdmin) throw new Exception('Already decided');
+
+            q("UPDATE pending_shifts SET customer_response=?, admin_override=?, responded_at=NOW() WHERE ps_id=?",
+              [$response === 'accept' ? 'accepted' : 'rejected', $isAdmin ? 1 : 0, $psId]);
+
+            if ($response === 'accept') {
+                // Job verschieben
+                q("UPDATE jobs SET j_date=?, j_time=?, job_note=CONCAT(IFNULL(job_note,''), '\n[verschoben STR-Prio ', NOW(), ']') WHERE j_id=?",
+                  [$ps['proposed_date'], $ps['proposed_time'], $ps['job_id_fk']]);
+                audit('shift_accepted', 'job', $ps['job_id_fk'], "→ {$ps['proposed_date']} {$ps['proposed_time']}");
+                notifyEvent('customer', 0, 'job_rescheduled', 'jobs', (int)$ps['job_id_fk'], "Termin verschoben auf {$ps['proposed_date']} {$ps['proposed_time']}");
+            } else {
+                // Admin kriegt Eskalation
+                telegramNotify("🚨 <b>STR-Shift ABGELEHNT</b>\n\nJob #{$ps['job_id_fk']} sollte auf {$ps['proposed_date']} {$ps['proposed_time']} verschoben werden — Kunde lehnt ab.\n\nFallback: MANUELLE AKTION nötig.");
+                audit('shift_rejected', 'job', $ps['job_id_fk'], "Kunde lehnt ab");
+            }
+
+            return ['ps_id' => $psId, 'response' => $response];
+        })(),
+
+        $action === 'partners/status' && $method === 'GET' => (function() {
+            $today = date('Y-m-d');
+            $nowH = (int)date('H') + ((int)date('i') / 60);
+            $partners = all("SELECT e.emp_id, e.name, e.surname, e.phone FROM employee e WHERE e.status=1 ORDER BY e.name");
+            $out = [];
+            foreach ($partners as $p) {
+                $running = one("SELECT j_id, j_time, start_time, j_hours, total_hours, address FROM jobs WHERE emp_id_fk=? AND j_date=? AND status=1 AND job_status IN ('RUNNING','STARTED') LIMIT 1", [$p['emp_id'], $today]);
+                $next = one("SELECT j_id, j_time, address FROM jobs WHERE emp_id_fk=? AND j_date=? AND status=1 AND job_status IN ('PENDING','CONFIRMED') ORDER BY j_time LIMIT 1", [$p['emp_id'], $today]);
+                $lastDone = one("SELECT j_id, end_time, total_hours FROM jobs WHERE emp_id_fk=? AND j_date=? AND status=1 AND job_status='COMPLETED' AND end_time IS NOT NULL ORDER BY end_time DESC LIMIT 1", [$p['emp_id'], $today]);
+
+                $status = 'offline'; $statusText = 'Kein Job heute';
+                $freeAt = null; // Zeit ab wann frei
+
+                if ($running) {
+                    $status = 'working';
+                    $startH = (int)substr($running['start_time'] ?: $running['j_time'], 0, 2) + ((int)substr($running['start_time'] ?: $running['j_time'], 3, 2) / 60);
+                    $duration = $running['total_hours'] ?: $running['j_hours'] ?: 2;
+                    $expectedEnd = $startH + $duration;
+                    $statusText = 'Arbeitet seit ' . substr($running['start_time'] ?: $running['j_time'], 0, 5) . ' — Ende ca. ' . sprintf('%02d:%02d', floor($expectedEnd), round(($expectedEnd - floor($expectedEnd)) * 60));
+                    $freeAt = sprintf('%02d:%02d', floor($expectedEnd + 0.5), round((($expectedEnd + 0.5) - floor($expectedEnd + 0.5)) * 60));
+                } elseif ($next) {
+                    $nextH = (int)substr($next['j_time'], 0, 2) + ((int)substr($next['j_time'], 3, 2) / 60);
+                    $diff = $nextH - $nowH;
+                    if ($diff < 0) {
+                        // Job liegt in der Vergangenheit, wurde aber nicht gestartet → no-show / verpasst
+                        $status = 'overdue';
+                        $statusText = 'Verpasst: ' . substr($next['j_time'], 0, 5) . ' — nicht gestartet';
+                    } elseif ($diff <= 0.5) {
+                        $status = 'starting_soon';
+                        $statusText = 'Startet gleich: ' . substr($next['j_time'], 0, 5);
+                    } else {
+                        $status = 'available';
+                        $statusText = 'Frei bis ' . substr($next['j_time'], 0, 5);
+                        $freeAt = date('H:i');
+                    }
+                } elseif ($lastDone) {
+                    $status = 'available';
+                    $statusText = 'Letzter Job erledigt ' . substr($lastDone['end_time'], 0, 5);
+                    $freeAt = substr($lastDone['end_time'], 0, 5);
+                } else {
+                    $status = 'available';
+                    $statusText = 'Frei, kein Job geplant';
+                    $freeAt = date('H:i');
+                }
+
+                $out[] = [
+                    'emp_id' => (int)$p['emp_id'],
+                    'name' => trim($p['name'] . ' ' . ($p['surname'] ?? '')),
+                    'phone' => $p['phone'],
+                    'status' => $status,
+                    'status_text' => $statusText,
+                    'free_at' => $freeAt,
+                    'current_job_id' => $running['j_id'] ?? null,
+                    'next_job_id' => $next['j_id'] ?? null,
+                    'last_completed_id' => $lastDone['j_id'] ?? null,
+                    'current_address' => $running['address'] ?? null,
+                    'next_address' => $next['address'] ?? null,
+                ];
+            }
+            // Zusammenfassung
+            $counts = ['working'=>0, 'starting_soon'=>0, 'available'=>0, 'offline'=>0, 'overdue'=>0];
+            foreach ($out as $p) { if (isset($counts[$p['status']])) $counts[$p['status']]++; }
+            return [
+                'date' => $today,
+                'now' => date('H:i'),
+                'partners' => $out,
+                'summary' => $counts,
+                'total' => count($out)
+            ];
+        })(),
+
+        // ============================================================
+        // TIMESLOTS RANGE — 7/14 day overview (for calendar heatmap)
+        // GET /api/index.php?action=timeslots/range&from=2026-04-15&days=14&hours=3&address=...
+        // Returns compact per-day availability: max_free, full_count, status
+        // ============================================================
+        $action === 'timeslots/range' && $method === 'GET' => (function() {
+            $from = $_GET['from'] ?? date('Y-m-d');
+            $days = min(31, max(1, (int)($_GET['days'] ?? 14)));
+            $reqHours = max(MIN_HOURS, (float)($_GET['hours'] ?? 2));
+            $targetAddress = trim($_GET['address'] ?? '');
+            $customerId = (int)($_GET['customer_id'] ?? 0);
+            $basePrice = (float)($_GET['base_price'] ?? 0); // Stundenpreis €/h
+            $MAX_TRAVEL_KM = 25;
+            $TRAVEL_BUFFER_H = 0.5;
+
+            // Stammkunden-Check + Host/Airbnb = beide Festpreis
+            $isStammkunde = false; $isHostType = false;
+            if ($customerId) {
+                $cust = one("SELECT legacy_pricing, customer_type FROM customer WHERE customer_id=?", [$customerId]);
+                $completed = (int)val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED'", [$customerId]);
+                $isStammkunde = ($completed >= 5) || !empty($cust['legacy_pricing']);
+                $isHostType = in_array($cust['customer_type'] ?? '', ['Airbnb','Host','Co-Host','Short-Term Rental','Booking','Company','B2B','Firma','GmbH','Business']);
+            }
+            $fixedPriceMode = $isStammkunde || $isHostType;
+
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) throw new Exception('Invalid from date');
+
+            $partners = all("SELECT emp_id, name, location FROM employee WHERE status=1");
+            $totalPartners = count($partners);
+
+            // Shared geo check (once for all days)
+            $farPartners = [];
+            if ($targetAddress !== '' && $totalPartners > 0) {
+                global $dbLocal;
+                $dbLocal->exec("CREATE TABLE IF NOT EXISTS geocode_cache (address VARCHAR(500) PRIMARY KEY, lat DOUBLE, lng DOUBLE, cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                $geocodeLocal = function(string $addr) use ($dbLocal) {
+                    if (empty(trim($addr))) return null;
+                    $cached = $dbLocal->prepare("SELECT lat, lng FROM geocode_cache WHERE address=?");
+                    $cached->execute([$addr]);
+                    $row = $cached->fetch(PDO::FETCH_ASSOC);
+                    if ($row) return ['lat' => (float)$row['lat'], 'lng' => (float)$row['lng']];
+                    $hasPlz = preg_match('/\b\d{5}\b/', $addr);
+                    $hasCity = preg_match('/\b(Berlin|Potsdam|Brandenburg|Hamburg|München|Köln|Frankfurt|Deutschland|Germany)\b/i', $addr);
+                    $query = $addr . ($hasPlz || $hasCity ? ', Germany' : ', Berlin, Germany');
+                    $url = 'https://nominatim.openstreetmap.org/search?' . http_build_query(['q' => $query, 'format' => 'json', 'limit' => 1]);
+                    $ctx = stream_context_create(['http' => ['header' => 'User-Agent: Fleckfrei-App/1.0', 'timeout' => 5]]);
+                    $resp = @file_get_contents($url, false, $ctx);
+                    if (!$resp) return null;
+                    $data = json_decode($resp, true);
+                    if (empty($data[0])) return null;
+                    $lat = (float)$data[0]['lat']; $lng = (float)$data[0]['lon'];
+                    $dbLocal->prepare("INSERT INTO geocode_cache (address, lat, lng) VALUES (?,?,?) ON DUPLICATE KEY UPDATE lat=?, lng=?, cached_at=NOW()")->execute([$addr, $lat, $lng, $lat, $lng]);
+                    return ['lat' => $lat, 'lng' => $lng];
+                };
+                $hav = function(float $lat1, float $lon1, float $lat2, float $lon2): float {
+                    $R = 6371; $dLat = deg2rad($lat2 - $lat1); $dLon = deg2rad($lon2 - $lon1);
+                    $a = sin($dLat/2)**2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon/2)**2;
+                    return $R * 2 * atan2(sqrt($a), sqrt(1-$a));
+                };
+                $targetGeo = $geocodeLocal($targetAddress);
+                if ($targetGeo) {
+                    foreach ($partners as $p) {
+                        if (empty($p['location'])) continue;
+                        $pGeo = $geocodeLocal($p['location']);
+                        if (!$pGeo) continue;
+                        $dist = $hav($targetGeo['lat'], $targetGeo['lng'], $pGeo['lat'], $pGeo['lng']);
+                        if ($dist > $MAX_TRAVEL_KM) $farPartners[(int)$p['emp_id']] = round($dist, 1);
+                    }
+                }
+            }
+
+            // Absences over the whole range (bulk fetch)
+            $toDate = date('Y-m-d', strtotime($from . " +{$days} days"));
+            $absencesRaw = [];
+            try {
+                $absencesRaw = all("SELECT emp_id_fk, date_from, date_to FROM employee_availability WHERE date_to >= ? AND date_from <= ?", [$from, $toDate]);
+            } catch (Exception $e) {}
+
+            // Bulk fetch jobs in range
+            $jobsRaw = all("SELECT j_date, emp_id_fk, j_time, COALESCE(j_hours, 2) as j_hours FROM jobs WHERE j_date BETWEEN ? AND ? AND status=1 AND job_status NOT IN ('CANCELLED')", [$from, $toDate]);
+            $jobsByDate = [];
+            foreach ($jobsRaw as $j) $jobsByDate[$j['j_date']][] = $j;
+
+            $today = date('Y-m-d');
+            $out = [];
+            for ($i = 0; $i < $days; $i++) {
+                $d = date('Y-m-d', strtotime("$from +$i days"));
+                if ($d < $today) { continue; }
+
+                // Absent partners for this specific day
+                $absentToday = [];
+                foreach ($absencesRaw as $a) {
+                    if ($d >= $a['date_from'] && $d <= $a['date_to']) $absentToday[(int)$a['emp_id_fk']] = true;
+                }
+                $effective = $totalPartners - count($absentToday) - count(array_diff_key($farPartners, $absentToday));
+
+                if ($effective <= 0) {
+                    $out[] = ['date' => $d, 'weekday' => date('w', strtotime($d)), 'max_free' => 0, 'avg_free' => 0, 'full_hours' => 14, 'status' => 'full'];
+                    continue;
+                }
+
+                // Build busy ranges for this day
+                $jobsByPartnerDay = []; $unassignedDay = [];
+                foreach ($jobsByDate[$d] ?? [] as $b) {
+                    $s = (int)substr($b['j_time'], 0, 2) + ((int)substr($b['j_time'], 3, 2) / 60);
+                    $e = $s + (float)$b['j_hours'] + $TRAVEL_BUFFER_H;
+                    $range = ['start' => $s, 'end' => $e];
+                    if (!empty($b['emp_id_fk'])) $jobsByPartnerDay[(int)$b['emp_id_fk']][] = $range;
+                    else $unassignedDay[] = $range;
+                }
+
+                // Compute free count per hour slot, track max/avg + available_slots list
+                $hourly = []; $maxFree = 0; $fullHours = 0; $sumFree = 0; $countSlots = 0;
+                $slotsAvailable = []; // [{time, free, price}]
+                for ($h = 7; $h <= 20; $h++) {
+                    if ($h + $reqHours > 21) continue;
+                    $busy = [];
+                    foreach ($jobsByPartnerDay as $eid => $ranges) {
+                        if (isset($farPartners[$eid]) || isset($absentToday[$eid])) continue;
+                        foreach ($ranges as $r) { if ($r['start'] < $h + $reqHours && $r['end'] > $h) { $busy[$eid] = true; break; } }
+                    }
+                    $unassigned = 0;
+                    foreach ($unassignedDay as $r) { if ($r['start'] < $h + $reqHours && $r['end'] > $h) $unassigned++; }
+                    $free = max(0, $effective - count($busy) - $unassigned);
+                    $hourly[$h] = $free;
+                    $maxFree = max($maxFree, $free);
+                    $sumFree += $free;
+                    $countSlots++;
+                    if ($free === 0) $fullHours++;
+                    if ($free > 0) {
+                        // Dynamic pricing calculation
+                        $dayPrice = null;
+                        if ($basePrice > 0) {
+                            if ($fixedPriceMode) {
+                                // Stammkunde + Host/Business: Festpreis
+                                $dayPrice = round($basePrice * $reqHours, 2);
+                            } else {
+                                // Neukunde: dynamische Preise basierend auf Auslastung
+                                $mult = 1.0;
+                                $wd = (int)date('w', strtotime($d));
+                                // Wochenend-Aufschlag
+                                if ($wd === 0 || $wd === 6) $mult *= 1.15;
+                                // Sommer-Aufschlag (Jun-Aug)
+                                $mon = (int)date('n', strtotime($d));
+                                if ($mon >= 6 && $mon <= 8) $mult *= 1.10;
+                                if ($mon === 12) $mult *= 1.25;
+                                // Auslastungs-basiert: wenige Partner frei = mehr Preis
+                                $occupancy = $effective > 0 ? (1 - $free / $effective) : 1;
+                                if ($occupancy >= 0.8) $mult *= 1.20; // hohe Auslastung
+                                elseif ($occupancy < 0.3) $mult *= 0.90; // niedrige Auslastung = Rabatt
+                                // Neukunden-Rabatt
+                                $mult *= 0.95;
+                                $dayPrice = round($basePrice * $reqHours * $mult, 2);
+                            }
+                        }
+                        $slotsAvailable[] = [
+                            'time' => sprintf('%02d:00', $h),
+                            'free' => $free,
+                            'price' => $dayPrice
+                        ];
+                    }
+                }
+                $avgFree = $countSlots > 0 ? round($sumFree / $countSlots, 1) : 0;
+                $status = $maxFree <= 0 ? 'full' : ($maxFree <= 1 ? 'limited' : ($avgFree >= 2 ? 'great' : 'available'));
+
+                // Top 3 beste Slots des Tages (die mit meisten free partners)
+                usort($slotsAvailable, fn($a, $b) => $b['free'] <=> $a['free']);
+                $topSlots = array_slice($slotsAvailable, 0, 4);
+                // Zurück-sortieren chronologisch
+                usort($topSlots, fn($a, $b) => strcmp($a['time'], $b['time']));
+
+                $minPrice = null; $maxPrice = null;
+                if (!empty($slotsAvailable) && $basePrice > 0) {
+                    $prices = array_filter(array_column($slotsAvailable, 'price'));
+                    if (!empty($prices)) { $minPrice = min($prices); $maxPrice = max($prices); }
+                }
+
+                $out[] = [
+                    'date' => $d,
+                    'weekday' => (int)date('w', strtotime($d)),
+                    'max_free' => $maxFree,
+                    'avg_free' => $avgFree,
+                    'full_hours' => $fullHours,
+                    'total_hours' => $countSlots,
+                    'status' => $status,
+                    'top_slots' => $topSlots,
+                    'all_slots' => $slotsAvailable,
+                    'min_price' => $minPrice,
+                    'max_price' => $maxPrice
+                ];
+            }
+            return [
+                'from' => $from,
+                'days' => $days,
+                'hours' => $reqHours,
+                'total_partners' => $totalPartners,
+                'too_far' => count($farPartners),
+                'is_stammkunde' => $isStammkunde,
+                'base_price' => $basePrice,
+                'daily' => $out
+            ];
+        })(),
+
+        // ============================================================
+        // ROUTE OPTIMIZATION — Best order for employee's daily jobs
+        // GET /api/index.php?action=route/optimize&emp_id=5&date=2026-04-15
+        // Uses simple nearest-neighbor with cached geocoding
+        // ============================================================
+        $action === 'route/optimize' && $method === 'GET' => (function() {
+            $empId = (int)($_GET['emp_id'] ?? 0);
+            $date = $_GET['date'] ?? date('Y-m-d');
+            if (!$empId) throw new Exception('Need emp_id');
+
+            $jobs = all("SELECT j.j_id, j.j_date, j.j_time, j.j_hours, j.address, j.job_status,
+                         s.street, s.city, s.postal_code, c.name as cname, s.title as stitle
+                         FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
+                         WHERE j.emp_id_fk=? AND j.j_date=? AND j.status=1 AND j.job_status NOT IN ('CANCELLED')
+                         ORDER BY j.j_time", [$empId, $date]);
+
+            if (count($jobs) <= 1) {
+                return ['emp_id' => $empId, 'date' => $date, 'jobs' => $jobs, 'optimized' => false, 'reason' => 'Nur 0-1 Jobs, keine Optimierung nötig'];
+            }
+
+            // Resolve addresses
+            foreach ($jobs as &$j) {
+                $j['full_address'] = $j['address'] ?: trim(($j['street'] ?? '') . ', ' . ($j['postal_code'] ?? '') . ' ' . ($j['city'] ?? ''));
+            }
+            unset($j);
+
+            // Geocode via Nominatim (cached in DB)
+            global $dbLocal;
+            $dbLocal->exec("CREATE TABLE IF NOT EXISTS geocode_cache (
+                address VARCHAR(500) PRIMARY KEY, lat DOUBLE, lng DOUBLE, cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+            function geocodeAddress(string $addr): ?array {
+                global $dbLocal;
+                if (empty(trim($addr))) return null;
+                $cached = $dbLocal->prepare("SELECT lat, lng FROM geocode_cache WHERE address=?");
+                $cached->execute([$addr]);
+                $row = $cached->fetch(PDO::FETCH_ASSOC);
+                if ($row) return ['lat' => (float)$row['lat'], 'lng' => (float)$row['lng']];
+                // Geocode via Nominatim
+                $url = 'https://nominatim.openstreetmap.org/search?' . http_build_query([
+                    'q' => $addr . ', Berlin, Germany', 'format' => 'json', 'limit' => 1
+                ]);
+                $ctx = stream_context_create(['http' => ['header' => 'User-Agent: Fleckfrei-App/1.0', 'timeout' => 5]]);
+                $resp = @file_get_contents($url, false, $ctx);
+                if (!$resp) return null;
+                $data = json_decode($resp, true);
+                if (empty($data[0])) return null;
+                $lat = (float)$data[0]['lat'];
+                $lng = (float)$data[0]['lon'];
+                $dbLocal->prepare("INSERT INTO geocode_cache (address, lat, lng) VALUES (?,?,?) ON DUPLICATE KEY UPDATE lat=?, lng=?, cached_at=NOW()")
+                    ->execute([$addr, $lat, $lng, $lat, $lng]);
+                return ['lat' => $lat, 'lng' => $lng];
+            }
+
+            // Geocode all jobs
+            $coords = [];
+            foreach ($jobs as $i => $j) {
+                $geo = geocodeAddress($j['full_address']);
+                $coords[$i] = $geo;
+                $jobs[$i]['lat'] = $geo['lat'] ?? null;
+                $jobs[$i]['lng'] = $geo['lng'] ?? null;
+            }
+
+            // Haversine distance
+            function haversine(float $lat1, float $lon1, float $lat2, float $lon2): float {
+                $R = 6371;
+                $dLat = deg2rad($lat2 - $lat1);
+                $dLon = deg2rad($lon2 - $lon1);
+                $a = sin($dLat/2)**2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon/2)**2;
+                return $R * 2 * atan2(sqrt($a), sqrt(1-$a));
+            }
+
+            // Nearest-neighbor optimization
+            $n = count($jobs);
+            $allGeo = array_filter($coords, fn($c) => $c !== null);
+            if (count($allGeo) < 2) {
+                return ['emp_id' => $empId, 'date' => $date, 'jobs' => $jobs, 'optimized' => false, 'reason' => 'Nicht genug Geo-Daten'];
+            }
+
+            $visited = [0 => true]; // start with first job
+            $order = [0];
+            $totalDist = 0;
+            $current = 0;
+            for ($step = 1; $step < $n; $step++) {
+                $bestDist = PHP_FLOAT_MAX;
+                $bestIdx = -1;
+                for ($j = 0; $j < $n; $j++) {
+                    if (isset($visited[$j]) || !$coords[$current] || !$coords[$j]) continue;
+                    $d = haversine($coords[$current]['lat'], $coords[$current]['lng'], $coords[$j]['lat'], $coords[$j]['lng']);
+                    if ($d < $bestDist) { $bestDist = $d; $bestIdx = $j; }
+                }
+                if ($bestIdx === -1) break;
+                $visited[$bestIdx] = true;
+                $order[] = $bestIdx;
+                $totalDist += $bestDist;
+                $current = $bestIdx;
+            }
+
+            // Build optimized list
+            $optimized = [];
+            $suggestedTimes = [];
+            $currentTime = null;
+            foreach ($order as $seq => $idx) {
+                $j = $jobs[$idx];
+                if ($seq === 0) {
+                    $currentTime = strtotime($j['j_time']);
+                } else {
+                    // Add travel buffer (15min per job transition)
+                    $prevEnd = $currentTime + ($jobs[$order[$seq-1]]['j_hours'] * 3600);
+                    $currentTime = $prevEnd + 900; // 15min buffer
+                }
+                $j['suggested_time'] = date('H:i', $currentTime);
+                $j['sequence'] = $seq + 1;
+                $optimized[] = $j;
+            }
+
+            // Build Google Maps route link
+            $waypoints = [];
+            foreach ($order as $idx) {
+                if ($jobs[$idx]['lat'] && $jobs[$idx]['lng']) {
+                    $waypoints[] = $jobs[$idx]['lat'] . ',' . $jobs[$idx]['lng'];
+                }
+            }
+            $mapsUrl = '';
+            if (count($waypoints) >= 2) {
+                $origin = array_shift($waypoints);
+                $dest = array_pop($waypoints);
+                $mapsUrl = 'https://www.google.com/maps/dir/' . $origin . '/' . implode('/', $waypoints) . '/' . $dest;
+            }
+
+            return [
+                'emp_id' => $empId,
+                'date' => $date,
+                'total_jobs' => $n,
+                'total_distance_km' => round($totalDist, 1),
+                'estimated_travel_min' => round($totalDist * 3), // ~20km/h Berlin average
+                'optimized_order' => $optimized,
+                'maps_url' => $mapsUrl,
+                'optimized' => true
+            ];
         })(),
 
         default => throw new Exception("Unknown: $action")

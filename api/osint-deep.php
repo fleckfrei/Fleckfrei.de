@@ -137,6 +137,18 @@ if ($name || $email || $phone) {
             $invoices = all("SELECT invoice_number, issue_date, total_price, remaining_price, invoice_paid FROM invoices WHERE customer_id_fk=? ORDER BY issue_date DESC LIMIT 10", [$cid]);
             $addresses = all("SELECT street, number, postal_code, city, country FROM customer_address WHERE customer_id_fk=?", [$cid]);
             $recentJobs = all("SELECT j.j_id, j.j_date, j.j_time, j.job_status, j.j_hours, s.title as service, e.name as partner FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id WHERE j.customer_id_fk=? AND j.status=1 ORDER BY j.j_date DESC LIMIT 10", [$cid]);
+            // === La-Renting Legacy-Tabellen (Session 16 Integration) ===
+            $docs = []; $contactPersons = []; $secondary = []; $serviceVideos = []; $serviceMedia = [];
+            try { $docs = all("SELECT ed_id, file_name, created_at FROM customer_docs WHERE customer_id_fk=? ORDER BY created_at DESC LIMIT 20", [$cid]); } catch (Exception $e) {}
+            try { $contactPersons = all("SELECT cp_id, name, email, phone FROM contact_person WHERE customer_id_fk=?", [$cid]); } catch (Exception $e) {}
+            try { $secondary = all("SELECT si_id, email, phone FROM secondary_info WHERE customer_id_fk=?", [$cid]); } catch (Exception $e) {}
+            // Get service-IDs for this customer
+            $svcIds = array_column($services ?? [], 's_id');
+            if (!empty($svcIds)) {
+                $sidList = implode(',', array_map('intval', $svcIds));
+                try { $serviceVideos = all("SELECT id, title, link, s_id_fk FROM service_video_links WHERE s_id_fk IN ($sidList) ORDER BY created_at DESC LIMIT 30"); } catch (Exception $e) {}
+                try { $serviceMedia = all("SELECT sm_id, file_name, s_id_fk FROM service_media WHERE s_id_fk IN ($sidList) ORDER BY created_at DESC LIMIT 30"); } catch (Exception $e) {}
+            }
             $totalRevenue = array_sum(array_column($invoices, 'total_price'));
             $totalOpen = array_sum(array_filter(array_column($invoices, 'remaining_price')));
             $cancelRate = $customers[0]['total_jobs'] > 0 ? round($customers[0]['cancelled_jobs'] / $customers[0]['total_jobs'] * 100, 1) : 0;
@@ -145,6 +157,8 @@ if ($name || $email || $phone) {
                 'customer' => ['id'=>$cid,'name'=>$customers[0]['name'],'email'=>$customers[0]['email'],'phone'=>$customers[0]['phone'],'type'=>$customers[0]['customer_type']??'','status'=>$customers[0]['status']?'Aktiv':'Inaktiv','created'=>$customers[0]['created_at']??''],
                 'stats' => ['total_jobs'=>(int)$customers[0]['total_jobs'],'completed'=>(int)$customers[0]['completed_jobs'],'cancelled'=>(int)$customers[0]['cancelled_jobs'],'cancel_rate'=>$cancelRate,'first_job'=>$customers[0]['first_job_date'],'last_job'=>$customers[0]['last_job_date'],'total_revenue'=>$totalRevenue,'open_balance'=>$totalOpen],
                 'services' => $services, 'invoices' => $invoices, 'addresses' => $addresses, 'recent_jobs' => $recentJobs,
+                'documents' => $docs, 'contact_persons' => $contactPersons, 'secondary_contacts' => $secondary,
+                'service_videos' => $serviceVideos, 'service_media' => $serviceMedia,
                 'risk_flags' => [],
             ];
             if ($cancelRate > 20) $dbProfile['risk_flags'][] = 'Hohe Stornoquote: '.$cancelRate.'%';
@@ -154,6 +168,54 @@ if ($name || $email || $phone) {
         }
     } catch (Exception $e) {}
     $results['db_profile'] = $dbProfile;
+
+    // ============================================================
+    // PARTNER/EMPLOYEE-PROFILE — falls die Suche einen Partner matcht
+    // ============================================================
+    $empProfile = [];
+    try {
+        $empWhere = []; $empParams = [];
+        if ($email) { $empWhere[] = 'e.email=?'; $empParams[] = $email; }
+        if ($name) { $empWhere[] = '(e.name LIKE ? OR e.surname LIKE ?)'; $empParams[] = '%'.$name.'%'; $empParams[] = '%'.$name.'%'; }
+        if ($phone && strlen(preg_replace('/[^0-9]/', '', $phone)) >= 10) {
+            $empWhere[] = 'e.phone LIKE ?';
+            $empParams[] = '%' . substr(preg_replace('/[^0-9]/', '', $phone), -10) . '%';
+        }
+        if (!empty($empWhere)) {
+            $emps = all("SELECT e.*,
+                COUNT(j.j_id) as total_jobs,
+                SUM(CASE WHEN j.job_status='COMPLETED' THEN 1 ELSE 0 END) as completed_jobs,
+                SUM(COALESCE(j.total_hours, j.j_hours, 0)) as total_hours
+                FROM employee e LEFT JOIN jobs j ON j.emp_id_fk=e.emp_id AND j.status=1
+                WHERE " . implode(' OR ', $empWhere) . "
+                GROUP BY e.emp_id LIMIT 5", $empParams);
+            if (!empty($emps)) {
+                $eid = $emps[0]['emp_id'];
+                $empDocs = []; $empSocial = []; $empAddr = []; $empSecondary = [];
+                try { $empDocs = all("SELECT ed_id, file_name, created_at FROM employee_docs WHERE emp_id_fk=? ORDER BY created_at DESC LIMIT 20", [$eid]); } catch (Exception $e) {}
+                try { $empSocial = all("SELECT esl_id, title, link FROM employee_social_links WHERE emp_id_fk=?", [$eid]); } catch (Exception $e) {}
+                try { $empAddr = all("SELECT ea_id, street, number, postal_code, city, country, address_for FROM employee_address WHERE emp_id_fk=?", [$eid]); } catch (Exception $e) {}
+                try { $empSecondary = all("SELECT si_id, email, phone FROM secondary_info WHERE emp_id_fk=?", [$eid]); } catch (Exception $e) {}
+                $empProfile = [
+                    'found' => true,
+                    'employee' => [
+                        'id' => $eid, 'name' => $emps[0]['name'], 'surname' => $emps[0]['surname'] ?? '',
+                        'email' => $emps[0]['email'], 'phone' => $emps[0]['phone'],
+                        'location' => $emps[0]['location'] ?? '', 'tariff' => $emps[0]['tariff'] ?? 0,
+                        'partner_type' => $emps[0]['partner_type'] ?? '', 'status' => $emps[0]['status'] ? 'Aktiv' : 'Inaktiv'
+                    ],
+                    'stats' => [
+                        'total_jobs' => (int)$emps[0]['total_jobs'],
+                        'completed' => (int)$emps[0]['completed_jobs'],
+                        'total_hours' => round((float)$emps[0]['total_hours'], 1)
+                    ],
+                    'documents' => $empDocs, 'social_links' => $empSocial,
+                    'addresses' => $empAddr, 'secondary_contacts' => $empSecondary
+                ];
+            }
+        }
+    } catch (Exception $e) {}
+    $results['employee_profile'] = $empProfile;
 }
 
 // ============================================================

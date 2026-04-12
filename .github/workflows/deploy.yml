@@ -1,0 +1,70 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - name: PHP Syntax Check
+        run: |
+          find . -name '*.php' -not -path './vendor/*' -not -path './backups/*' -not -path './node_modules/*' | \
+            xargs -P4 -I{} php -l {} | grep -v "No syntax errors" || true
+          # Fail on actual errors
+          find . -name '*.php' -not -path './vendor/*' -not -path './backups/*' -not -path './node_modules/*' | \
+            xargs -P4 -I{} php -l {} 2>&1 | grep -i "error" && exit 1 || exit 0
+
+  deploy:
+    needs: lint
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p 65002 62.72.37.195 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy via rsync
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='backups/' \
+            --exclude='docs/' \
+            --exclude='.env' \
+            --exclude='node_modules/' \
+            --exclude='*.md' \
+            -e "ssh -i ~/.ssh/deploy_key -p 65002" \
+            ./ u860899303@62.72.37.195:/home/u860899303/domains/app.fleckfrei.de/public_html/
+
+      - name: Post-deploy health check
+        run: |
+          sleep 3
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://app.fleckfrei.de/api/health.php)
+          if [ "$STATUS" != "200" ]; then
+            echo "Health check failed: HTTP $STATUS"
+            exit 1
+          fi
+          echo "Health check passed: HTTP $STATUS"
+
+      - name: Notify Telegram
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          EMOJI="✅"
+          if [ "$STATUS" != "success" ]; then EMOJI="❌"; fi
+          COMMIT=$(echo "${{ github.sha }}" | cut -c1-7)
+          MSG="$EMOJI <b>Deploy $STATUS</b>%0A%0A📦 Commit: $COMMIT%0A👤 ${{ github.actor }}%0A📝 $(echo '${{ github.event.head_commit.message }}' | head -1 | sed 's/&/&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')"
+          curl -s "https://api.telegram.org/bot***REDACTED***/sendMessage" \
+            -d "chat_id=6904792507&text=$MSG&parse_mode=HTML" > /dev/null

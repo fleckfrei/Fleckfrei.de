@@ -20,7 +20,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           [$_POST['source'] ?? 'manual', $_POST['competitor'] ?? '', (float)$_POST['hourly_price'], $_POST['city'] ?? 'Berlin']);
         header('Location: /admin/pricing.php?saved=1'); exit;
     }
+
+    // === Pricing-Rules: Multiplikatoren + Partner-Bonus ===
+    if ($act === 'save_rule') {
+        $prId = (int)($_POST['pr_id'] ?? 0);
+        $fields = [
+            $_POST['rule_type'] ?? 'base',
+            trim($_POST['name'] ?? ''),
+            (float)($_POST['multiplier'] ?? 1),
+            (float)($_POST['partner_bonus'] ?? 0),
+            $_POST['bonus_type'] ?? 'flat',
+            !empty($_POST['admin_override']) ? 1 : 0,
+            trim($_POST['notes'] ?? ''),
+            !empty($_POST['active']) ? 1 : 0,
+        ];
+        if ($prId) {
+            $fields[] = $prId;
+            q("UPDATE pricing_rules SET rule_type=?, name=?, multiplier=?, partner_bonus=?, bonus_type=?, admin_override=?, notes=?, active=? WHERE pr_id=?", $fields);
+            audit('update', 'pricing_rules', $prId, 'Rule: ' . $fields[1]);
+        } else {
+            q("INSERT INTO pricing_rules (rule_type, name, multiplier, partner_bonus, bonus_type, admin_override, notes, active) VALUES (?,?,?,?,?,?,?,?)", $fields);
+            audit('create', 'pricing_rules', 0, 'New rule: ' . $fields[1]);
+        }
+        header('Location: /admin/pricing.php?saved=1#rules'); exit;
+    }
+    if ($act === 'toggle_rule') {
+        $prId = (int)($_POST['pr_id'] ?? 0);
+        q("UPDATE pricing_rules SET active=1-active WHERE pr_id=?", [$prId]);
+        header('Location: /admin/pricing.php?saved=1#rules'); exit;
+    }
+    if ($act === 'delete_rule') {
+        q("DELETE FROM pricing_rules WHERE pr_id=?", [(int)($_POST['pr_id'] ?? 0)]);
+        header('Location: /admin/pricing.php?saved=1#rules'); exit;
+    }
 }
+
+// Load pricing rules für Anzeige
+$pricingRules = all("SELECT * FROM pricing_rules ORDER BY active DESC, rule_type, pr_id");
 
 $configs = all("SELECT * FROM pricing_config ORDER BY customer_type");
 $competitors = all("SELECT * FROM market_competitors WHERE city='Berlin' ORDER BY hourly_price ASC LIMIT 30");
@@ -259,3 +295,148 @@ include __DIR__ . '/../includes/layout.php';
   <br><br>
   <strong>Nächste Schritte:</strong> Cron-Job für tägliches Auto-Scraping via <code>/api/market-scraper.php?cron=flk_scrape_2026</code> in Hostinger hPanel einrichten. Proximity-Discount wenn Partner-GPS in 2km-Radius.
 </div>
+
+<!-- ========== PRICING RULES + PARTNER BONUS ========== -->
+<div id="rules" class="mt-10 bg-white rounded-xl border overflow-hidden">
+  <div class="p-5 border-b flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-bold text-gray-900">Preis-Regeln & Partner-Bonus</h2>
+      <p class="text-xs text-gray-600 mt-0.5">Multiplikatoren (Wochenende, Saison, Auslastung) + pro Regel konfigurierbarer Partner-Bonus.</p>
+    </div>
+    <button type="button" onclick="document.getElementById('ruleForm').reset(); document.querySelector('#ruleForm [name=pr_id]').value=''; document.getElementById('ruleFormTitle').textContent='Neue Regel'; document.getElementById('ruleModal').classList.remove('hidden')" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-semibold">+ Neue Regel</button>
+  </div>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 border-b">
+      <tr>
+        <th class="text-left px-4 py-3 font-medium">Typ</th>
+        <th class="text-left px-4 py-3 font-medium">Name</th>
+        <th class="text-right px-4 py-3 font-medium">Multiplikator</th>
+        <th class="text-right px-4 py-3 font-medium">Partner-Bonus</th>
+        <th class="text-center px-4 py-3 font-medium">Admin-Override</th>
+        <th class="text-center px-4 py-3 font-medium">Aktiv</th>
+        <th class="text-right px-4 py-3 font-medium">Aktionen</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y">
+      <?php foreach ($pricingRules as $r): ?>
+      <tr class="<?= $r['active'] ? '' : 'opacity-50' ?>">
+        <td class="px-4 py-3"><span class="px-2 py-0.5 bg-gray-100 rounded-full text-xs font-medium"><?= e($r['rule_type']) ?></span></td>
+        <td class="px-4 py-3"><?= e($r['name']) ?><?php if ($r['notes']): ?><div class="text-[11px] text-gray-500 mt-0.5"><?= e($r['notes']) ?></div><?php endif; ?></td>
+        <td class="px-4 py-3 text-right font-mono">
+          <?php $mult = (float)$r['multiplier']; $pct = round(($mult - 1) * 100); ?>
+          <span class="<?= $pct > 0 ? 'text-red-700' : ($pct < 0 ? 'text-green-700' : 'text-gray-700') ?>">
+            × <?= number_format($mult, 3) ?> (<?= $pct >= 0 ? '+' : '' ?><?= $pct ?>%)
+          </span>
+        </td>
+        <td class="px-4 py-3 text-right font-mono">
+          <?php if ($r['partner_bonus'] > 0): ?>
+            +<?= number_format($r['partner_bonus'], 2, ',', '.') ?>
+            <?= $r['bonus_type'] === 'percent' ? '%' : '€' ?>
+          <?php else: ?>
+            <span class="text-gray-400">—</span>
+          <?php endif; ?>
+        </td>
+        <td class="px-4 py-3 text-center"><?= $r['admin_override'] ? '🔒' : '' ?></td>
+        <td class="px-4 py-3 text-center">
+          <form method="POST" class="inline">
+            <?= csrfField() ?>
+            <input type="hidden" name="action" value="toggle_rule"/>
+            <input type="hidden" name="pr_id" value="<?= $r['pr_id'] ?>"/>
+            <button type="submit" class="<?= $r['active'] ? 'text-green-600' : 'text-gray-400' ?>">
+              <?= $r['active'] ? '●' : '○' ?>
+            </button>
+          </form>
+        </td>
+        <td class="px-4 py-3 text-right">
+          <button type="button" onclick='editRule(<?= json_encode($r, JSON_HEX_APOS|JSON_HEX_QUOT) ?>)' class="text-brand hover:underline text-xs">Bearbeiten</button>
+          <form method="POST" class="inline ml-2" onsubmit="return confirm('Regel wirklich löschen?')">
+            <?= csrfField() ?>
+            <input type="hidden" name="action" value="delete_rule"/>
+            <input type="hidden" name="pr_id" value="<?= $r['pr_id'] ?>"/>
+            <button type="submit" class="text-red-600 hover:underline text-xs">Löschen</button>
+          </form>
+        </td>
+      </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>
+
+<!-- Rule Edit Modal -->
+<div id="ruleModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4" onclick="if(event.target===this) this.classList.add('hidden')">
+  <div class="bg-white rounded-xl p-5 w-full max-w-lg shadow-2xl">
+    <h3 class="font-bold text-gray-900 mb-4" id="ruleFormTitle">Regel bearbeiten</h3>
+    <form id="ruleForm" method="POST" class="space-y-3">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="save_rule"/>
+      <input type="hidden" name="pr_id"/>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">Typ</label>
+          <select name="rule_type" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <option value="base">Basis</option>
+            <option value="weekend">Wochenende</option>
+            <option value="season">Saison</option>
+            <option value="demand">Auslastung</option>
+            <option value="special">Spezial</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">Multiplikator</label>
+          <input type="number" name="multiplier" step="0.001" value="1.000" class="w-full px-3 py-2 border rounded-lg text-sm font-mono" required/>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">Name</label>
+        <input type="text" name="name" placeholder="z.B. Wochenende +15%" class="w-full px-3 py-2 border rounded-lg text-sm" required/>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">Partner-Bonus</label>
+          <input type="number" name="partner_bonus" step="0.01" value="0" class="w-full px-3 py-2 border rounded-lg text-sm font-mono"/>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">Bonus-Typ</label>
+          <select name="bonus_type" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <option value="flat">€ Pauschal</option>
+            <option value="percent">% vom Netto</option>
+          </select>
+        </div>
+        <div class="flex items-end">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="admin_override" value="1" class="w-4 h-4 rounded text-brand"/>
+            <span>🔒 Override (fix)</span>
+          </label>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">Notiz (intern)</label>
+        <input type="text" name="notes" placeholder="Hinweise zur Regel" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="active" value="1" checked class="w-4 h-4 rounded text-brand"/>
+        <span>Aktiv</span>
+      </label>
+      <div class="flex gap-2 pt-2">
+        <button type="button" onclick="document.getElementById('ruleModal').classList.add('hidden')" class="flex-1 px-4 py-2 border rounded-lg text-sm">Abbrechen</button>
+        <button type="submit" class="flex-1 px-4 py-2 bg-brand text-white rounded-lg text-sm font-semibold">Speichern</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function editRule(r) {
+  const f = document.getElementById('ruleForm');
+  f.pr_id.value = r.pr_id;
+  f.rule_type.value = r.rule_type;
+  f.name.value = r.name;
+  f.multiplier.value = r.multiplier;
+  f.partner_bonus.value = r.partner_bonus;
+  f.bonus_type.value = r.bonus_type;
+  f.admin_override.checked = !!parseInt(r.admin_override);
+  f.notes.value = r.notes || '';
+  f.active.checked = !!parseInt(r.active);
+  document.getElementById('ruleFormTitle').textContent = 'Regel #' + r.pr_id + ' bearbeiten';
+  document.getElementById('ruleModal').classList.remove('hidden');
+}
+</script>

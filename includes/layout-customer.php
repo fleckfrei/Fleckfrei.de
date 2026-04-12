@@ -31,25 +31,43 @@ $page = $page ?? '';
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
   <style>
-    body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #1a1a1a; font-size: 14px; background: #f5f6f8; }
+    body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: #0f172a; font-size: 14px; background: #f5f6f8; }
     [x-cloak] { display: none !important; }
+    /* === Global contrast fixes (WCAG AA compliant) === */
+    /* Darker gray text for all utility classes */
+    .text-gray-400 { color: #475569 !important; }  /* was too light */
+    .text-gray-500 { color: #334155 !important; }
+    .text-gray-600 { color: #1e293b !important; }
+    .text-gray-700 { color: #0f172a !important; }
+    /* Keep true-light grays only for disabled/placeholder */
+    input::placeholder, textarea::placeholder { color: #94a3b8 !important; }
+    /* Labels darker + bolder */
+    label { color: #0f172a; font-weight: 500; }
+    /* Headings */
+    h1, h2, h3, h4, h5 { color: #0f172a; }
+    /* Links with more contrast — aber NICHT bei farbigen Buttons (bg-brand, bg-green, etc.) */
+    a:not(.nav-link):not(.btn-outline-white):not([class*="bg-"]):not([class*="text-white"]) { color: <?= BRAND_DARK ?>; }
+    a:not(.nav-link):not([class*="bg-"]):not([class*="text-white"]):hover { color: <?= BRAND ?>; }
+    /* Button-Links: weiße Schrift darf nicht überschrieben werden */
+    a.text-white, button.text-white, a[class*="bg-brand"], a[class*="bg-green"], a[class*="bg-blue"] { color: #fff !important; }
+    a.text-white:hover, button.text-white:hover { color: #fff !important; }
     /* Header brand gradient */
     .nav-brand-bg { background: linear-gradient(135deg, <?= BRAND ?> 0%, <?= BRAND_DARK ?> 100%); }
     /* Nav link underline on active (helpling-style) */
-    .nav-link { position: relative; padding: 22px 4px; color: rgba(255,255,255,0.85); font-weight: 500; font-size: 14px; transition: color 0.15s; }
+    .nav-link { position: relative; padding: 22px 4px; color: rgba(255,255,255,0.95); font-weight: 500; font-size: 14px; transition: color 0.15s; }
     .nav-link:hover { color: #fff; }
-    .nav-link.active { color: #fff; font-weight: 600; }
+    .nav-link.active { color: #fff; font-weight: 700; }
     .nav-link.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #fff; border-radius: 2px 2px 0 0; }
     /* CTA outline button */
-    .btn-outline-white { border: 1.5px solid rgba(255,255,255,0.7); color: #fff; padding: 8px 18px; border-radius: 8px; font-weight: 500; font-size: 14px; transition: all 0.15s; }
+    .btn-outline-white { border: 1.5px solid rgba(255,255,255,0.9); color: #fff; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; transition: all 0.15s; }
     .btn-outline-white:hover { background: #fff; color: <?= BRAND ?>; }
     /* Tab underline (secondary) */
-    .tab-underline { padding: 14px 2px; color: #6b7280; font-weight: 500; border-bottom: 3px solid transparent; transition: all 0.15s; }
-    .tab-underline.active { color: <?= BRAND ?>; border-bottom-color: <?= BRAND ?>; font-weight: 600; }
-    .tab-underline:hover:not(.active) { color: #374151; }
+    .tab-underline { padding: 14px 2px; color: #334155; font-weight: 500; border-bottom: 3px solid transparent; transition: all 0.15s; }
+    .tab-underline.active { color: <?= BRAND_DARK ?>; border-bottom-color: <?= BRAND ?>; font-weight: 700; }
+    .tab-underline:hover:not(.active) { color: #0f172a; }
     /* Card */
-    .card-elev { background: #fff; border: 1px solid #e9ebef; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-    .card-elev:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    .card-elev { background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .card-elev:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
     /* Accessibility: focus states */
     input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible {
       outline: 2px solid <?= BRAND ?>;
@@ -96,6 +114,7 @@ $page = $page ?? '';
           <a href="/customer/checklist.php" class="nav-link <?= $page==='checklist' ? 'active' : '' ?>">Check-Liste</a>
           <a href="/customer/smarthome.php" class="nav-link <?= $page==='smarthome' ? 'active' : '' ?>">Smart Home</a>
         <?php endif; ?>
+        <a href="/customer/photo-scores.php" class="nav-link <?= $page==='photo-scores' ? 'active' : '' ?>">Foto-Score</a>
         <a href="/customer/messages.php" class="nav-link <?= $page==='messages' ? 'active' : '' ?>">Chat</a>
         <a href="/customer/help.php"     class="nav-link <?= $page==='help' ? 'active' : '' ?>">Hilfe</a>
       </nav>
@@ -200,6 +219,7 @@ $page = $page ?? '';
       <!-- Kommunikation -->
       <div>
         <div class="text-[10px] uppercase font-bold text-white/50 tracking-wider px-3 mb-1">Kommunikation</div>
+        <a href="/customer/photo-scores.php" class="block px-3 py-2.5 rounded-lg text-white font-medium text-sm <?= $page==='photo-scores' ? 'bg-white/20' : 'hover:bg-white/10' ?>">Foto-Score</a>
         <a href="/customer/messages.php" class="block px-3 py-2.5 rounded-lg text-white font-medium text-sm <?= $page==='messages' ? 'bg-white/20' : 'hover:bg-white/10' ?>">Chat</a>
         <a href="/customer/help.php" class="block px-3 py-2.5 rounded-lg text-white font-medium text-sm <?= $page==='help' ? 'bg-white/20' : 'hover:bg-white/10' ?>">Hilfe</a>
       </div>

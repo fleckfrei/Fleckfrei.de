@@ -66,23 +66,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $isCheckOnly = !empty($_POST['is_check_only']);
         $newPeople = $isCheckOnly ? 1 : max(1, min(20, (int)($_POST['no_people'] ?? 1)));
         $newChildren = max(0, min(20, (int)($_POST['no_children'] ?? 0)));
-        $newPets = max(0, min(10, (int)($_POST['no_pets'] ?? 0))); // cap at 10
-        // Hours: enforce MIN_HOURS for pricing (2h minimum)
+        $newPets = max(0, min(10, (int)($_POST['no_pets'] ?? 0)));
         $newHours = !empty($_POST['j_hours']) ? max(MIN_HOURS, min(12, (float)$_POST['j_hours'])) : null;
         $hasSeparateBeds = !empty($_POST['has_separate_beds']) ? 1 : 0;
         $hasSofaBed = !empty($_POST['has_sofa_bed']) ? 1 : 0;
         $extrasNote = trim(mb_substr($_POST['extras_note'] ?? '', 0, 500));
         $newNote = trim($_POST['job_note'] ?? '');
+        $newEmpMsg = trim(mb_substr($_POST['emp_message'] ?? '', 0, 500));
         $newCode = trim($_POST['code_door'] ?? '');
         $newAddress = trim($_POST['address'] ?? $job['address']);
-        if ($newHours !== null) {
-            q("UPDATE jobs SET j_hours=?, no_people=?, no_children=?, no_pets=?, has_separate_beds=?, has_sofa_bed=?, extras_note=?, job_note=?, code_door=?, address=?, is_check_only=?, updated_at=NOW() WHERE j_id=?",
-              [$newHours, $newPeople, $newChildren, $newPets, $hasSeparateBeds, $hasSofaBed, $extrasNote, $newNote, $newCode, $newAddress, $isCheckOnly ? 1 : 0, $jid]);
-        } else {
-            q("UPDATE jobs SET no_people=?, no_children=?, no_pets=?, has_separate_beds=?, has_sofa_bed=?, extras_note=?, job_note=?, code_door=?, address=?, is_check_only=?, updated_at=NOW() WHERE j_id=?",
-              [$newPeople, $newChildren, $newPets, $hasSeparateBeds, $hasSofaBed, $extrasNote, $newNote, $newCode, $newAddress, $isCheckOnly ? 1 : 0, $jid]);
-        }
-        // NOTE: Code is saved ONLY to the job, NOT to services.box_code (keeps service master code intact)
+        // Gast-Zeiten (für Host/Airbnb-Kunden)
+        $guestCheckoutDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['guest_checkout_date'] ?? '') ? $_POST['guest_checkout_date'] : null;
+        $guestCheckoutTime = preg_match('/^\d{2}:\d{2}/', $_POST['guest_checkout_time'] ?? '') ? substr($_POST['guest_checkout_time'], 0, 5) . ':00' : null;
+        $checkInDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['check_in_date'] ?? '') ? $_POST['check_in_date'] : null;
+        $checkInTime = preg_match('/^\d{2}:\d{2}/', $_POST['check_in_time'] ?? '') ? substr($_POST['check_in_time'], 0, 5) . ':00' : null;
+        // Optional products
+        $optProducts = is_array($_POST['optional_products'] ?? null) ? implode(', ', array_map('trim', $_POST['optional_products'])) : '';
+
+        $sql = "UPDATE jobs SET no_people=?, no_children=?, no_pets=?, has_separate_beds=?, has_sofa_bed=?, extras_note=?, job_note=?, emp_message=?, code_door=?, address=?, is_check_only=?, guest_checkout_date=?, guest_checkout_time=?, check_in_date=?, check_in_time=?, optional_products=?";
+        $params = [$newPeople, $newChildren, $newPets, $hasSeparateBeds, $hasSofaBed, $extrasNote, $newNote, $newEmpMsg, $newCode, $newAddress, $isCheckOnly ? 1 : 0, $guestCheckoutDate, $guestCheckoutTime, $checkInDate, $checkInTime, $optProducts];
+        if ($newHours !== null) { $sql .= ", j_hours=?"; $params[] = $newHours; }
+        $sql .= ", updated_at=NOW() WHERE j_id=?";
+        $params[] = $jid;
+        q($sql, $params);
+
         audit('update', 'jobs', $jid, 'Job-Details vom Kunden geändert' . ($isCheckOnly ? ' (Kontrolle)' : ''));
         header('Location: /customer/jobs.php?saved=edit'); exit;
     }
@@ -418,10 +425,22 @@ include __DIR__ . '/../includes/layout-customer.php';
 
 <?php else: ?>
 
+<?php
+// Auto-open Edit-Modal via ?edit=JOBID
+$autoEditId = (int)($_GET['edit'] ?? 0);
+$autoEditJob = null;
+if ($autoEditId) {
+    $autoEditJob = one("SELECT j.*, s.title as stitle, s.box_code as service_code,
+        CONCAT_WS(' ', s.street, s.number, s.postal_code, s.city) as service_address
+        FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id
+        WHERE j.j_id=? AND j.customer_id_fk=? AND j.status=1", [$autoEditId, $cid]);
+}
+?>
+
 <!-- JOB CARDS -->
 <div class="grid gap-4" x-data='{
-  modal: null,
-  modalJob: null,
+  modal: <?= $autoEditJob ? '"edit"' : 'null' ?>,
+  modalJob: <?= $autoEditJob ? json_encode($autoEditJob, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) : 'null' ?>,
   selectedDate: "",
   availability: <?= json_encode($availability, JSON_UNESCAPED_UNICODE) ?>,
   availInfo() {
@@ -1005,10 +1024,154 @@ $lastGroupKey = null;
         <input type="text" name="code_door" :value="modalJob?.code_door || modalJob?.service_code || ''" placeholder="z.B. 1234 oder Kasten Links" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none font-mono"/>
         <p class="text-[10px] text-gray-400 mt-1" x-show="modalJob?.service_code && !modalJob?.code_door">Aus Service-Profil übernommen · Sie können ihn hier ändern, das Service-Profil bleibt unverändert</p>
       </div>
-      <div>
-        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Notiz für den Partner</label>
-        <textarea name="job_note" rows="3" x-text="modalJob?.job_note" placeholder="Besonderheiten, Allergien, Zugang..." class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"></textarea>
+      <!-- Check-in / Check-out Gast-Zeiten (Host/Airbnb-Kunden) -->
+      <?php
+        $showGuestTimes = in_array($customer['customer_type'] ?? '', ['Airbnb','Host','Co-Host','Short-Term Rental','Booking','Company','Business','B2B','Firma','GmbH']);
+      ?>
+      <?php if ($showGuestTimes): ?>
+      <div class="border-t pt-3">
+        <div class="text-[10px] uppercase font-bold text-gray-500 mb-2 tracking-wider">Gast-Wechsel (Turnover)</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-semibold text-gray-600 mb-1">Check-out Gast</label>
+            <div class="grid grid-cols-2 gap-1">
+              <input type="date" name="guest_checkout_date" :value="modalJob?.guest_checkout_date && modalJob.guest_checkout_date !== '0000-00-00' ? modalJob.guest_checkout_date : ''" class="px-2 py-2 border rounded-lg text-xs"/>
+              <input type="time" name="guest_checkout_time" :value="modalJob?.guest_checkout_time ? modalJob.guest_checkout_time.slice(0,5) : '11:00'" class="px-2 py-2 border rounded-lg text-xs"/>
+            </div>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-gray-600 mb-1">Check-in neuer Gast</label>
+            <div class="grid grid-cols-2 gap-1">
+              <input type="date" name="check_in_date" :value="modalJob?.check_in_date && modalJob.check_in_date !== '0000-00-00' ? modalJob.check_in_date : ''" class="px-2 py-2 border rounded-lg text-xs"/>
+              <input type="time" name="check_in_time" :value="modalJob?.check_in_time ? modalJob.check_in_time.slice(0,5) : '16:00'" class="px-2 py-2 border rounded-lg text-xs"/>
+            </div>
+          </div>
+        </div>
+        <p class="text-[10px] text-gray-500 mt-1">💡 Partner reinigt zwischen diesen Zeiten</p>
       </div>
+      <?php endif; ?>
+
+      <!-- Nachricht an Partner (emp_message — sichtbar für Partner beim Job) -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">💬 Nachricht an Partner</label>
+        <textarea name="emp_message" rows="2" placeholder="z.B. Klingeln Sie zweimal, Schlüssel im Briefkasten..." class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none text-sm" x-text="modalJob?.emp_message || ''"></textarea>
+        <p class="text-[10px] text-gray-500 mt-0.5">Kurze Info die der Partner direkt beim Start sieht</p>
+      </div>
+
+      <!-- Interne Notiz -->
+      <div>
+        <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">📝 Interne Notiz</label>
+        <textarea name="job_note" rows="2" x-text="modalJob?.job_note || ''" placeholder="Besonderheiten, Allergien, Zugang..." class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none text-sm"></textarea>
+      </div>
+
+      <!-- Optional Products (Zusatzleistungen) — dynamisch aus DB -->
+      <?php
+        try {
+            $visFilter = $showGuestTimes ? "('all','host','business')" : "('all','private')";
+            $optionalProducts = all("SELECT op_id, name, description, pricing_type, customer_price, icon FROM optional_products WHERE is_active=1 AND visibility IN $visFilter ORDER BY sort_order ASC, op_id ASC");
+        } catch (Exception $e) { $optionalProducts = []; }
+      ?>
+      <?php if (!empty($optionalProducts)): ?>
+      <div class="border-t pt-3">
+        <label class="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider">Zusatzleistungen</label>
+        <div class="space-y-1.5">
+          <?php foreach ($optionalProducts as $op): ?>
+          <label class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:border-brand cursor-pointer text-sm">
+            <input type="checkbox" name="optional_products[]" value="<?= e($op['name']) ?>" class="w-4 h-4 rounded text-brand focus:ring-brand" x-bind:checked="(modalJob?.optional_products || '').includes(<?= json_encode($op['name']) ?>)"/>
+            <div class="flex-1 flex items-center justify-between">
+              <span><?= $op['icon'] ? e($op['icon']) . ' ' : '' ?><?= e($op['name']) ?></span>
+              <?php if ($op['customer_price'] > 0): ?>
+              <span class="text-xs font-semibold text-brand-dark">+<?= number_format($op['customer_price'], 2, ',', '.') ?> €<?= $op['pricing_type']==='per_hour' ? '/h' : '' ?></span>
+              <?php endif; ?>
+            </div>
+          </label>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <!-- Service-Checkliste (read-only preview) -->
+      <?php
+        // Alle Checklisten dieses Kunden pro Service cachen
+        try {
+            $allChecklists = all("SELECT cl.checklist_id, cl.s_id_fk, cl.room, cl.title, cl.priority, cl.position,
+                (SELECT completed FROM checklist_completions WHERE job_id_fk IS NULL LIMIT 0) AS x
+                FROM service_checklists cl
+                WHERE cl.customer_id_fk=? AND cl.is_active=1
+                ORDER BY cl.s_id_fk, cl.room, cl.position", [$cid]);
+            $checklistBySvc = [];
+            foreach ($allChecklists as $c) $checklistBySvc[(int)$c['s_id_fk']][] = $c;
+        } catch (Exception $e) { $checklistBySvc = []; }
+      ?>
+      <div x-show="modalJob && <?= json_encode($checklistBySvc, JSON_UNESCAPED_UNICODE) ?>[modalJob.s_id_fk]" class="border-t pt-3">
+        <div class="flex items-center justify-between mb-2">
+          <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider">✅ Service-Checkliste</label>
+          <a :href="'/customer/checklist.php?s=' + modalJob?.s_id_fk" class="text-[10px] text-brand hover:underline">bearbeiten →</a>
+        </div>
+        <div class="space-y-1 text-xs bg-gray-50 rounded-lg p-2 max-h-40 overflow-y-auto">
+          <template x-for="item in (<?= json_encode($checklistBySvc, JSON_UNESCAPED_UNICODE) ?>[modalJob?.s_id_fk] || [])" :key="item.checklist_id">
+            <div class="flex items-start gap-2 py-1">
+              <span class="inline-block w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                :class="item.priority === 'critical' ? 'bg-red-500' : (item.priority === 'high' ? 'bg-amber-500' : 'bg-green-500')"></span>
+              <div class="flex-1 min-w-0">
+                <span class="text-gray-900 font-medium" x-text="item.title"></span>
+                <span x-show="item.room" class="text-[10px] text-gray-500 ml-1" x-text="'· ' + item.room"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+        <p class="text-[10px] text-gray-500 mt-1">💡 Partner bestätigt diese Punkte beim Job</p>
+      </div>
+
+      <!-- Uploads: Fotos / Videos / Dokumente vom Host → Partner -->
+      <div class="border-t pt-3" x-data="jobUpload(modalJob?.j_id)">
+        <label class="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider">📎 Anweisungen für Partner (Foto / Video / PDF)</label>
+        <!-- Bestehende Uploads -->
+        <div x-show="existingFiles.length > 0" class="grid grid-cols-4 gap-2 mb-2">
+          <template x-for="f in existingFiles" :key="f.url">
+            <a :href="f.url" target="_blank" class="block aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative group">
+              <template x-if="f.type === 'image'">
+                <img :src="f.url" class="w-full h-full object-cover"/>
+              </template>
+              <template x-if="f.type === 'video'">
+                <div class="w-full h-full flex items-center justify-center bg-gray-800 text-white text-xl">▶</div>
+              </template>
+              <template x-if="f.type === 'document'">
+                <div class="w-full h-full flex items-center justify-center text-xl">📄</div>
+              </template>
+              <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] px-1 py-0.5 truncate" x-text="f.original_name"></div>
+            </a>
+          </template>
+        </div>
+        <!-- Upload-Button -->
+        <label class="flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed border-gray-300 hover:border-brand rounded-lg text-xs text-gray-600 hover:text-brand cursor-pointer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          <span x-show="!uploading">+ Foto / Video / PDF (max 10 MB)</span>
+          <span x-show="uploading && compressProgress === 0">Bild wird komprimiert…</span>
+          <span x-show="uploading && compressProgress > 0">
+            Video komprimiert: <span x-text="compressProgress"></span>%
+          </span>
+          <input type="file" accept="image/*,video/*,application/pdf" @change="handleFile($event)" class="hidden" :disabled="uploading"/>
+        </label>
+        <div x-show="uploading && compressProgress > 0" class="w-full h-1 bg-gray-200 rounded-full mt-1 overflow-hidden">
+          <div class="h-full bg-brand transition-all" :style="'width:' + compressProgress + '%'"></div>
+        </div>
+        <p class="text-[10px] text-gray-500 mt-1">🖼 Bilder: auto 1280px · 🎥 Videos: auto 720p h264 · Nach 30 Tagen → Google Drive Archiv.</p>
+        <p x-show="uploadError" x-cloak class="text-[11px] text-red-600 mt-1" x-text="uploadError"></p>
+      </div>
+
+      <!-- Status-Anzeige (read-only für Kunden) -->
+      <div class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs flex items-center justify-between">
+        <span class="text-gray-600">Status</span>
+        <span class="font-semibold" :class="{
+          'text-blue-700': modalJob?.job_status === 'PENDING',
+          'text-brand-dark': modalJob?.job_status === 'CONFIRMED',
+          'text-amber-700': ['RUNNING','STARTED'].includes(modalJob?.job_status),
+          'text-green-700': modalJob?.job_status === 'COMPLETED',
+          'text-red-600': modalJob?.job_status === 'CANCELLED'
+        }" x-text="({PENDING:'Geplant',CONFIRMED:'Bestätigt',RUNNING:'Läuft',STARTED:'Läuft',COMPLETED:'Erledigt',CANCELLED:'Storniert'})[modalJob?.job_status] || modalJob?.job_status"></span>
+      </div>
+
       <div class="flex gap-2 pt-2">
         <button type="button" @click="modal = null" class="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50">Abbrechen</button>
         <button type="submit" class="flex-1 px-4 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold">Speichern</button>
@@ -1128,5 +1291,98 @@ $lastGroupKey = null;
 </div>
 
 <?php endif; ?>
+
+<script type="module">
+// Lazy-load ffmpeg.wasm nur wenn Video-Kompression gebraucht
+let ffmpegInstance = null;
+async function getFfmpeg() {
+  if (ffmpegInstance) return ffmpegInstance;
+  const { FFmpeg } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
+  const { toBlobURL } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
+  ffmpegInstance = new FFmpeg();
+  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+  await ffmpegInstance.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+  });
+  return ffmpegInstance;
+}
+window.compressVideo = async function(file, onProgress) {
+  const ffmpeg = await getFfmpeg();
+  if (onProgress) ffmpeg.on('progress', ({ progress }) => onProgress(Math.round(progress * 100)));
+  const inputName = 'in.' + (file.name.split('.').pop() || 'mp4');
+  const outputName = 'out.mp4';
+  const buf = new Uint8Array(await file.arrayBuffer());
+  await ffmpeg.writeFile(inputName, buf);
+  // Encode: 720p max, 1Mbps bitrate, h264, mp4
+  await ffmpeg.exec(['-i', inputName, '-vf', 'scale=\'min(1280,iw)\':\'-2\'', '-b:v', '1M', '-c:v', 'libx264', '-preset', 'fast', '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '128k', outputName]);
+  const data = await ffmpeg.readFile(outputName);
+  return new File([data.buffer], file.name.replace(/\.[^.]+$/, '.mp4'), { type: 'video/mp4' });
+};
+</script>
+<script>
+function jobUpload(jobId) {
+  return {
+    uploading: false, uploadError: null, existingFiles: [], compressProgress: 0,
+    init() {
+      this.$watch('$root.modalJob', (job) => {
+        if (!job) return;
+        try { this.existingFiles = JSON.parse(job.job_file || '[]') || []; } catch(e) { this.existingFiles = []; }
+      });
+    },
+    async handleFile(ev) {
+      const file = ev.target.files?.[0];
+      if (!file) return;
+      this.uploading = true; this.uploadError = null; this.compressProgress = 0;
+      try {
+        let toSend = file;
+        if (file.type.startsWith('image/')) {
+          toSend = await this.compressImage(file, 1280, 0.7);
+        } else if (file.type.startsWith('video/')) {
+          // Video > 5MB → komprimieren
+          if (file.size > 5 * 1024 * 1024) {
+            if (!window.compressVideo) throw new Error('Video-Kompression lädt... bitte nochmal klicken');
+            this.compressProgress = 1;
+            toSend = await window.compressVideo(file, p => this.compressProgress = p);
+          }
+        }
+        const fd = new FormData();
+        fd.append('j_id', jobId);
+        fd.append('file', toSend, toSend.name || file.name);
+        fd.append('_csrf', '<?= csrfToken() ?>');
+        const r = await fetch('/customer/job-file-upload.php', { method:'POST', body: fd });
+        const d = await r.json();
+        if (!d.success) throw new Error(d.error || 'Upload fehlgeschlagen');
+        this.existingFiles.push({
+          url: d.data.url, type: d.data.type, original_name: file.name,
+          size: toSend.size, uploaded_at: new Date().toISOString()
+        });
+        ev.target.value = '';
+      } catch (e) {
+        this.uploadError = e.message;
+      } finally {
+        this.uploading = false; this.compressProgress = 0;
+      }
+    },
+    compressImage(file, maxWidth, quality) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = e => { img.src = e.target.result; };
+        img.onload = () => {
+          const scale = Math.min(1, maxWidth / img.width);
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(b => b ? resolve(new File([b], file.name, { type: 'image/jpeg' })) : reject(new Error('Compression failed')), 'image/jpeg', quality);
+        };
+        img.onerror = () => reject(new Error('Bild konnte nicht gelesen werden'));
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+}
+</script>
 
 <?php include __DIR__ . '/../includes/footer-customer.php'; ?>

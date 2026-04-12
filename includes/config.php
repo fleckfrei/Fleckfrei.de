@@ -292,12 +292,164 @@ function partnerInitial(?array $row): string {
 }
 require_once __DIR__ . '/lang.php';
 
+/**
+ * DSGVO-CONSENT-GUARDS — zentrale Prüfung ob Kunde Marketing-Channel erlaubt.
+ * Automatisch von allen Marketing-Funktionen aufgerufen.
+ * @return bool true = darf senden, false = gesperrt
+ */
+function canContact(int $customerId, string $channel): bool {
+    if ($customerId <= 0) return false;
+    $col = match($channel) {
+        'email' => 'consent_email',
+        'whatsapp', 'wa' => 'consent_whatsapp',
+        'phone', 'sms' => 'consent_phone',
+        default => null
+    };
+    if (!$col) return false;
+    try {
+        $row = one("SELECT $col as c FROM customer WHERE customer_id=? AND status=1", [$customerId]);
+        return !empty($row['c']);
+    } catch (Exception $e) {
+        // Fail-safe: im Zweifel KEIN Senden (DSGVO sicher)
+        return false;
+    }
+}
+
+/**
+ * Log-Wrapper für Marketing-Versand. Prüft Consent + loggt in consent_history.
+ * Wenn consent fehlt: silent fail mit Audit-Eintrag.
+ * @return bool true = wurde gesendet, false = geblockt
+ */
+function marketingSend(int $customerId, string $channel, string $subject, callable $sendFn): bool {
+    if (!canContact($customerId, $channel)) {
+        audit('blocked_marketing', $channel, $customerId, "Consent fehlt für '$subject' — nicht gesendet");
+        return false;
+    }
+    try {
+        $result = $sendFn();
+        audit('marketing_sent', $channel, $customerId, $subject);
+        return $result !== false;
+    } catch (Exception $e) {
+        audit('marketing_error', $channel, $customerId, $subject . ' — ' . $e->getMessage());
+        return false;
+    }
+}
+
 function telegramNotify($message) {
     if (!defined('N8N_WEBHOOK_NOTIFY') || !N8N_WEBHOOK_NOTIFY) return;
     @file_get_contents(N8N_WEBHOOK_NOTIFY, false, stream_context_create([
         'http' => ['method'=>'POST', 'header'=>"Content-Type: application/json\r\n",
             'content'=>json_encode(['message' => $message]), 'timeout'=>3]
     ]));
+}
+
+/**
+ * Zentrale Benachrichtigungs-Engine.
+ * - Loggt JEDE Aktion in activity_log (unabhängig von Permissions)
+ * - Prüft user_notification_prefs ob/wohin benachrichtigen
+ * - Default: Admin bekommt IMMER, User nur wenn er opted-in
+ *
+ * @param string $actorType customer|employee|admin|system
+ * @param int $actorId
+ * @param string $eventType z.B. job_reschedule, job_cancel, note_added, payment_made
+ * @param string $targetType jobs|invoices|customer|employee|note
+ * @param int|null $targetId
+ * @param string $humanMsg Kurztext für Notification (z.B. "Max hat Job #42 umgebucht")
+ * @param array $details extra data für log
+ */
+function notifyEvent(string $actorType, int $actorId, string $eventType, string $targetType, ?int $targetId, string $humanMsg, array $details = []): void {
+    try {
+        global $dbLocal;
+        // 1. In activity_log schreiben
+        $stmt = ($dbLocal ?? $GLOBALS['db'])->prepare("INSERT INTO activity_log (actor_type, actor_id, target_type, target_id, event_type, action, details, ip_address, user_agent) VALUES (?,?,?,?,?,?,?,?,?)");
+        $stmt->execute([
+            $actorType, $actorId, $targetType, $targetId, $eventType,
+            $details['action'] ?? $eventType,
+            json_encode($details, JSON_UNESCAPED_UNICODE),
+            $_SERVER['REMOTE_ADDR'] ?? null,
+            substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500)
+        ]);
+    } catch (Exception $e) { /* log failure ok */ }
+
+    // 2. Admin IMMER notifizieren (außer Admin ist selbst der Actor)
+    $adminShouldGet = $actorType !== 'admin';
+    // Check if admin has disabled this event type
+    try {
+        $adminPref = one("SELECT enabled, channel FROM user_notification_prefs WHERE user_type='admin' AND user_id=0 AND event_type=?", [$eventType]);
+        if ($adminPref && !$adminPref['enabled']) $adminShouldGet = false;
+    } catch (Exception $e) {}
+
+    if ($adminShouldGet) {
+        telegramNotify("🔔 <b>{$eventType}</b>\n\n{$humanMsg}\n\n<i>von {$actorType} #{$actorId}</i>");
+    }
+
+    // 3. Dem betroffenen User (nicht Actor) benachrichtigen falls Pref erlaubt
+    $targetUserType = null; $targetUserId = null;
+    if ($targetType === 'jobs' && $targetId) {
+        try {
+            $job = one("SELECT customer_id_fk, emp_id_fk FROM jobs WHERE j_id=?", [$targetId]);
+            // Actor ist Customer → Employee benachrichtigen (wenn vorhanden)
+            if ($actorType === 'customer' && !empty($job['emp_id_fk'])) {
+                $targetUserType = 'employee'; $targetUserId = $job['emp_id_fk'];
+            }
+            // Actor ist Admin/Employee → Customer benachrichtigen
+            if ($actorType !== 'customer' && !empty($job['customer_id_fk'])) {
+                $targetUserType = 'customer'; $targetUserId = $job['customer_id_fk'];
+            }
+        } catch (Exception $e) {}
+    }
+
+    if ($targetUserType && $targetUserId) {
+        try {
+            $pref = one("SELECT enabled, channel FROM user_notification_prefs WHERE user_type=? AND user_id=? AND event_type=?", [$targetUserType, $targetUserId, $eventType]);
+            // Default: user bekommt NICHTS (außer explizit opted-in)
+            if ($pref && $pref['enabled']) {
+                if ($pref['channel'] === 'email') {
+                    $table = $targetUserType === 'customer' ? 'customer' : 'employee';
+                    $idCol = $targetUserType === 'customer' ? 'customer_id' : 'emp_id';
+                    $user = one("SELECT email, name FROM $table WHERE $idCol=?", [$targetUserId]);
+                    if (!empty($user['email']) && function_exists('sendEmail')) {
+                        sendEmail($user['email'], SITE . ' — Update zu Ihrem Termin', "<p>{$humanMsg}</p>");
+                    }
+                }
+                // TODO: push, in_app channels
+            }
+        } catch (Exception $e) {}
+    }
+}
+
+/**
+ * Default-Permissions für einen neuen Kunden/Partner anlegen.
+ * Admin-pref mit user_id=0 ist der globale Default.
+ */
+function ensureDefaultNotifPrefs(string $userType, int $userId): void {
+    $defaults = [
+        // Events die Admin IMMER sehen soll (enabled=1)
+        'admin' => [
+            'job_created' => 1, 'job_rescheduled' => 1, 'job_cancelled' => 1,
+            'job_edited' => 1, 'job_completed' => 1, 'note_added' => 1,
+            'payment_made' => 1, 'photo_uploaded' => 1, 'customer_edited' => 1,
+            'partner_absent' => 1, 'rating_submitted' => 1
+        ],
+        // Kunden-Default: nur wichtige Updates
+        'customer' => [
+            'job_created' => 1, 'job_rescheduled' => 1, 'job_cancelled' => 1,
+            'job_completed' => 1, 'payment_reminder' => 1,
+            'note_added' => 0, 'job_edited' => 0
+        ],
+        // Partner-Default: Job-relevante Events
+        'employee' => [
+            'job_created' => 1, 'job_assigned' => 1, 'job_rescheduled' => 1,
+            'job_cancelled' => 1, 'note_added' => 1
+        ]
+    ];
+    $prefs = $defaults[$userType] ?? [];
+    foreach ($prefs as $event => $enabled) {
+        try {
+            q("INSERT IGNORE INTO user_notification_prefs (user_type, user_id, event_type, channel, enabled) VALUES (?,?,?,'telegram',?)",
+              [$userType, $userId, $event, $enabled]);
+        } catch (Exception $e) {}
+    }
 }
 
 function webhookNotify($event, $data) {

@@ -96,7 +96,8 @@ $gridStart = strtotime("-" . ($firstDow - 1) . " days", $firstDay);
 // Fetch 6 weeks of jobs (covers all month-grid cells)
 $gridEnd = strtotime("+41 days", $gridStart);
 $jobs = all("
-    SELECT j.j_id, j.j_date, j.j_time, j.job_status, j.total_hours, j.j_hours, j.emp_id_fk,
+    SELECT j.j_id, j.j_date, j.j_time, j.job_status, j.total_hours, j.j_hours, j.emp_id_fk, j.s_id_fk,
+           j.no_people, j.no_children, j.no_pets, j.address, j.code_door, j.emp_message, j.job_note, j.platform,
            s.title AS stitle, e.display_name AS edisplay, e.profile_pic AS eavatar
     FROM jobs j
     LEFT JOIN services s ON j.s_id_fk = s.s_id
@@ -241,6 +242,11 @@ $custFullName2 = trim($customer['name'] ?? '');
 $custSurname2 = trim($customer['surname'] ?? '');
 $isBusiness2 = in_array($customer['customer_type'] ?? '', ['Airbnb', 'B2B', 'Host', 'Business', 'Booking', 'Short-Term Rental', 'Firma', 'GmbH'], true);
 $greetingName = $isBusiness2 ? $custFullName2 : ($custSurname2 ?: ($custFullName2 ?: 'Willkommen'));
+// Stammkunden-Status
+$completedJobsCount = (int) val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED'", [$cid]);
+$isStammkunde = $completedJobsCount >= 5 || !empty($customer['legacy_pricing']);
+$firstJob = val("SELECT MIN(j_date) FROM jobs WHERE customer_id_fk=? AND status=1 AND job_status='COMPLETED'", [$cid]);
+$monthsActive = $firstJob ? max(0, floor((time() - strtotime($firstJob)) / (30*86400))) : 0;
 ?>
 <!-- Header -->
 <div class="mb-6 flex flex-wrap items-center justify-between gap-4" x-data="{ showManual: false }">
@@ -426,7 +432,25 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
 </div>
 
 <!-- Calendar -->
-<div class="card-elev overflow-hidden" x-data="{ selected: null, selectedDate: null, selectedDateIso: null }">
+<div class="card-elev overflow-hidden" x-data="{
+  selected: null, selectedDate: null, selectedDateIso: null,
+  messageJobId: null, messageText: '',
+  saveMessage() {
+    fetch('/api/index.php?action=jobs/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': '<?= API_KEY ?>' },
+      body: JSON.stringify({ j_id: this.messageJobId, field: 'emp_message', value: this.messageText })
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        const j = this.selected?.find(x => x.id === this.messageJobId);
+        if (j) j.emp_message = this.messageText;
+        this.messageJobId = null;
+      } else {
+        alert('Fehler: ' + (d.error || 'Unbekannt'));
+      }
+    }).catch(() => alert('Netzwerkfehler'));
+  }
+}">
 
   <?php if ($view === 'week'): ?>
   <!-- WEEK VIEW NAVIGATOR -->
@@ -613,6 +637,16 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
                 'partner' => !empty($j['emp_id_fk']) ? partnerDisplayName($j) : '',
                 'status' => $j['job_status'] ?? 'NEW',
                 'hours' => $j['total_hours'] ?: $j['j_hours'] ?: 0,
+                'planned_hours' => $j['j_hours'] ?? 0,
+                'no_people' => (int)($j['no_people'] ?? 1),
+                'no_children' => (int)($j['no_children'] ?? 0),
+                'no_pets' => (int)($j['no_pets'] ?? 0),
+                'address' => $j['address'] ?? '',
+                'code_door' => $j['code_door'] ?? '',
+                'emp_message' => $j['emp_message'] ?? '',
+                'job_note' => $j['job_note'] ?? '',
+                'platform' => $j['platform'] ?? '',
+                'booked_by' => in_array($j['platform'] ?? '', ['airbnb','booking','smoobu','vrbo','ical']) ? 'host' : 'customer',
             ], $relevantJobs),
             array_map(fn($ev) => [
                 'id' => 'ext_' . $ev['ev_id'],
@@ -670,10 +704,26 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
             $isCompleted = ($j['job_status'] ?? '') === 'COMPLETED';
             $isCancelled = ($j['job_status'] ?? '') === 'CANCELLED';
             $bgClass = $isCompleted ? 'bg-green-100 text-green-800' : ($isCancelled ? 'bg-gray-100 text-gray-400 line-through' : 'bg-brand/15 text-brand');
+            $jTime = substr($j['j_time'] ?? '', 0, 5);
+            $jTitle = $j['stitle'] ?? 'Reinigung';
+            $jPeople = (int)($j['no_people'] ?? 1);
+            $jChildren = (int)($j['no_children'] ?? 0);
+            $jPets = (int)($j['no_pets'] ?? 0);
+            $hasMsg = !empty($j['emp_message']);
+            // Badge für wichtige Infos
+            $badges = [];
+            if ($jPeople > 1) $badges[] = '👥' . $jPeople;
+            if ($jChildren > 0) $badges[] = '👶' . $jChildren;
+            if ($jPets > 0) $badges[] = '🐾' . $jPets;
+            if ($hasMsg) $badges[] = '💬';
         ?>
-        <div class="text-[10px] sm:text-[11px] px-1.5 py-0.5 rounded <?= $bgClass ?> font-semibold truncate flex items-center gap-1">
-          <span>🧹</span>
-          <span class="hidden sm:inline"><?= e(substr($j['j_time'] ?? '', 0, 5)) ?></span>
+        <div class="text-[10px] sm:text-[11px] px-1.5 py-0.5 rounded <?= $bgClass ?> font-semibold flex items-center gap-1 overflow-hidden">
+          <span class="flex-shrink-0">🧹</span>
+          <span class="font-bold flex-shrink-0"><?= e($jTime) ?></span>
+          <span class="truncate flex-1 min-w-0"><?= e(mb_substr($jTitle, 0, 20)) ?></span>
+          <?php if ($badges): ?>
+          <span class="flex-shrink-0 text-[9px] opacity-80"><?= implode(' ', $badges) ?></span>
+          <?php endif; ?>
         </div>
         <?php endforeach; ?>
 
@@ -771,45 +821,124 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
           </div>
         </template>
 
-        <!-- INTERNAL JOBS section — personalized -->
+        <!-- INTERNAL JOBS section — erweiterte Transparenz -->
         <template x-if="selected?.some(j => j.type === 'internal')">
           <div>
-            <div class="mb-3 mt-4">
-              <div class="font-bold text-gray-900 text-base flex items-center gap-2">
-                <span class="text-xl">🧹</span>
-                <span>Ihre Reinigung</span>
+            <div class="mb-3 mt-4 flex items-center justify-between gap-3">
+              <div>
+                <div class="font-bold text-gray-900 text-base flex items-center gap-2">
+                  <span class="text-xl">🧹</span>
+                  <span>Ihre Reinigung</span>
+                </div>
+                <p class="text-xs text-gray-600 mt-0.5">Wir kümmern uns für Sie.</p>
               </div>
-              <p class="text-xs text-gray-500 mt-0.5">Wir kümmern uns für Sie.</p>
+              <!-- Kunden-Status Badge -->
+              <?php if ($isStammkunde): ?>
+              <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-gradient-to-r from-amber-400 to-amber-300 text-amber-900 whitespace-nowrap shadow-sm">⭐ Stammkunde · <?= $completedJobsCount ?> Aufträge</span>
+              <?php else: ?>
+              <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 whitespace-nowrap">🆕 Neukunde</span>
+              <?php endif; ?>
             </div>
-            <div class="space-y-2">
+            <div class="space-y-2.5">
               <template x-for="job in selected.filter(j => j.type === 'internal')" :key="job.id">
-                <div class="border border-gray-200 rounded-xl p-3 hover:border-brand transition">
-                  <div class="flex items-center justify-between gap-3">
+                <div class="border border-gray-200 rounded-xl p-4 hover:border-brand transition bg-white">
+                  <!-- Header: Service + Status -->
+                  <div class="flex items-start justify-between gap-3 mb-2">
                     <div class="min-w-0 flex-1">
-                      <div class="font-semibold text-gray-900 text-sm" x-text="job.service"></div>
-                      <div class="text-xs text-gray-500 mt-0.5 flex items-center gap-3 flex-wrap">
-                        <span x-show="job.time" class="flex items-center gap-1">
+                      <div class="font-bold text-gray-900 text-sm" x-text="job.service"></div>
+                      <div class="text-xs text-gray-600 mt-0.5 flex items-center gap-3 flex-wrap">
+                        <span x-show="job.time" class="flex items-center gap-1 font-semibold text-gray-900">
                           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                           <span x-text="job.time + ' Uhr'"></span>
                         </span>
                         <span x-show="job.hours > 0" x-text="'· ' + parseFloat(job.hours).toFixed(1) + 'h'"></span>
-                        <span x-show="job.partner" class="text-brand font-medium" x-text="'· ' + job.partner"></span>
+                        <span x-show="parseFloat(job.hours) < 2 || parseFloat(job.planned_hours) < 2" class="text-amber-700 text-[10px] font-semibold">⚠ min. 2h berechnet</span>
                       </div>
                     </div>
                     <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap"
                       :class="{
                         'bg-green-100 text-green-700': job.status === 'COMPLETED',
-                        'bg-amber-100 text-amber-700': job.status === 'IN_PROGRESS',
+                        'bg-amber-100 text-amber-700': job.status === 'RUNNING' || job.status === 'STARTED',
                         'bg-brand/10 text-brand': job.status === 'CONFIRMED',
                         'bg-blue-100 text-blue-700': job.status === 'PENDING' || job.status === 'NEW'
                       }"
-                      x-text="{COMPLETED: 'Erledigt ✓', CONFIRMED: 'Bestätigt', PENDING: 'Geplant', IN_PROGRESS: 'Läuft gerade', NEW: 'Neu'}[job.status] || job.status"></span>
+                      x-text="{COMPLETED: 'Erledigt ✓', CONFIRMED: 'Bestätigt', PENDING: 'Geplant', RUNNING: 'Läuft gerade', STARTED: 'Läuft gerade', NEW: 'Neu'}[job.status] || job.status"></span>
+                  </div>
+
+                  <!-- Gebucht von: Kunde oder Host/Platform -->
+                  <div class="text-[11px] text-gray-600 mb-2 flex items-center gap-1.5">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                    <span x-show="job.booked_by === 'host'">Buchung über <strong x-text="job.platform.toUpperCase()"></strong> (Host-Plattform)</span>
+                    <span x-show="job.booked_by === 'customer'">Gebucht von Ihnen</span>
+                  </div>
+
+                  <!-- Details: Personen / Kinder / Haustiere -->
+                  <div class="flex items-center gap-3 flex-wrap mb-2 text-[11px]">
+                    <span class="flex items-center gap-1 px-2 py-1 bg-gray-50 rounded-lg">
+                      <svg class="w-3.5 h-3.5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                      <span class="font-semibold text-gray-900" x-text="(job.no_people || 1) + ' Person' + ((job.no_people || 1) > 1 ? 'en' : '')"></span>
+                    </span>
+                    <span x-show="job.no_children > 0" class="flex items-center gap-1 px-2 py-1 bg-blue-50 rounded-lg text-blue-800 font-semibold">
+                      👶 <span x-text="job.no_children + ' Kind' + (job.no_children > 1 ? 'er' : '')"></span>
+                    </span>
+                    <span x-show="job.no_pets > 0" class="flex items-center gap-1 px-2 py-1 bg-amber-50 rounded-lg text-amber-800 font-semibold">
+                      🐾 <span x-text="job.no_pets + ' Haustier' + (job.no_pets > 1 ? 'e' : '')"></span>
+                    </span>
+                    <span x-show="job.code_door" class="flex items-center gap-1 px-2 py-1 bg-brand-light rounded-lg text-brand-dark font-semibold">
+                      🔑 <span x-text="'Code: ' + job.code_door"></span>
+                    </span>
+                  </div>
+
+                  <!-- Adresse -->
+                  <div x-show="job.address" class="text-[11px] text-gray-700 mb-2 flex items-start gap-1.5">
+                    <svg class="w-3 h-3 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span x-text="job.address"></span>
+                  </div>
+
+                  <!-- Partner -->
+                  <div x-show="job.partner" class="text-[11px] mb-2 flex items-center gap-1.5 text-brand-dark font-semibold">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                    Partner: <span x-text="job.partner"></span>
+                  </div>
+
+                  <!-- Nachricht an Partner -->
+                  <div class="mt-3 pt-3 border-t border-gray-100">
+                    <div x-show="job.emp_message" class="mb-2">
+                      <div class="text-[10px] uppercase font-bold text-gray-500 mb-1">Ihre Nachricht an Partner:</div>
+                      <div class="text-[11px] text-gray-800 bg-amber-50 border-l-2 border-amber-400 px-2 py-1.5 rounded" x-text="job.emp_message"></div>
+                    </div>
+                    <button x-show="!['COMPLETED','CANCELLED'].includes(job.status)" type="button"
+                            @click="messageJobId = job.id; messageText = job.emp_message || ''"
+                            class="w-full flex items-center justify-center gap-2 px-3 py-2 border border-brand text-brand hover:bg-brand hover:text-white rounded-lg text-xs font-semibold transition">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                      <span x-text="job.emp_message ? 'Nachricht bearbeiten' : 'Nachricht an Partner schreiben'"></span>
+                    </button>
+                  </div>
+
+                  <!-- Quick-Actions -->
+                  <div x-show="['PENDING','CONFIRMED'].includes(job.status)" class="flex gap-2 mt-2">
+                    <a :href="'/customer/jobs.php?edit=' + job.id" class="flex-1 text-center text-[11px] px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-semibold">Details / Ändern</a>
                   </div>
                 </div>
               </template>
             </div>
           </div>
         </template>
+
+        <!-- Nachricht-Modal -->
+        <div x-show="messageJobId" x-cloak
+             class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+             @click.self="messageJobId = null">
+          <div class="bg-white rounded-xl p-5 w-full max-w-md shadow-2xl">
+            <h3 class="font-bold text-gray-900 mb-1">Nachricht an Partner</h3>
+            <p class="text-xs text-gray-600 mb-4">Hinweise/Wünsche zum Termin. Der Partner sieht diese vor dem Job.</p>
+            <textarea x-model="messageText" rows="4" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-brand focus:border-brand outline-none" placeholder="z.B. Klingeln Sie zweimal, Schlüssel liegt im Briefkasten..."></textarea>
+            <div class="flex gap-2 mt-4">
+              <button type="button" @click="messageJobId = null" class="flex-1 px-4 py-2 border rounded-lg text-gray-700 text-sm">Abbrechen</button>
+              <button type="button" @click="saveMessage()" class="flex-1 px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold">Speichern</button>
+            </div>
+          </div>
+        </div>
 
         <!-- BOOKING BUTTON — always visible at bottom -->
         <div class="mt-4 pt-4 border-t border-gray-100">

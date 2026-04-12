@@ -153,3 +153,16 @@ if (shouldRun('gotham_daily', 1440)) {
     curl_exec($ch);
     curl_close($ch);
 }
+
+// === TASK 8: Upload-Cleanup (every 24h) — Dateien > 30 Tage archivieren ===
+if (shouldRun('upload_cleanup', 1440)) {
+    $url = 'https://app.' . SITE_DOMAIN . '/api/cleanup-uploads.php?key=' . API_KEY;
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 120,
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
+}

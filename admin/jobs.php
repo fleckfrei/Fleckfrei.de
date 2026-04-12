@@ -215,6 +215,14 @@ include __DIR__ . '/../includes/layout.php';
       </div>
       <button onclick="document.getElementById('addJobModal').classList.remove('hidden')" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium hover:bg-brand-dark transition">+ Neuer Job</button>
     </div>
+    <!-- Farb-Legende -->
+    <div class="flex items-center flex-wrap gap-3 mb-3 px-2 text-[11px] font-medium text-gray-700">
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#eab308"></span>Neue Buchung (Partner fehlt)</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#2563EB"></span>Offen / Bestätigt</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#ea580c"></span>Partner läuft</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#16a34a"></span>Erledigt</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#dc2626"></span>Storniert</div>
+    </div>
     <div id="calendar"></div>
   </div>
 
@@ -481,7 +489,26 @@ if ('serviceWorker' in navigator) {
 const API = '/api/index.php';
 const KEY = '{$apiKey}';
 // Softer, professional colors
-const colors = {PENDING:'#d97706',CONFIRMED:'#2563EB',RUNNING:'#7c3aed',STARTED:'#7c3aed',COMPLETED:'#2E7D6B',CANCELLED:'#dc2626'};
+// Farb-Mapping nach Workflow (wie Max es kennt):
+// Gelb = Neue Buchung (Partner fehlt noch)
+// Blau = PENDING/CONFIRMED (Partner zugewiesen, wartet auf Start)
+// Orange = RUNNING/STARTED (Partner hat Start gedrückt)
+// Grün = COMPLETED (Partner hat Stop gedrückt)
+// Rot = CANCELLED
+const colors = {
+  NEW: '#eab308',         // Gelb — neu erstellt, Partner fehlt
+  PENDING: '#2563EB',     // Blau — wartet auf Start
+  CONFIRMED: '#1d4ed8',   // Blau-dunkel — bestätigt
+  RUNNING: '#ea580c',     // Orange — läuft
+  STARTED: '#ea580c',     // Orange — läuft
+  COMPLETED: '#16a34a',   // Grün — fertig
+  CANCELLED: '#dc2626'    // Rot — storniert
+};
+function jobColor(j) {
+  // Ohne Partner = neue Buchung = gelb (überschreibt PENDING)
+  if (!j.emp_id_fk && (j.job_status === 'PENDING' || j.job_status === 'NEW')) return colors.NEW;
+  return colors[j.job_status] || '#64748b';
+}
 const statusLabels = {PENDING:'Offen',CONFIRMED:'Bestätigt',RUNNING:'Laufend',STARTED:'Laufend',COMPLETED:'Erledigt',CANCELLED:'Storniert'};
 let allEvents = [];
 let currentEditId = null;
@@ -538,7 +565,7 @@ const cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
                     title: j.customer_name || 'Unbekannt',
                     start: j.j_date+'T'+j.j_time,
                     end: j.j_date+'T'+ new Date(new Date('2000-01-01T'+j.j_time).getTime()+(j.j_hours||2)*3600000).toTimeString().slice(0,8),
-                    color: colors[j.job_status] || '#999',
+                    color: jobColor(j),
                     extendedProps: j
                 })));
             }).catch(fail);
@@ -611,7 +638,7 @@ function loadDayPanel(dateStr) {
             let totalH = 0;
             panel.innerHTML = jobs.map(j => {
                 totalH += parseFloat(j.j_hours) || 0;
-                const col = colors[j.job_status] || '#999';
+                const col = jobColor(j);
                 const emp = j.emp_name ? j.emp_name.charAt(0) + '.' : '⚠';
                 const jStr = JSON.stringify(j).replace(/'/g,'\\x27').replace(/"/g,'&quot;');
                 return '<div class="px-2.5 py-2 rounded-lg border border-gray-100 hover:border-brand/30 cursor-pointer transition" onclick="openQuickEdit(' + jStr + ')">' +
