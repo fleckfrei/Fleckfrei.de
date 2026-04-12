@@ -366,12 +366,14 @@ if ($primaryEmail) {
 $db_result['finance'] = ['insolvenz' => [], 'handelsregister' => [], 'schulden_hinweise' => [], 'bewertungen' => []];
 $searchName = $cust['name'] ?? ($isEmail ? '' : $query);
 if ($searchName && strlen($searchName) > 2) {
+    // IMPORTANT: Use exact name in quotes to avoid irrelevant global results
+    $exactName = '"' . $searchName . '"';
     $financeQueries = [
-        'insolvenz' => $searchName . ' Insolvenz OR insolvent OR Insolvenzverfahren site:insolvenzbekanntmachungen.de OR site:bundesanzeiger.de',
-        'vollstreckung' => $searchName . ' Vollstreckung OR Pfändung OR Schuldner OR Mahnung Berlin',
-        'handelsregister' => $searchName . ' Handelsregister OR HRB OR Geschäftsführer OR GmbH site:handelsregister.de OR site:northdata.de OR site:unternehmensregister.de',
-        'schufa' => $searchName . ' Schufa OR Bonität OR Zahlungsverzug OR Inkasso OR Mahnverfahren',
-        'betrug' => $searchName . ' Betrug OR Scam OR Warnung OR Abzocke OR "nicht bezahlt" OR Bewertung',
+        'insolvenz' => $exactName . ' Insolvenz site:insolvenzbekanntmachungen.de',
+        'vollstreckung' => $exactName . ' Vollstreckung OR Pfändung OR Schuldner Berlin Deutschland',
+        'handelsregister' => $exactName . ' site:northdata.de OR site:handelsregister.de OR site:unternehmensregister.de',
+        'schufa' => $exactName . ' Schufa OR Inkasso OR Mahnung OR Zahlungsverzug Deutschland',
+        'betrug' => $exactName . ' Betrug OR Scam OR Warnung OR "nicht bezahlt" Berlin',
     ];
 
     foreach ($financeQueries as $type => $fQuery) {
@@ -382,8 +384,14 @@ if ($searchName && strlen($searchName) > 2) {
                     $title = $r['title'] ?? '';
                     $url = $r['url'] ?? '';
                     $snippet = $r['snippet'] ?? $r['content'] ?? '';
-                    // Skip irrelevant results
+                    // Skip irrelevant results — name MUST appear in title or snippet
                     if (!$title || str_contains($url, 'fleckfrei.de')) continue;
+                    $nameLower = mb_strtolower($searchName);
+                    $contentLower = mb_strtolower($title . ' ' . $snippet);
+                    // Check if at least the surname or full name appears
+                    $nameParts = explode(' ', $nameLower);
+                    $lastPart = end($nameParts); // surname usually last
+                    if (!str_contains($contentLower, $nameLower) && !str_contains($contentLower, $lastPart)) continue;
 
                     $category = match($type) {
                         'insolvenz' => 'insolvenz',
