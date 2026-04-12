@@ -79,7 +79,7 @@ $existing = val("SELECT COUNT(*) FROM app_config WHERE config_key='google_oauth_
 if ($existing) {
     q("UPDATE app_config SET config_value=? WHERE config_key='google_oauth_tokens'", [$tokenData]);
 } else {
-    q("INSERT INTO app_config (setting_key, config_value) VALUES ('google_oauth_tokens', ?)", [$tokenData]);
+    q("INSERT INTO app_config (config_key, config_value) VALUES ('google_oauth_tokens', ?)", [$tokenData]);
 }
 
 audit('google_connect', 'system', 0, 'Google OAuth connected: ' . ($tokens['scope'] ?? ''));
