@@ -183,26 +183,36 @@ include __DIR__ . '/../includes/layout.php';
         <span class="px-1.5 py-0.5 bg-brand/10 text-brand text-[10px] font-bold rounded" x-text="(result?.db?.total_hits || 0) + ' Treffer'"></span>
       </h3>
 
-      <!-- Customer -->
+      <!-- Customer — with link to admin page -->
       <div x-show="result?.db?.customer" class="mb-3 p-3 bg-blue-50 rounded-lg">
-        <div class="text-[10px] font-bold text-blue-600 uppercase mb-1">Kunde</div>
-        <template x-for="(val, key) in (result?.db?.customer || {})" :key="key">
-          <div class="flex justify-between text-sm py-0.5">
-            <span class="text-gray-500 capitalize" x-text="key.replace(/_/g, ' ')"></span>
-            <span class="font-medium text-gray-900 truncate max-w-[200px]" x-text="val"></span>
-          </div>
-        </template>
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-[10px] font-bold text-blue-600 uppercase">Kunde</div>
+          <a :href="'/admin/view-customer.php?id=' + result?.db?.customer?.id" class="text-[10px] font-bold text-brand hover:underline">Profil öffnen →</a>
+        </div>
+        <div class="text-sm font-bold text-gray-900" x-text="result?.db?.customer?.name + ' ' + (result?.db?.customer?.surname || '')"></div>
+        <div class="text-xs text-gray-600" x-text="result?.db?.customer?.email"></div>
+        <div class="text-xs text-gray-600" x-text="result?.db?.customer?.phone"></div>
+        <div class="flex gap-2 mt-1.5 text-[10px]">
+          <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded" x-text="result?.db?.customer?.type || 'Privat'"></span>
+          <span class="px-1.5 py-0.5 rounded" :class="result?.db?.customer?.status === 'Aktiv' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'" x-text="result?.db?.customer?.status"></span>
+          <span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded" x-text="(result?.db?.customer?.total_jobs || 0) + ' Jobs'"></span>
+          <span class="text-gray-400" x-text="'seit ' + (result?.db?.customer?.since || '?')"></span>
+        </div>
       </div>
 
-      <!-- Employee -->
+      <!-- Employee — with link -->
       <div x-show="result?.db?.employee" class="mb-3 p-3 bg-purple-50 rounded-lg">
-        <div class="text-[10px] font-bold text-purple-600 uppercase mb-1">Partner</div>
-        <template x-for="(val, key) in (result?.db?.employee || {})" :key="key">
-          <div class="flex justify-between text-sm py-0.5">
-            <span class="text-gray-500 capitalize" x-text="key.replace(/_/g, ' ')"></span>
-            <span class="font-medium text-gray-900 truncate max-w-[200px]" x-text="val"></span>
-          </div>
-        </template>
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-[10px] font-bold text-purple-600 uppercase">Partner</div>
+          <a :href="'/admin/view-employee.php?id=' + result?.db?.employee?.id" class="text-[10px] font-bold text-brand hover:underline">Profil öffnen →</a>
+        </div>
+        <div class="text-sm font-bold text-gray-900" x-text="result?.db?.employee?.name"></div>
+        <div class="text-xs text-gray-600" x-text="result?.db?.employee?.email"></div>
+        <div class="text-xs text-gray-600" x-text="result?.db?.employee?.phone"></div>
+        <div class="flex gap-2 mt-1.5 text-[10px]">
+          <span class="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded" x-text="result?.db?.employee?.type || 'Partner'"></span>
+          <span class="px-1.5 py-0.5 rounded" :class="result?.db?.employee?.status === 'Aktiv' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'" x-text="result?.db?.employee?.status"></span>
+        </div>
       </div>
 
       <!-- Leads -->
@@ -296,10 +306,45 @@ include __DIR__ . '/../includes/layout.php';
       </div>
 
       <!-- Stats -->
-      <div x-show="result?.db?.stats" class="mt-3 grid grid-cols-3 gap-2 text-center">
+      <div x-show="result?.db?.stats" class="mt-3 grid grid-cols-4 gap-2 text-center">
         <div class="bg-gray-50 rounded-lg p-2"><div class="text-lg font-bold" x-text="result?.db?.stats?.total_jobs || 0"></div><div class="text-[9px] text-gray-500 uppercase">Jobs</div></div>
+        <div class="bg-gray-50 rounded-lg p-2"><div class="text-lg font-bold text-green-600" x-text="result?.db?.stats?.completed || 0"></div><div class="text-[9px] text-gray-500 uppercase">Erledigt</div></div>
         <div class="bg-gray-50 rounded-lg p-2"><div class="text-lg font-bold" x-text="result?.db?.stats?.revenue || '0'"></div><div class="text-[9px] text-gray-500 uppercase">Umsatz</div></div>
-        <div class="bg-gray-50 rounded-lg p-2"><div class="text-lg font-bold" x-text="result?.db?.stats?.open_balance || '0'"></div><div class="text-[9px] text-gray-500 uppercase">Offen</div></div>
+        <div class="bg-gray-50 rounded-lg p-2"><div class="text-lg font-bold" :class="parseFloat((result?.db?.stats?.open_balance||'0').replace(/[^0-9,]/g,'').replace(',','.'))>0 ? 'text-red-600' : 'text-green-600'" x-text="result?.db?.stats?.open_balance || '0'"></div><div class="text-[9px] text-gray-500 uppercase">Offen</div></div>
+      </div>
+
+      <!-- Jobs list with links -->
+      <div x-show="result?.db?.jobs?.length > 0" class="mt-3 p-3 bg-gray-50 rounded-lg">
+        <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Letzte Jobs</div>
+        <template x-for="j in (result?.db?.jobs || []).slice(0,5)" :key="j.j_id">
+          <a :href="'/admin/jobs.php?highlight=' + j.j_id" class="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0 hover:text-brand">
+            <span x-text="'#' + j.j_id + ' · ' + j.j_date"></span>
+            <span class="font-semibold" :class="j.job_status==='COMPLETED' ? 'text-green-600' : (j.job_status==='CANCELLED' ? 'text-red-500' : 'text-gray-700')" x-text="j.job_status"></span>
+          </a>
+        </template>
+      </div>
+
+      <!-- Invoices with links -->
+      <div x-show="result?.db?.invoices?.length > 0" class="mt-3 p-3 bg-gray-50 rounded-lg">
+        <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Rechnungen</div>
+        <template x-for="inv in (result?.db?.invoices || []).slice(0,5)" :key="inv.inv_id">
+          <div class="flex justify-between text-xs py-1 border-b border-gray-100 last:border-0">
+            <span x-text="(inv.invoice_number || '#'+inv.inv_id) + ' · ' + inv.issue_date"></span>
+            <span class="font-semibold" :class="inv.invoice_paid==='yes' ? 'text-green-600' : 'text-red-600'" x-text="inv.total_price + ' € ' + (inv.invoice_paid==='yes' ? '✓' : '⏳')"></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- Services -->
+      <div x-show="result?.db?.services?.length > 0" class="mt-3 p-3 bg-gray-50 rounded-lg">
+        <div class="text-[10px] font-bold text-gray-500 uppercase mb-1">Services</div>
+        <template x-for="s in (result?.db?.services || [])" :key="s.s_id">
+          <div class="text-xs py-1 border-b border-gray-100 last:border-0">
+            <span class="font-medium" x-text="s.title"></span>
+            <span class="text-gray-400 ml-1" x-text="s.street + ' ' + (s.city || '')"></span>
+            <span class="text-brand font-bold ml-1" x-text="s.total_price + ' €/h'"></span>
+          </div>
+        </template>
       </div>
 
       <div x-show="(result?.db?.total_hits || 0) === 0" class="text-sm text-gray-400 italic">Kein Treffer in der gesamten Datenbank</div>
