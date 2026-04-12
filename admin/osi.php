@@ -360,7 +360,94 @@ include __DIR__ . '/../includes/layout.php';
   <div x-show="error" x-cloak class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800" x-text="error"></div>
 </div>
 
-<?php else: ?>
+<?php endif; ?>
+
+<!-- ============================================================ -->
+<!-- LEAD RADAR — always visible, independent of search -->
+<!-- ============================================================ -->
+<div class="mt-6" x-data="leadRadar()">
+  <div class="bg-white rounded-2xl border overflow-hidden">
+    <div class="px-6 py-4 border-b bg-gradient-to-r from-amber-50 to-transparent flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">🎯</span>
+        <div>
+          <h3 class="font-bold text-gray-900">Lead Radar — Echtzeit</h3>
+          <div class="text-xs text-gray-500">Scannt Berlin nach Leuten die JETZT einen Reinigungsservice suchen</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span x-show="lastScan" x-cloak class="text-[10px] text-gray-400 font-mono" x-text="'Letzter Scan: ' + lastScan"></span>
+        <button @click="scan()" :disabled="scanning" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 text-white rounded-lg text-xs font-bold flex items-center gap-2 transition">
+          <svg x-show="!scanning" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <svg x-show="scanning" x-cloak class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          <span x-text="scanning ? 'Scanne...' : 'Jetzt scannen'"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div x-show="leads.length > 0" class="divide-y max-h-[500px] overflow-y-auto">
+      <template x-for="lead in leads" :key="lead.url">
+        <div class="px-5 py-3 hover:bg-gray-50 transition flex items-start gap-3">
+          <div class="flex-shrink-0 mt-1">
+            <span x-show="lead.priority === 'high'" class="w-2.5 h-2.5 bg-red-500 rounded-full block"></span>
+            <span x-show="lead.priority === 'medium'" class="w-2.5 h-2.5 bg-amber-500 rounded-full block"></span>
+            <span x-show="lead.priority === 'low'" class="w-2.5 h-2.5 bg-gray-300 rounded-full block"></span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <a :href="lead.url" target="_blank" class="font-medium text-sm text-gray-900 hover:text-brand line-clamp-1" x-text="lead.title"></a>
+            <div class="text-xs text-gray-500 mt-0.5 line-clamp-2" x-text="lead.snippet"></div>
+            <div class="flex items-center gap-3 mt-1.5 text-[10px]">
+              <span class="text-gray-400" x-text="lead.source"></span>
+              <span class="px-1.5 py-0.5 rounded text-[9px] font-bold"
+                    :class="{
+                      'bg-red-100 text-red-700': lead.category === 'direct_demand',
+                      'bg-amber-100 text-amber-700': lead.category === 'competitor_switch',
+                      'bg-blue-100 text-blue-700': lead.category === 'marketplace',
+                      'bg-purple-100 text-purple-700': lead.category === 'host_demand',
+                      'bg-gray-100 text-gray-600': lead.category === 'general',
+                    }"
+                    x-text="{ direct_demand: 'SUCHT JETZT', competitor_switch: 'WECHSELBEREIT', marketplace: 'KLEINANZEIGE', host_demand: 'HOST/AIRBNB', general: 'ALLGEMEIN' }[lead.category] || lead.category"></span>
+              <span x-show="lead.phone" class="text-brand font-semibold" x-text="'📞 ' + lead.phone"></span>
+              <span x-show="lead.email" class="text-brand font-semibold" x-text="'✉ ' + lead.email"></span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Empty / Stats -->
+    <div x-show="!scanning && leads.length === 0 && scanned" class="p-10 text-center text-gray-400 text-sm">Keine neuen Leads gefunden. Nächster automatischer Scan in 6 Stunden.</div>
+    <div x-show="leads.length > 0" class="px-5 py-3 bg-gray-50 border-t flex items-center justify-between text-xs text-gray-500">
+      <span x-text="leads.length + ' Leads gefunden · ' + leads.filter(l => l.priority === 'high').length + ' heiß · ' + savedCount + ' neu gespeichert'"></span>
+      <span x-text="scanTime + 's Scanzeit'"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+function leadRadar() {
+  return {
+    leads: [], scanning: false, scanned: false, lastScan: null, scanTime: 0, savedCount: 0,
+    async scan() {
+      this.scanning = true; this.leads = [];
+      try {
+        const r = await fetch('/api/lead-radar.php', { credentials: 'same-origin' });
+        const d = await r.json();
+        if (d.success) {
+          this.leads = d.leads || [];
+          this.scanTime = d.scan_time;
+          this.savedCount = d.saved_to_db;
+          this.lastScan = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        }
+      } catch (e) { console.error(e); }
+      this.scanning = false; this.scanned = true;
+    }
+  };
+}
+</script>
+
+<?php if (!$q): ?>
 <!-- NO QUERY — Show recent scans -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <div class="lg:col-span-2">
