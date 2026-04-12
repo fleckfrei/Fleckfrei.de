@@ -365,15 +365,46 @@ if ($primaryEmail) {
 // 1S. FINANZ-CHECK — Insolvenz, Schulden, Handelsregister, Bonität (KOSTENLOS)
 $db_result['finance'] = ['insolvenz' => [], 'handelsregister' => [], 'schulden_hinweise' => [], 'bewertungen' => []];
 $searchName = $cust['name'] ?? ($isEmail ? '' : $query);
-if ($searchName && strlen($searchName) > 2) {
-    // IMPORTANT: Use exact name in quotes to avoid irrelevant global results
-    $exactName = '"' . $searchName . '"';
+$searchSurname = $cust['surname'] ?? '';
+$searchFullName = trim($searchName . ' ' . $searchSurname);
+
+// Get address for precise identification
+$searchAddress = '';
+$searchCity = 'Berlin';
+$searchPostal = '';
+if (!empty($cust)) {
+    $addr = one("SELECT street, number, postal_code, city FROM addresses WHERE entity_type='customer' AND entity_id=? LIMIT 1", [$cust['customer_id']]);
+    if ($addr) {
+        $searchAddress = trim(($addr['street'] ?? '') . ' ' . ($addr['number'] ?? ''));
+        $searchCity = $addr['city'] ?: 'Berlin';
+        $searchPostal = $addr['postal_code'] ?? '';
+    }
+}
+
+// Identity proof — store exactly what was searched
+$db_result['finance']['identity'] = [
+    'name' => $searchFullName,
+    'address' => $searchAddress,
+    'postal_code' => $searchPostal,
+    'city' => $searchCity,
+    'email' => $primaryEmail,
+    'phone' => $cust['phone'] ?? '',
+    'customer_id' => $cust['customer_id'] ?? null,
+    'verified_by' => $searchAddress ? 'Name + Adresse + PLZ' : ($primaryEmail ? 'Name + Email' : 'Nur Name (ungenau)'),
+    'confidence' => $searchAddress ? 'HOCH' : ($primaryEmail ? 'MITTEL' : 'NIEDRIG'),
+];
+
+if ($searchFullName && strlen($searchFullName) > 2) {
+    // Use full name + city + address for precise search
+    $exactName = '"' . $searchFullName . '"';
+    $locationFilter = $searchCity ? ' ' . $searchCity : '';
+    $addressFilter = $searchAddress ? ' "' . $searchAddress . '"' : '';
     $financeQueries = [
-        'insolvenz' => $exactName . ' Insolvenz site:insolvenzbekanntmachungen.de',
-        'vollstreckung' => $exactName . ' Vollstreckung OR Pfändung OR Schuldner Berlin Deutschland',
+        'insolvenz' => $exactName . $locationFilter . ' Insolvenz site:insolvenzbekanntmachungen.de',
+        'vollstreckung' => $exactName . $locationFilter . ' Vollstreckung OR Pfändung OR Schuldner',
         'handelsregister' => $exactName . ' site:northdata.de OR site:handelsregister.de OR site:unternehmensregister.de',
-        'schufa' => $exactName . ' Schufa OR Inkasso OR Mahnung OR Zahlungsverzug Deutschland',
-        'betrug' => $exactName . ' Betrug OR Scam OR Warnung OR "nicht bezahlt" Berlin',
+        'schufa' => $exactName . $locationFilter . ' Schufa OR Inkasso OR Mahnung OR Zahlungsverzug',
+        'betrug' => $exactName . $locationFilter . ' Betrug OR Scam OR Warnung OR "nicht bezahlt"',
     ];
 
     foreach ($financeQueries as $type => $fQuery) {

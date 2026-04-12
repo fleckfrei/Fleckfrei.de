@@ -389,7 +389,21 @@ include __DIR__ . '/../includes/layout.php';
           <span class="px-2 py-0.5 rounded text-[10px] font-bold" :class="'bg-'+result?.db?.finance?.bonitaet_score?.color+'-200 text-'+result?.db?.finance?.bonitaet_score?.color+'-800'" x-text="result?.db?.finance?.bonitaet_score?.level"></span>
         </div>
         <div class="text-xs text-gray-600" x-text="result?.db?.finance?.bonitaet_score?.text"></div>
-        <div class="text-[9px] text-gray-400 mt-1" x-text="'Gesucht: \"' + (result?.db?.finance?.searched_name || '?') + '\"'"></div>
+        <!-- Identitäts-Nachweis -->
+        <div class="mt-2 p-2 bg-white/70 rounded-lg text-[10px] space-y-0.5">
+          <div class="font-bold text-gray-700 uppercase tracking-wider text-[9px] mb-1">Geprüfte Identität:</div>
+          <div x-show="result?.db?.finance?.identity?.name"><span class="text-gray-500">Name:</span> <strong x-text="result?.db?.finance?.identity?.name"></strong></div>
+          <div x-show="result?.db?.finance?.identity?.address"><span class="text-gray-500">Adresse:</span> <span x-text="result?.db?.finance?.identity?.address + ', ' + result?.db?.finance?.identity?.postal_code + ' ' + result?.db?.finance?.identity?.city"></span></div>
+          <div x-show="result?.db?.finance?.identity?.email"><span class="text-gray-500">Email:</span> <span x-text="result?.db?.finance?.identity?.email"></span></div>
+          <div x-show="result?.db?.finance?.identity?.phone"><span class="text-gray-500">Telefon:</span> <span x-text="result?.db?.finance?.identity?.phone"></span></div>
+          <div class="flex items-center gap-2 mt-1 pt-1 border-t border-gray-200">
+            <span class="text-gray-500">Genauigkeit:</span>
+            <span class="px-1.5 py-0.5 rounded font-bold"
+                  :class="result?.db?.finance?.identity?.confidence==='HOCH' ? 'bg-green-100 text-green-700' : (result?.db?.finance?.identity?.confidence==='MITTEL' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')"
+                  x-text="result?.db?.finance?.identity?.confidence"></span>
+            <span class="text-gray-400" x-text="'(' + result?.db?.finance?.identity?.verified_by + ')'"></span>
+          </div>
+        </div>
 
         <!-- Geprüfte Quellen -->
         <details class="mt-2">
