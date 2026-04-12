@@ -183,6 +183,18 @@ if (google_is_connected()) {
     $db_result['google_status'] = 'not_connected';
 }
 
+// 1k. PHOTO SCORES — AI cleanliness ratings for this customer's jobs
+$db_result['photo_scores'] = [];
+if (!empty($cust)) {
+    try {
+        $db_result['photo_scores'] = all("SELECT pa.pa_id, pa.score, pa.photo_type, pa.photo_path, pa.created_at,
+            j.j_id, j.j_date FROM photo_analyses pa
+            LEFT JOIN jobs j ON pa.job_id_fk=j.j_id
+            WHERE j.customer_id_fk=? ORDER BY pa.created_at DESC LIMIT 5", [$cust['customer_id']]);
+        $db_result['total_hits'] += count($db_result['photo_scores']);
+    } catch (Exception $e) {}
+}
+
 $result['db'] = $db_result;
 
 // ============================================================

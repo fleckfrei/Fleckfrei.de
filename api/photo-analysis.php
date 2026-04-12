@@ -116,7 +116,34 @@ Antworte NUR als JSON:
 {"score": 1-10, "issues": ["..."], "verdict": "kurze Zusammenfassung"}',
 ];
 
+// Build DYNAMIC prompt — merge checklist items + custom rules
 $prompt = $prompts[$photoType];
+
+// Load checklist items for this job's service
+$checklistContext = '';
+if ($jobId) {
+    $job = one("SELECT s_id_fk, customer_id_fk FROM jobs WHERE j_id=?", [$jobId]);
+    if ($job && $job['s_id_fk']) {
+        $clItems = all("SELECT title, description, priority FROM service_checklists WHERE s_id_fk=? AND is_active=1 ORDER BY position", [$job['s_id_fk']]);
+        if (!empty($clItems)) {
+            $checklistContext = "\n\nWICHTIG — Der Kunde hat folgende Checkliste definiert. Prüfe jedes Item auf dem Foto:\n";
+            foreach ($clItems as $i => $cl) {
+                $prio = $cl['priority'] === 'critical' ? '⚠ KRITISCH' : ($cl['priority'] === 'high' ? '! WICHTIG' : '');
+                $checklistContext .= ($i + 1) . ". " . $cl['title'] . ($cl['description'] ? ' — ' . $cl['description'] : '') . ($prio ? " [$prio]" : "") . "\n";
+            }
+            $checklistContext .= "\nBewerte auch: Wurden alle Checklist-Items sichtbar erledigt? Füge in 'issues' jedes Item das NICHT erledigt aussieht.";
+        }
+    }
+}
+
+// Load custom AI rules from admin settings (if configured)
+$customRules = '';
+try {
+    $rules = val("SELECT config_value FROM app_config WHERE config_key='photo_ai_rules'");
+    if ($rules) $customRules = "\n\nZUSÄTZLICHE REGELN VOM ADMIN:\n" . $rules;
+} catch (Exception $e) {}
+
+$prompt .= $checklistContext . $customRules;
 $isUrl = str_starts_with($imageBase64, 'http');
 $result = groq_vision($imageBase64, $prompt, 1000);
 

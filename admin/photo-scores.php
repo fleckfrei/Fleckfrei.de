@@ -4,7 +4,24 @@
  */
 require_once __DIR__ . '/../includes/auth.php';
 requireAdmin();
-$title = 'KI Foto-Scores'; $page = 'checklists';
+$title = 'KI Foto-Scores'; $page = 'photo-scores';
+
+// Save custom AI rules
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_rules') {
+    if (verifyCsrf()) {
+        $rules = trim($_POST['photo_ai_rules'] ?? '');
+        $existing = val("SELECT COUNT(*) FROM app_config WHERE config_key='photo_ai_rules'");
+        if ($existing) {
+            q("UPDATE app_config SET config_value=? WHERE config_key='photo_ai_rules'", [$rules]);
+        } else {
+            q("INSERT INTO app_config (config_key, config_value) VALUES ('photo_ai_rules', ?)", [$rules]);
+        }
+        header('Location: /admin/photo-scores.php?saved=1'); exit;
+    }
+}
+
+$currentRules = '';
+try { $currentRules = val("SELECT config_value FROM app_config WHERE config_key='photo_ai_rules'") ?: ''; } catch (Exception $e) {}
 
 // Ensure table exists
 try {
@@ -49,6 +66,56 @@ include __DIR__ . '/../includes/layout.php';
   <div class="bg-white rounded-xl border p-5 text-center">
     <div class="text-3xl font-bold text-red-600"><?= $failCount ?></div>
     <div class="text-xs text-gray-500 mt-1 uppercase font-semibold">Nachbessern</div>
+  </div>
+</div>
+
+<!-- KI-Regeln Einstellungen -->
+<div class="bg-white rounded-xl border mb-6" x-data="{ open: false }">
+  <div class="px-5 py-3 border-b bg-gradient-to-r from-purple-50 to-transparent flex items-center justify-between cursor-pointer" @click="open = !open">
+    <div class="flex items-center gap-3">
+      <span class="text-lg">🤖</span>
+      <div>
+        <h3 class="font-semibold text-gray-900 text-sm">KI-Bewertungsregeln anpassen</h3>
+        <p class="text-[10px] text-gray-500">Definieren Sie was die KI bei der Foto-Analyse beachten soll</p>
+      </div>
+    </div>
+    <svg class="w-4 h-4 text-gray-400 transition" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+  </div>
+  <div x-show="open" x-cloak class="p-5">
+    <?php if (!empty($_GET['saved'])): ?>
+    <div class="mb-3 p-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">Regeln gespeichert.</div>
+    <?php endif; ?>
+
+    <form method="POST" class="space-y-4">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="save_rules"/>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Ihre Bewertungs-Regeln</label>
+        <textarea name="photo_ai_rules" rows="8" class="w-full px-4 py-3 border-2 border-gray-100 rounded-xl focus:border-brand focus:ring-4 focus:ring-brand/10 outline-none text-sm font-mono" placeholder="Beispiele:
+- Handtücher müssen IMMER als Schwan gefaltet sein
+- Bett muss mit weisser Bettwäsche bezogen sein
+- Toilettenpapier muss zu einem Dreieck gefaltet sein
+- Willkommenskarte muss auf dem Kissen liegen
+- Küche: Spüle muss komplett leer und trocken sein
+- Bad: Spiegel muss streifenfrei sein
+- Score unter 7 = Partner muss nochmal kommen
+- Bei Schäden sofort Telegram-Alarm"><?= e($currentRules) ?></textarea>
+        <p class="text-[10px] text-gray-400 mt-1">Diese Regeln werden bei JEDER Foto-Analyse an die KI gesendet. Schreiben Sie einfach auf Deutsch was Ihnen wichtig ist — die KI versteht natürliche Sprache.</p>
+      </div>
+
+      <div class="bg-gray-50 rounded-xl p-4">
+        <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">So funktioniert es</div>
+        <div class="text-xs text-gray-600 space-y-1">
+          <div class="flex gap-2"><span class="text-brand font-bold">1.</span> KI bekommt das Foto + Ihre Regeln + die Service-Checkliste des Kunden</div>
+          <div class="flex gap-2"><span class="text-brand font-bold">2.</span> Prüft jedes Checklist-Item + Ihre Regeln einzeln</div>
+          <div class="flex gap-2"><span class="text-brand font-bold">3.</span> Gibt Score 1-10 + konkrete Issues die nicht stimmen</div>
+          <div class="flex gap-2"><span class="text-brand font-bold">4.</span> Partner sieht sofort was nachgebessert werden muss</div>
+        </div>
+      </div>
+
+      <button type="submit" class="px-6 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-xl font-semibold text-sm transition">Regeln speichern</button>
+    </form>
   </div>
 </div>
 
