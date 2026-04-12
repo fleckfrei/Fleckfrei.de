@@ -1,0 +1,26 @@
+# Prevent PHP execution in uploads — CRITICAL SECURITY
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_mime.c>
+    RemoveHandler .php .php3 .php4 .php5 .phtml .phar
+    RemoveType .php .php3 .php4 .php5 .phtml .phar
+</IfModule>
+
+# Block PHP files explicitly
+<FilesMatch "\.ph(p[345s]?|t|tml|ar)$">
+    Require all denied
+</FilesMatch>
+
+# Block hidden files
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Disable directory listing
+Options -Indexes
+
+# Prevent MIME sniffing
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>

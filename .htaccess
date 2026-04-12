@@ -1,0 +1,55 @@
+# ============================================================
+# Fleckfrei Security Hardening
+# ============================================================
+
+# PHP Settings
+php_value display_errors 0
+php_value log_errors 1
+php_value error_log /home/u860899303/logs/php_errors.log
+php_value max_execution_time 120
+php_value memory_limit 256M
+php_value upload_max_filesize 25M
+php_value post_max_size 30M
+php_value expose_php 0
+php_value session.cookie_httponly 1
+php_value session.cookie_secure 1
+php_value session.cookie_samesite Lax
+php_value session.use_strict_mode 1
+php_value session.gc_maxlifetime 7200
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set Permissions-Policy "camera=self, microphone=self, geolocation=self"
+    Header always unset X-Powered-By
+    Header unset X-Powered-By
+</IfModule>
+
+# Block access to sensitive files
+<FilesMatch "\.(env|log|sql|bak|old|orig|save|swp|tmp)$">
+    Require all denied
+</FilesMatch>
+
+# Block access to includes directory (direct access)
+<Files "config.php">
+    Require all denied
+</Files>
+
+# Block access to dot files
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Error pages
+ErrorDocument 403 "Forbidden"
+ErrorDocument 404 "Not Found"
+ErrorDocument 500 "Internal Server Error"
+
+# Force HTTPS
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
