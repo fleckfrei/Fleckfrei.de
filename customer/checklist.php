@@ -170,8 +170,10 @@ include __DIR__ . '/../includes/layout-customer.php';
 </div>
 
 <?php if (!empty($_GET['imported'])): ?>
-<div class="mb-4 p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-800">
-  ✓ Vorlage importiert — <?= (int)$_GET['imported'] ?> Aufgaben hinzugefügt.
+<div class="mb-4 p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-800 flex items-center justify-between gap-3" x-data="{ undone: false }">
+  <span x-show="!undone">✓ Vorlage importiert — <?= (int)$_GET['imported'] ?> Aufgaben hinzugefügt.</span>
+  <span x-show="undone" x-cloak>Rückgängig gemacht.</span>
+  <button x-show="!undone" @click="fetch('/api/checklist-undo.php?service_id=<?= $serviceId ?>&count=<?= (int)$_GET['imported'] ?>', {credentials:'same-origin'}).then(() => { undone = true; setTimeout(() => location.reload(), 800); })" class="text-xs font-semibold text-green-700 hover:text-green-900 underline whitespace-nowrap">Rückgängig</button>
 </div>
 <?php endif; ?>
 <?php if (!empty($_GET['ai_added'])): ?>
@@ -284,7 +286,7 @@ function aiIdeas() {
   </div>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
     <?php foreach ($templates as $key => $tpl): ?>
-    <form method="POST" onsubmit="return confirm('<?= (int)count($tpl['items']) ?> Aufgaben aus \'<?= e($tpl['label']) ?>\' importieren?')">
+    <form method="POST">
       <?= csrfField() ?>
       <input type="hidden" name="action" value="import_template"/>
       <input type="hidden" name="template" value="<?= e($key) ?>"/>

@@ -198,15 +198,74 @@ $user = me(); $page = $page ?? ''; ?>
       } else {
         $menu = [['/login.php', 'Login', '', $iconHome, '']];
       }
-      foreach ($menu as [$href, $label, $key, $icon, $badge]):
-        $active = $page === $key ? 'active' : '';
+      if ($user['type'] === 'admin') {
+        // Group admin menu items into collapsible sections
+        $groupMap = [
+          'dashboard' => '_top',
+          'jobs' => 'Termine', 'bookings' => 'Termine', 'availability' => 'Termine',
+          'customers' => 'Kunden', 'leads' => 'Kunden',
+          'employees' => 'Partner', 'work-hours' => 'Partner',
+          'keys' => 'Zugang', 'locks' => 'Zugang',
+          'services' => 'Services', 'checklists' => 'Services', 'optional-products' => 'Services', 'pricing' => 'Services',
+          'invoices' => 'Finanzen', 'reports' => 'Finanzen',
+          'messages' => 'Kommunikation', 'whatsapp' => 'Kommunikation', 'email-inbox' => 'Kommunikation',
+          'live-map' => 'Tools', 'arrivals' => 'Tools', 'scanner' => 'Tools', 'osint-dashboard' => 'Tools',
+          'audit' => 'System', 'health' => 'System', 'settings' => 'System',
+        ];
+        $groups = []; $topItems = [];
+        foreach ($menu as $item) {
+          $grp = $groupMap[$item[2]] ?? '_ungrouped';
+          if ($grp === '_top') { $topItems[] = $item; }
+          else { $groups[$grp][] = $item; }
+        }
+        // Check if current page is in a group (to auto-open it)
+        $activeGroup = $groupMap[$page] ?? '';
+        // Render top items (Dashboard)
+        foreach ($topItems as [$href, $label, $key, $icon, $badge]):
+          $active = $page === $key ? 'active' : '';
       ?>
       <a href="<?= $href ?>" class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 <?= $active ?>">
         <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><?= $icon ?></svg>
         <span class="flex-1"><?= $label ?></span>
         <?php if ($badge): ?><span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"><?= $badge ?></span><?php endif; ?>
       </a>
-      <?php endforeach; ?>
+      <?php endforeach;
+        // Render grouped items
+        foreach ($groups as $groupName => $items):
+          $isOpen = $activeGroup === $groupName;
+          $hasBadge = false;
+          foreach ($items as $it) { if (!empty($it[4])) $hasBadge = true; }
+      ?>
+      <div x-data="{ open: <?= $isOpen ? 'true' : 'false' ?> }" class="mt-1">
+        <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition">
+          <span class="flex items-center gap-1.5"><?= e($groupName) ?><?php if ($hasBadge): ?><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span><?php endif; ?></span>
+          <svg class="w-3.5 h-3.5 transition" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="open" x-cloak x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 -translate-y-1" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="ml-1 space-y-0.5">
+          <?php foreach ($items as [$href, $label, $key, $icon, $badge]):
+            $active = $page === $key ? 'active' : '';
+          ?>
+          <a href="<?= $href ?>" class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 <?= $active ?>">
+            <svg class="w-[16px] h-[16px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><?= $icon ?></svg>
+            <span class="flex-1"><?= $label ?></span>
+            <?php if ($badge): ?><span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"><?= $badge ?></span><?php endif; ?>
+          </a>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endforeach;
+      } else {
+        // Customer/Employee: flat menu
+        foreach ($menu as [$href, $label, $key, $icon, $badge]):
+          $active = $page === $key ? 'active' : '';
+      ?>
+      <a href="<?= $href ?>" class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 <?= $active ?>">
+        <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><?= $icon ?></svg>
+        <span class="flex-1"><?= $label ?></span>
+        <?php if ($badge): ?><span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"><?= $badge ?></span><?php endif; ?>
+      </a>
+      <?php endforeach;
+      } ?>
     </nav>
     <div class="p-3 border-t">
       <div class="flex items-center gap-3 px-3 py-2">

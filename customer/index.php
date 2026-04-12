@@ -120,6 +120,216 @@ include __DIR__ . '/../includes/layout-customer.php';
   </div>
 </div>
 
+
+<!-- Next appointment highlight -->
+<?php if ($nextJob):
+    $cd = '';
+    $target = strtotime($nextJob['j_date'] . ' ' . $nextJob['j_time']);
+    $diff = $target - time();
+    if ($diff > 0) {
+        $days = floor($diff / 86400);
+        $hours = floor(($diff % 86400) / 3600);
+        if ($days > 0) $cd = "in $days Tag" . ($days > 1 ? 'en' : '');
+        elseif ($hours > 0) $cd = "in $hours Std";
+        else $cd = "gleich";
+    }
+?>
+<div class="card-elev p-6 mb-6 bg-gradient-to-br from-white to-brand-light relative overflow-hidden">
+  <div class="absolute top-0 right-0 w-32 h-32 opacity-10">
+    <svg fill="currentColor" class="text-brand" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+  </div>
+  <div class="relative z-10">
+    <div class="text-[11px] uppercase font-bold tracking-wider text-brand mb-2">Nächster Termin</div>
+    <div class="text-xl sm:text-2xl font-bold text-gray-900 mb-1">
+      <?= date('d.m.Y', strtotime($nextJob['j_date'])) ?> · <?= substr($nextJob['j_time'], 0, 5) ?> Uhr
+      <?php if ($cd): ?><span class="text-brand text-sm font-semibold ml-2">(<?= $cd ?>)</span><?php endif; ?>
+    </div>
+    <div class="text-sm text-gray-600 mb-4">
+      <?= e($nextJob['stitle'] ?? 'Reinigungsservice') ?>
+      <?php if (!empty($nextJob['emp_id_fk'])): ?> · mit <a href="/customer/partner.php?id=<?= (int)$nextJob['emp_id_fk'] ?>" class="text-brand font-semibold hover:underline"><?= e(partnerDisplayName($nextJob)) ?></a><?php endif; ?>
+    </div>
+    <a href="/customer/jobs.php" class="inline-flex items-center gap-2 text-sm font-semibold text-brand hover:text-brand-dark">
+      Alle Termine anzeigen
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+    </a>
+  </div>
+</div>
+<?php endif; ?>
+
+
+<!-- Open invoice warning -->
+<?php if ($totalUnpaid > 0): ?>
+<div class="card-elev border-red-200 bg-red-50 p-5 mb-6 flex items-start gap-4">
+  <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  </div>
+  <div class="flex-1 min-w-0">
+    <div class="font-semibold text-red-900"><?= count($unpaid) ?> offene Rechnung<?= count($unpaid) === 1 ? '' : 'en' ?></div>
+    <div class="text-sm text-red-700 mt-0.5">Gesamtbetrag: <strong><?= money($totalUnpaid) ?></strong></div>
+  </div>
+  <a href="/customer/invoices.php" class="flex-shrink-0 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold whitespace-nowrap">Jetzt bezahlen</a>
+</div>
+<?php endif; ?>
+
+
+<!-- Stats row -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="card-elev p-5">
+    <div class="text-3xl font-extrabold text-brand"><?= $upcomingCount ?></div>
+    <div class="text-xs text-gray-500 mt-1 uppercase font-semibold tracking-wider">Anstehende Termine</div>
+  </div>
+  <div class="card-elev p-5">
+    <div class="text-3xl font-extrabold text-gray-900"><?= $completedCount ?></div>
+    <div class="text-xs text-gray-500 mt-1 uppercase font-semibold tracking-wider">Abgeschlossen</div>
+  </div>
+  <div class="card-elev p-5">
+    <div class="text-3xl font-extrabold <?= $totalUnpaid > 0 ? 'text-red-600' : 'text-green-600' ?>"><?= money($totalUnpaid) ?></div>
+    <div class="text-xs text-gray-500 mt-1 uppercase font-semibold tracking-wider">Offen</div>
+  </div>
+  <a href="/customer/booking.php" class="card-elev p-5 flex items-center justify-between hover:bg-brand-light group">
+    <div>
+      <div class="text-base font-bold text-brand">Neuer Termin</div>
+      <div class="text-xs text-gray-500 mt-1">Jetzt buchen</div>
+    </div>
+    <div class="w-10 h-10 rounded-full bg-brand text-white flex items-center justify-center group-hover:bg-brand-dark transition">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+    </div>
+  </a>
+</div>
+
+
+<!-- ========================================================== -->
+<!-- LIVE PARTNER TRACKING — Uber-style map when partner is en route -->
+<!-- ========================================================== -->
+<div x-data="partnerTracker()" x-init="load()" x-show="hasActive" x-cloak class="mb-6">
+  <div class="card-elev overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-transparent flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+          <span class="text-base">📍</span>
+        </div>
+        <div>
+          <h3 class="font-bold text-gray-900 text-sm">Live — Ihr Partner unterwegs</h3>
+          <div class="text-[10px] text-gray-500 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+            <span x-text="statusText"></span>
+          </div>
+        </div>
+      </div>
+      <div class="text-right">
+        <div class="text-[11px] text-gray-400">ETA</div>
+        <div class="text-base font-extrabold text-emerald-600" x-text="etaText">—</div>
+      </div>
+    </div>
+
+    <!-- Map -->
+    <div id="partnerMap" class="w-full" style="height: 280px; background: #f1f5f9;"></div>
+
+    <!-- Info row -->
+    <div class="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap text-xs">
+      <div class="flex items-center gap-2 min-w-0">
+        <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0 font-bold">
+          <template x-if="data.partner_pic"><img :src="'/uploads/' + data.partner_pic" class="w-8 h-8 rounded-full object-cover"/></template>
+          <template x-if="!data.partner_pic"><span x-text="initial"></span></template>
+        </div>
+        <div class="min-w-0">
+          <div class="font-bold text-gray-900 truncate" x-text="data.partner_name || 'Ihr Partner'"></div>
+          <div class="text-[10px] text-gray-500 truncate" x-text="data.service_title"></div>
+        </div>
+      </div>
+      <div class="text-right">
+        <div class="text-[10px] text-gray-400" x-show="data.distance_km !== null">Entfernung</div>
+        <div class="font-semibold text-gray-900" x-text="data.distance_km !== null ? data.distance_km + ' km' : ''"></div>
+      </div>
+    </div>
+
+    <div class="px-5 py-2 bg-gray-50 text-[10px] text-gray-400 text-center" x-show="data.updated_min_ago !== undefined">
+      GPS aktualisiert vor <span x-text="data.updated_min_ago"></span> Min · automatische Aktualisierung alle 30s
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet for the live map (only loaded if tracking is active) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<style>
+@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.4); opacity: 0; } }
+#partnerMap .leaflet-marker-icon > div { pointer-events: none; }
+</style>
+
+
+<!-- ========================================================== -->
+<!-- MEIN MONAT — All-in-one summary for current month          -->
+<!-- ========================================================== -->
+<a href="/customer/workhours.php?month=<?= $thisMonth ?>" class="block card-elev p-0 mb-6 hover:border-brand transition overflow-hidden">
+  <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-brand/5 to-transparent flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-lg">📊</span>
+      <h3 class="font-bold text-gray-900">Mein Monat <span class="text-gray-400 font-normal">— <?= $mhMonthLabel ?></span></h3>
+    </div>
+    <span class="text-xs text-brand font-semibold flex items-center gap-1">
+      Details
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </span>
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100 border-b border-gray-100">
+    <div class="p-4 text-center">
+      <div class="text-2xl font-bold text-gray-900"><?= $mhDone ?></div>
+      <div class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider mt-0.5">Erledigt</div>
+    </div>
+    <div class="p-4 text-center">
+      <div class="text-2xl font-bold text-gray-900"><?= number_format($mhHours, 1) ?>h</div>
+      <div class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider mt-0.5">Stunden</div>
+    </div>
+    <div class="p-4 text-center">
+      <div class="text-2xl font-bold text-gray-900"><?= money($mhCost) ?></div>
+      <div class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider mt-0.5">Kosten</div>
+    </div>
+    <div class="p-4 text-center">
+      <div class="text-2xl font-bold text-gray-900"><?= $mhAvgRating > 0 ? number_format($mhAvgRating, 1) . '★' : '—' ?></div>
+      <div class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider mt-0.5">Ø Bewertung</div>
+    </div>
+  </div>
+  <?php if ($mhPlanned > 0 || $mhCancel > 0): ?>
+  <div class="px-5 py-3 bg-gray-50 flex flex-wrap items-center gap-4 text-xs text-gray-600">
+    <?php if ($mhPlanned > 0): ?>
+    <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-brand"></span><?= $mhPlanned ?> geplant</div>
+    <?php endif; ?>
+    <?php if ($mhCancel > 0): ?>
+    <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-gray-400"></span><?= $mhCancel ?> abgesagt</div>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
+</a>
+
+
+<!-- ========================================================== -->
+<!-- Quick actions                                              -->
+<!-- ========================================================== -->
+<div class="grid grid-cols-2 sm:grid-cols-3 <?= $isHostCustomer ? 'lg:grid-cols-5' : 'lg:grid-cols-4' ?> gap-4">
+  <a href="/customer/calendar.php" class="card-elev p-5 hover:border-brand transition">
+    <div class="text-2xl mb-2">🗓️</div>
+    <div class="font-semibold text-gray-900 text-sm">Kalender</div>
+    <div class="text-xs text-gray-500 mt-0.5">Monats-Übersicht</div>
+  </a>
+  <a href="/customer/jobs.php" class="card-elev p-5 hover:border-brand transition">
+    <div class="text-2xl mb-2">📅</div>
+    <div class="font-semibold text-gray-900 text-sm">Meine Termine</div>
+    <div class="text-xs text-gray-500 mt-0.5">Alle Buchungen</div>
+  </a>
+  <a href="/customer/invoices.php" class="card-elev p-5 hover:border-brand transition">
+    <div class="text-2xl mb-2">🧾</div>
+    <div class="font-semibold text-gray-900 text-sm">Rechnungen</div>
+    <div class="text-xs text-gray-500 mt-0.5">Zahlungen & Belege</div>
+  </a>
+  <a href="/customer/messages.php" class="card-elev p-5 hover:border-brand transition">
+    <div class="text-2xl mb-2">💬</div>
+    <div class="font-semibold text-gray-900 text-sm">Chat</div>
+    <div class="text-xs text-gray-500 mt-0.5">An den Partner</div>
+  </a>
+</div>
+
+
 <!-- Berlin News — für alle Kundentypen (Privat, Host, B2B) -->
 <div class="mb-6" x-data="newsWidget()" x-init="loadNews()">
   <div class="card-elev overflow-hidden">
@@ -224,6 +434,7 @@ include __DIR__ . '/../includes/layout-customer.php';
   </div>
 </div>
 
+
 <!-- Rumänien-Hilfe — live 1% vom offenen Rechnungsbetrag -->
 <?php if ($donationOpen > 0): ?>
 <a href="https://www.rumaenienhilfe-spiez.ch/detailseite-unterst%C3%BCtzung-alter-menschen" target="_blank" rel="noopener"
@@ -241,208 +452,6 @@ include __DIR__ . '/../includes/layout-customer.php';
 </a>
 <?php endif; ?>
 
-<!-- Open invoice warning -->
-<?php if ($totalUnpaid > 0): ?>
-<div class="card-elev border-red-200 bg-red-50 p-5 mb-6 flex items-start gap-4">
-  <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-  </div>
-  <div class="flex-1 min-w-0">
-    <div class="font-semibold text-red-900"><?= count($unpaid) ?> offene Rechnung<?= count($unpaid) === 1 ? '' : 'en' ?></div>
-    <div class="text-sm text-red-700 mt-0.5">Gesamtbetrag: <strong><?= money($totalUnpaid) ?></strong></div>
-  </div>
-  <a href="/customer/invoices.php" class="flex-shrink-0 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold whitespace-nowrap">Jetzt bezahlen</a>
-</div>
-<?php endif; ?>
-
-<!-- Stats row -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  <div class="card-elev p-5">
-    <div class="text-3xl font-extrabold text-brand"><?= $upcomingCount ?></div>
-    <div class="text-xs text-gray-500 mt-1 uppercase font-semibold tracking-wider">Anstehende Termine</div>
-  </div>
-  <div class="card-elev p-5">
-    <div class="text-3xl font-extrabold text-gray-900"><?= $completedCount ?></div>
-    <div class="text-xs text-gray-500 mt-1 uppercase font-semibold tracking-wider">Abgeschlossen</div>
-  </div>
-  <div class="card-elev p-5">
-    <div class="text-3xl font-extrabold <?= $totalUnpaid > 0 ? 'text-red-600' : 'text-green-600' ?>"><?= money($totalUnpaid) ?></div>
-    <div class="text-xs text-gray-500 mt-1 uppercase font-semibold tracking-wider">Offen</div>
-  </div>
-  <a href="/customer/booking.php" class="card-elev p-5 flex items-center justify-between hover:bg-brand-light group">
-    <div>
-      <div class="text-base font-bold text-brand">Neuer Termin</div>
-      <div class="text-xs text-gray-500 mt-1">Jetzt buchen</div>
-    </div>
-    <div class="w-10 h-10 rounded-full bg-brand text-white flex items-center justify-center group-hover:bg-brand-dark transition">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
-    </div>
-  </a>
-</div>
-
-<!-- Next appointment highlight -->
-<?php if ($nextJob):
-    $cd = '';
-    $target = strtotime($nextJob['j_date'] . ' ' . $nextJob['j_time']);
-    $diff = $target - time();
-    if ($diff > 0) {
-        $days = floor($diff / 86400);
-        $hours = floor(($diff % 86400) / 3600);
-        if ($days > 0) $cd = "in $days Tag" . ($days > 1 ? 'en' : '');
-        elseif ($hours > 0) $cd = "in $hours Std";
-        else $cd = "gleich";
-    }
-?>
-<div class="card-elev p-6 mb-6 bg-gradient-to-br from-white to-brand-light relative overflow-hidden">
-  <div class="absolute top-0 right-0 w-32 h-32 opacity-10">
-    <svg fill="currentColor" class="text-brand" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-  </div>
-  <div class="relative z-10">
-    <div class="text-[11px] uppercase font-bold tracking-wider text-brand mb-2">Nächster Termin</div>
-    <div class="text-xl sm:text-2xl font-bold text-gray-900 mb-1">
-      <?= date('d.m.Y', strtotime($nextJob['j_date'])) ?> · <?= substr($nextJob['j_time'], 0, 5) ?> Uhr
-      <?php if ($cd): ?><span class="text-brand text-sm font-semibold ml-2">(<?= $cd ?>)</span><?php endif; ?>
-    </div>
-    <div class="text-sm text-gray-600 mb-4">
-      <?= e($nextJob['stitle'] ?? 'Reinigungsservice') ?>
-      <?php if (!empty($nextJob['emp_id_fk'])): ?> · mit <a href="/customer/partner.php?id=<?= (int)$nextJob['emp_id_fk'] ?>" class="text-brand font-semibold hover:underline"><?= e(partnerDisplayName($nextJob)) ?></a><?php endif; ?>
-    </div>
-    <a href="/customer/jobs.php" class="inline-flex items-center gap-2 text-sm font-semibold text-brand hover:text-brand-dark">
-      Alle Termine anzeigen
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
-    </a>
-  </div>
-</div>
-<?php endif; ?>
-
-<!-- ========================================================== -->
-<!-- LIVE PARTNER TRACKING — Uber-style map when partner is en route -->
-<!-- ========================================================== -->
-<div x-data="partnerTracker()" x-init="load()" x-show="hasActive" x-cloak class="mb-6">
-  <div class="card-elev overflow-hidden">
-    <div class="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-transparent flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-          <span class="text-base">📍</span>
-        </div>
-        <div>
-          <h3 class="font-bold text-gray-900 text-sm">Live — Ihr Partner unterwegs</h3>
-          <div class="text-[10px] text-gray-500 flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-            <span x-text="statusText"></span>
-          </div>
-        </div>
-      </div>
-      <div class="text-right">
-        <div class="text-[11px] text-gray-400">ETA</div>
-        <div class="text-base font-extrabold text-emerald-600" x-text="etaText">—</div>
-      </div>
-    </div>
-
-    <!-- Map -->
-    <div id="partnerMap" class="w-full" style="height: 280px; background: #f1f5f9;"></div>
-
-    <!-- Info row -->
-    <div class="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap text-xs">
-      <div class="flex items-center gap-2 min-w-0">
-        <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0 font-bold">
-          <template x-if="data.partner_pic"><img :src="'/uploads/' + data.partner_pic" class="w-8 h-8 rounded-full object-cover"/></template>
-          <template x-if="!data.partner_pic"><span x-text="initial"></span></template>
-        </div>
-        <div class="min-w-0">
-          <div class="font-bold text-gray-900 truncate" x-text="data.partner_name || 'Ihr Partner'"></div>
-          <div class="text-[10px] text-gray-500 truncate" x-text="data.service_title"></div>
-        </div>
-      </div>
-      <div class="text-right">
-        <div class="text-[10px] text-gray-400" x-show="data.distance_km !== null">Entfernung</div>
-        <div class="font-semibold text-gray-900" x-text="data.distance_km !== null ? data.distance_km + ' km' : ''"></div>
-      </div>
-    </div>
-
-    <div class="px-5 py-2 bg-gray-50 text-[10px] text-gray-400 text-center" x-show="data.updated_min_ago !== undefined">
-      GPS aktualisiert vor <span x-text="data.updated_min_ago"></span> Min · automatische Aktualisierung alle 30s
-    </div>
-  </div>
-</div>
-
-<!-- Leaflet for the live map (only loaded if tracking is active) -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<style>
-@keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.4); opacity: 0; } }
-#partnerMap .leaflet-marker-icon > div { pointer-events: none; }
-</style>
-
-<!-- ========================================================== -->
-<!-- MEIN MONAT — All-in-one summary for current month          -->
-<!-- ========================================================== -->
-<a href="/customer/workhours.php?month=<?= $thisMonth ?>" class="block card-elev p-0 mb-6 hover:border-brand transition overflow-hidden">
-  <div class="px-5 py-4 border-b border-gray-100 bg-gradient-to-r from-brand/5 to-transparent flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <span class="text-lg">📊</span>
-      <h3 class="font-bold text-gray-900">Mein Monat <span class="text-gray-400 font-normal">— <?= $mhMonthLabel ?></span></h3>
-    </div>
-    <span class="text-xs text-brand font-semibold flex items-center gap-1">
-      Details
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-    </span>
-  </div>
-  <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100 border-b border-gray-100">
-    <div class="p-4 text-center">
-      <div class="text-2xl font-bold text-gray-900"><?= $mhDone ?></div>
-      <div class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider mt-0.5">Erledigt</div>
-    </div>
-    <div class="p-4 text-center">
-      <div class="text-2xl font-bold text-gray-900"><?= number_format($mhHours, 1) ?>h</div>
-      <div class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider mt-0.5">Stunden</div>
-    </div>
-    <div class="p-4 text-center">
-      <div class="text-2xl font-bold text-gray-900"><?= money($mhCost) ?></div>
-      <div class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider mt-0.5">Kosten</div>
-    </div>
-    <div class="p-4 text-center">
-      <div class="text-2xl font-bold text-gray-900"><?= $mhAvgRating > 0 ? number_format($mhAvgRating, 1) . '★' : '—' ?></div>
-      <div class="text-[10px] text-gray-500 uppercase font-semibold tracking-wider mt-0.5">Ø Bewertung</div>
-    </div>
-  </div>
-  <?php if ($mhPlanned > 0 || $mhCancel > 0): ?>
-  <div class="px-5 py-3 bg-gray-50 flex flex-wrap items-center gap-4 text-xs text-gray-600">
-    <?php if ($mhPlanned > 0): ?>
-    <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-brand"></span><?= $mhPlanned ?> geplant</div>
-    <?php endif; ?>
-    <?php if ($mhCancel > 0): ?>
-    <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-gray-400"></span><?= $mhCancel ?> abgesagt</div>
-    <?php endif; ?>
-  </div>
-  <?php endif; ?>
-</a>
-
-<!-- ========================================================== -->
-<!-- Quick actions                                              -->
-<!-- ========================================================== -->
-<div class="grid grid-cols-2 sm:grid-cols-3 <?= $isHostCustomer ? 'lg:grid-cols-5' : 'lg:grid-cols-4' ?> gap-4">
-  <a href="/customer/calendar.php" class="card-elev p-5 hover:border-brand transition">
-    <div class="text-2xl mb-2">🗓️</div>
-    <div class="font-semibold text-gray-900 text-sm">Kalender</div>
-    <div class="text-xs text-gray-500 mt-0.5">Monats-Übersicht</div>
-  </a>
-  <a href="/customer/jobs.php" class="card-elev p-5 hover:border-brand transition">
-    <div class="text-2xl mb-2">📅</div>
-    <div class="font-semibold text-gray-900 text-sm">Meine Termine</div>
-    <div class="text-xs text-gray-500 mt-0.5">Alle Buchungen</div>
-  </a>
-  <a href="/customer/invoices.php" class="card-elev p-5 hover:border-brand transition">
-    <div class="text-2xl mb-2">🧾</div>
-    <div class="font-semibold text-gray-900 text-sm">Rechnungen</div>
-    <div class="text-xs text-gray-500 mt-0.5">Zahlungen & Belege</div>
-  </a>
-  <a href="/customer/messages.php" class="card-elev p-5 hover:border-brand transition">
-    <div class="text-2xl mb-2">💬</div>
-    <div class="font-semibold text-gray-900 text-sm">Chat</div>
-    <div class="text-xs text-gray-500 mt-0.5">An den Partner</div>
-  </a>
-</div>
 
 <?php if ($isHostCustomer): ?>
 <!-- ========================================================== -->

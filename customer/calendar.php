@@ -539,7 +539,7 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
   <!-- Weekday header -->
   <div class="grid grid-cols-7 border-b border-gray-100 bg-gray-50">
     <?php foreach (['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as $wd): ?>
-    <div class="px-2 py-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider"><?= $wd ?></div>
+    <div class="px-1 sm:px-2 py-2 text-center text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider"><?= $wd ?></div>
     <?php endforeach; ?>
   </div>
 
@@ -620,7 +620,7 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         // Empty future/today cells → direct booking link with prefilled date
         $bookingUrl = '/customer/booking.php?date=' . $cellDate;
     ?>
-    <div class="min-h-[90px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1.5 sm:p-2 relative group <?= $isCurrentMonth ? 'bg-white' : 'bg-gray-50/50' ?> <?= ($hasEvents || !$isPast) ? 'cursor-pointer hover:bg-brand/5 transition' : '' ?>"
+    <div class="min-h-[100px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1 sm:p-2 relative group <?= $isCurrentMonth ? 'bg-white' : 'bg-gray-50/50' ?> <?= ($hasEvents || !$isPast) ? 'cursor-pointer hover:bg-brand/5 transition' : '' ?>"
          <?php if ($hasEvents): ?>
          @click="selected = <?= htmlspecialchars(json_encode($payload), ENT_QUOTES) ?>; selectedDate = '<?= date('d.m.Y', $cellTs) ?>'; selectedDateIso = '<?= $cellDate ?>'"
          <?php elseif (!$isPast): ?>

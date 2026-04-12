@@ -548,7 +548,59 @@ $lastGroupKey = null;
     </div>
     <?php endif; ?>
 
-    <?php if (!empty($j['job_note'])): ?>
+    <?php if ($canEdit): ?>
+    <!-- Inline quick-edit: door code + note -->
+    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2" x-data="{ editCode: false, editNote: false, code: '<?= e($j['code_door'] ?? '') ?>', note: <?= htmlspecialchars(json_encode($j['job_note'] ?? ''), ENT_QUOTES) ?>, saving: false,
+      async saveField(field) {
+        this.saving = true;
+        const fd = new FormData();
+        fd.append('_csrf', '<?= csrfToken() ?>');
+        fd.append('action', 'edit');
+        fd.append('j_id', '<?= (int)$j['j_id'] ?>');
+        fd.append('code_door', this.code);
+        fd.append('job_note', this.note);
+        fd.append('no_people', '<?= (int)($j['no_people'] ?? 1) ?>');
+        fd.append('j_hours', '<?= max(MIN_HOURS, (float)($j['total_hours'] ?: $j['j_hours'] ?: MIN_HOURS)) ?>');
+        fd.append('address', '<?= e($j['address'] ?? '') ?>');
+        await fetch('/customer/jobs.php', { method: 'POST', body: fd, credentials: 'same-origin' });
+        this.editCode = false; this.editNote = false; this.saving = false;
+      }
+    }">
+      <div class="flex items-center gap-2 text-xs">
+        <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+        <template x-if="!editCode">
+          <span class="flex items-center gap-1 cursor-pointer hover:text-brand" @click="editCode = true">
+            <span x-text="code || 'Türcode'" :class="code ? 'text-gray-700 font-medium' : 'text-gray-400'"></span>
+            <svg class="w-3 h-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+          </span>
+        </template>
+        <template x-if="editCode">
+          <div class="flex items-center gap-1">
+            <input type="text" x-model="code" placeholder="Türcode" class="w-24 px-2 py-1 border border-brand rounded text-xs" @keydown.enter="saveField('code')" @keydown.escape="editCode = false" x-ref="codeInput" x-init="$nextTick(() => $refs.codeInput?.focus())"/>
+            <button @click="saveField('code')" :disabled="saving" class="text-brand font-bold text-[10px]">OK</button>
+          </div>
+        </template>
+      </div>
+      <div class="flex items-start gap-2 text-xs">
+        <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+        <template x-if="!editNote">
+          <span class="flex items-center gap-1 cursor-pointer hover:text-brand" @click="editNote = true">
+            <span x-text="note || 'Notiz hinzufügen'" :class="note ? 'text-gray-700' : 'text-gray-400'" class="italic truncate max-w-[200px]"></span>
+            <svg class="w-3 h-3 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+          </span>
+        </template>
+        <template x-if="editNote">
+          <div class="flex-1">
+            <textarea x-model="note" rows="2" class="w-full px-2 py-1 border border-brand rounded text-xs" placeholder="Hinweis für den Partner..." @keydown.escape="editNote = false"></textarea>
+            <div class="flex gap-1 mt-1">
+              <button @click="saveField('note')" :disabled="saving" class="px-2 py-0.5 bg-brand text-white rounded text-[10px] font-bold">Speichern</button>
+              <button @click="editNote = false" class="px-2 py-0.5 text-gray-500 text-[10px]">Abbrechen</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+    <?php elseif (!empty($j['job_note'])): ?>
     <div class="mt-3 text-xs text-gray-600 bg-gray-50 border-l-2 border-gray-300 pl-3 py-1.5 italic">
       <?= e($j['job_note']) ?>
     </div>

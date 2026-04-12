@@ -50,6 +50,20 @@ $page = $page ?? '';
     /* Card */
     .card-elev { background: #fff; border: 1px solid #e9ebef; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
     .card-elev:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    /* Accessibility: focus states */
+    input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible {
+      outline: 2px solid <?= BRAND ?>;
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    /* Required field indicator */
+    label:has(+ input[required])::after,
+    label:has(+ textarea[required])::after,
+    label:has(+ select[required])::after { content: ' *'; color: #ef4444; }
+    /* Error state */
+    .field-error input, .field-error select, .field-error textarea { border-color: #ef4444 !important; }
+    .field-error .error-msg { display: block; color: #ef4444; font-size: 12px; margin-top: 4px; }
+    .error-msg { display: none; }
     /* Mobile touch targets */
     @media (max-width: 768px) {
       button, a.px-3, a.px-4 { min-height: 44px; }
@@ -144,37 +158,73 @@ $page = $page ?? '';
     </div>
   </div>
 
-  <!-- Mobile menu drawer -->
-  <div x-show="mobileMenu" x-cloak x-transition class="lg:hidden border-t border-white/10">
-    <div class="px-4 py-2 space-y-1">
-      <?php
-      $mobileItems = [
-          ['/customer/', 'Home', 'dashboard'],
-          ['/customer/calendar.php', 'Termine (Kalender)', 'calendar'],
-          ['/customer/jobs.php', 'Termine (Liste)', 'jobs'],
-          ['/customer/invoices.php', 'Rechnungen', 'invoices'],
-      ];
-      if ($isHost) {
-          $mobileItems[] = ['/customer/services.php', 'Services', 'services'];
-          $mobileItems[] = ['/customer/checklist.php', 'Check-Liste', 'checklist'];
-          $mobileItems[] = ['/customer/smarthome.php', 'Smart Home', 'smarthome'];
-          $mobileItems[] = ['/customer/ical.php', 'iCal Feeds', 'ical'];
-      }
-      $mobileItems = array_merge($mobileItems, [
-          ['/customer/messages.php', 'Chat', 'messages'],
-          ['/customer/help.php', 'Hilfe', 'help'],
-          ['/customer/profile.php', 'Kontoeinstellungen', 'profile'],
-          ['/customer/documents.php', 'Dokumente', 'documents'],
-          ['/customer/donations.php', '🤝 Meine Spenden', 'donations'],
-          ['/customer/workhours.php', 'Arbeitsstunden', 'workhours'],
-          ['/customer/referral.php', 'Weiterempfehlen', 'referral'],
-          ['/customer/booking.php', 'Jetzt buchen', 'booking'],
-          ['/logout.php', 'Ausloggen', 'logout'],
-      ]);
-      foreach ($mobileItems as [$href, $label, $pg]):
-      ?>
-      <a href="<?= $href ?>" class="block px-3 py-3 rounded-lg text-white font-medium <?= $page===$pg ? 'bg-white/20' : 'hover:bg-white/10' ?>"><?= $label ?></a>
-      <?php endforeach; ?>
+  <!-- Mobile menu drawer — grouped -->
+  <div x-show="mobileMenu" x-cloak x-transition class="lg:hidden border-t border-white/10 max-h-[80vh] overflow-y-auto">
+    <div class="px-4 py-3 space-y-4">
+
+      <!-- CTA -->
+      <a href="/customer/booking.php" class="block px-4 py-3 rounded-xl bg-white text-brand font-bold text-center text-sm shadow-sm <?= $page==='booking' ? 'ring-2 ring-white/50' : '' ?>">Jetzt buchen</a>
+
+      <!-- Termine & Übersicht -->
+      <div>
+        <div class="text-[10px] uppercase font-bold text-white/50 tracking-wider px-3 mb-1">Termine</div>
+        <?php
+        $grpTermine = [
+            ['/customer/', 'Home', 'dashboard'],
+            ['/customer/calendar.php', 'Kalender', 'calendar'],
+            ['/customer/jobs.php', 'Terminliste', 'jobs'],
+            ['/customer/invoices.php', 'Rechnungen', 'invoices'],
+        ];
+        foreach ($grpTermine as [$href, $label, $pg]): ?>
+        <a href="<?= $href ?>" class="block px-3 py-2.5 rounded-lg text-white font-medium text-sm <?= $page===$pg ? 'bg-white/20' : 'hover:bg-white/10' ?>"><?= $label ?></a>
+        <?php endforeach; ?>
+      </div>
+
+      <?php if ($isHost): ?>
+      <!-- Host-Tools -->
+      <div>
+        <div class="text-[10px] uppercase font-bold text-white/50 tracking-wider px-3 mb-1">Host-Tools</div>
+        <?php
+        $grpHost = [
+            ['/customer/services.php', 'Services', 'services'],
+            ['/customer/checklist.php', 'Check-Liste', 'checklist'],
+            ['/customer/smarthome.php', 'Smart Home', 'smarthome'],
+            ['/customer/ical.php', 'iCal Feeds', 'ical'],
+        ];
+        foreach ($grpHost as [$href, $label, $pg]): ?>
+        <a href="<?= $href ?>" class="block px-3 py-2.5 rounded-lg text-white font-medium text-sm <?= $page===$pg ? 'bg-white/20' : 'hover:bg-white/10' ?>"><?= $label ?></a>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
+
+      <!-- Kommunikation -->
+      <div>
+        <div class="text-[10px] uppercase font-bold text-white/50 tracking-wider px-3 mb-1">Kommunikation</div>
+        <a href="/customer/messages.php" class="block px-3 py-2.5 rounded-lg text-white font-medium text-sm <?= $page==='messages' ? 'bg-white/20' : 'hover:bg-white/10' ?>">Chat</a>
+        <a href="/customer/help.php" class="block px-3 py-2.5 rounded-lg text-white font-medium text-sm <?= $page==='help' ? 'bg-white/20' : 'hover:bg-white/10' ?>">Hilfe</a>
+      </div>
+
+      <!-- Konto -->
+      <div>
+        <div class="text-[10px] uppercase font-bold text-white/50 tracking-wider px-3 mb-1">Mein Konto</div>
+        <?php
+        $grpKonto = [
+            ['/customer/profile.php', 'Kontoeinstellungen', 'profile'],
+            ['/customer/documents.php', 'Dokumente', 'documents'],
+            ['/customer/workhours.php', 'Arbeitsstunden', 'workhours'],
+            ['/customer/donations.php', 'Meine Spenden', 'donations'],
+            ['/customer/referral.php', 'Weiterempfehlen', 'referral'],
+        ];
+        foreach ($grpKonto as [$href, $label, $pg]): ?>
+        <a href="<?= $href ?>" class="block px-3 py-2.5 rounded-lg text-white font-medium text-sm <?= $page===$pg ? 'bg-white/20' : 'hover:bg-white/10' ?>"><?= $label ?></a>
+        <?php endforeach; ?>
+      </div>
+
+      <!-- Ausloggen -->
+      <div class="pt-2 border-t border-white/10">
+        <a href="/logout.php" class="block px-3 py-2.5 rounded-lg text-red-300 font-medium text-sm hover:bg-white/10">Ausloggen</a>
+      </div>
+
     </div>
   </div>
 </header>
