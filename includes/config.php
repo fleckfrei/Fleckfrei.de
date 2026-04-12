@@ -215,21 +215,14 @@ function val($sql, $p=[]) { return q($sql,$p)->fetchColumn(); }
 
 // Global helpers for last inserted ID — matches PDO::lastInsertId()
 function lastInsertId() { global $db; return $db->lastInsertId(); }
-function lastInsertIdLocal() { global $dbLocal; return $dbLocal->lastInsertId(); }
+function lastInsertIdLocal() { return lastInsertId(); }
 
-function qLocal($sql, $p=[]) {
-    global $dbLocal;
-    try {
-        $s = $dbLocal->prepare($sql); $s->execute($p); return $s;
-    } catch (PDOException $e) {
-        if (!_is_gone_away($e)) throw $e;
-        _reconnect_dbLocal();
-        $s = $dbLocal->prepare($sql); $s->execute($p); return $s;
-    }
-}
-function allLocal($sql, $p=[]) { return qLocal($sql,$p)->fetchAll(); }
-function oneLocal($sql, $p=[]) { return qLocal($sql,$p)->fetch(); }
-function valLocal($sql, $p=[]) { return qLocal($sql,$p)->fetchColumn(); }
+// Local DB = Main DB (same u860899303_la_renting on Hostinger)
+// Kept as aliases for backward compatibility (235 call sites)
+function qLocal($sql, $p=[]) { return q($sql, $p); }
+function allLocal($sql, $p=[]) { return all($sql, $p); }
+function oneLocal($sql, $p=[]) { return one($sql, $p); }
+function valLocal($sql, $p=[]) { return val($sql, $p); }
 // Remote DB writes (goes to Hostinger master — synced back in 1 min)
 function qRemote($sql, $p=[]) {
     global $dbRemote;
