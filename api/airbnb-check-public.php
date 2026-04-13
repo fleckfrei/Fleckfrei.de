@@ -58,34 +58,44 @@ function fetchMarketData(string $location = 'Berlin'): array {
     if (!$html || $code >= 400) return [];
 
     $listings = [];
-    preg_match_all('~"id":"(\d+)"[^{]*?"localizedStringWithTranslationPreference":"([^"]+)"[^{]*?"primaryLine":"([^"]*)"[^{]*?"avgRatingA11yLabel":"([^"]+)"[^{]*?"accessibilityLabel":"([^"]+)"~', $html, $m, PREG_SET_ORDER);
-    foreach (array_slice($m, 0, 18) as $row) {
-        $rating = null; $reviews = null;
-        if (preg_match('~([\d.,]+)\s+out of 5\s*average rating,\s*([\d.,]+)\s+reviews~', $row[4], $rm)) {
+    // Airbnb EU-response: "€\xc2\xa0NNN total" (NBSP between € and digits!)
+    preg_match_all('~"avgRatingA11yLabel":"([^"]+)"~', $html, $ratingMatches);
+    preg_match_all('~"discountedPrice":"€[\s\xc2\xa0]*([\d.,]+)"~u', $html, $discountedMatches);
+    if (empty($discountedMatches[1])) {
+        // Fallback: match "price":"€ NNN" or similar
+        preg_match_all('~"(?:price|discountedPrice|totalPrice)":"€[\s\xa0\xc2]*([\d.,]+)"~u', $html, $discountedMatches);
+    }
+    preg_match_all('~"accessibilityLabel":"€[\s\xc2\xa0]*([\d.,]+)\s+total[^"]*"~u', $html, $priceMatches);
+    preg_match_all('~"localizedStringWithTranslationPreference":"([^"]{5,200})"~', $html, $nameMatches);
+
+    // Assume default search window = 5 nights unless we see otherwise
+    $defaultNights = 5;
+    $count = max(count($ratingMatches[1] ?? []), count($discountedMatches[1] ?? []));
+    for ($i = 0; $i < min($count, 18); $i++) {
+        $rating = null; $reviews = null; $pricePerNight = null;
+        $ratingLabel = $ratingMatches[1][$i] ?? '';
+        if (preg_match('~([\d.,]+)\s+out of 5\s*average rating,?\s*([\d.,]+)\s+reviews~i', $ratingLabel, $rm)) {
             $rating = (float) str_replace(',', '.', $rm[1]);
             $reviews = (int) str_replace(',', '', $rm[2]);
         }
-        $pricePerNight = null;
-        if (preg_match('~\$([\d,]+)\s+for (\d+) nights~', $row[5], $pm)) {
-            $total = (float) str_replace(',', '', $pm[1]);
-            $nights = (int) $pm[2];
-            if ($nights > 0) $pricePerNight = round($total / $nights, 0);
+        $priceTotal = null;
+        if (isset($discountedMatches[1][$i])) $priceTotal = (float) str_replace(',', '', $discountedMatches[1][$i]);
+        elseif (isset($priceMatches[1][$i])) $priceTotal = (float) str_replace(',', '', $priceMatches[1][$i]);
+        if ($priceTotal) $pricePerNight = round($priceTotal / $defaultNights, 0);
+
+        if ($rating || $pricePerNight) {
+            $listings[] = ['name' => $nameMatches[1][$i] ?? '', 'rating' => $rating, 'reviews' => $reviews, 'price_per_night_eur' => $pricePerNight];
         }
-        $listings[] = [
-            'id' => $row[1], 'name' => $row[2], 'type' => $row[3],
-            'rating' => $rating, 'reviews' => $reviews, 'price_per_night_usd' => $pricePerNight,
-        ];
     }
     $ratings = array_filter(array_column($listings, 'rating'));
-    $prices = array_filter(array_column($listings, 'price_per_night_usd'));
-    $reviews = array_filter(array_column($listings, 'reviews'));
+    $prices = array_filter(array_column($listings, 'price_per_night_eur'));
+    $reviewsCol = array_filter(array_column($listings, 'reviews'));
     $data = [
         'location' => $location,
         'sample_size' => count($listings),
         'avg_rating' => $ratings ? round(array_sum($ratings)/count($ratings), 2) : null,
-        'avg_price_usd' => $prices ? round(array_sum($prices)/count($prices), 0) : null,
-        'median_reviews' => $reviews ? (int)(array_sum($reviews)/count($reviews)) : null,
-        'superhost_pct' => null, // Not parseable reliably from this query
+        'avg_price_eur' => $prices ? round(array_sum($prices)/count($prices), 0) : null,
+        'median_reviews' => $reviewsCol ? (int)(array_sum($reviewsCol)/count($reviewsCol)) : null,
         'listings_sample' => array_slice($listings, 0, 8),
         'cached_at' => date('c'),
     ];
@@ -128,17 +138,16 @@ if ($pastedText) {
 // ============================================================
 $reviewsText = count($reviews) ? implode(' || ', array_slice($reviews, 0, 10)) : 'keine verfügbar';
 
-$marketCtx = $market ? sprintf(
+$marketCtx = ($market && !empty($market['avg_rating'])) ? sprintf(
     "BERLIN-MARKT-BENCHMARK (Live-Daten, %d Listings Stichprobe):\n"
     . "- Durchschnitts-Rating: %s/5\n"
-    . "- Durchschnitts-Preis/Nacht: $%s USD (~€%s)\n"
+    . "- Durchschnitts-Preis/Nacht: €%s\n"
     . "- Median Review-Anzahl: %s Reviews",
     $market['sample_size'] ?? 0,
     $market['avg_rating'] ?? '?',
-    $market['avg_price_usd'] ?? '?',
-    $market['avg_price_usd'] ? round(($market['avg_price_usd'] ?? 0) * 0.92, 0) : '?',
+    $market['avg_price_eur'] ?? '?',
     $market['median_reviews'] ?? '?'
-) : "Berlin-Marktdaten nicht verfügbar.";
+) : "Berlin-Marktdaten (Live) nicht verfügbar — arbeite mit Schätzungen.";
 
 $prompt = <<<PROMPT
 Du bist Senior-Reinigungs-Consultant für Airbnb-Hosts in Berlin. Deine Aufgabe: ein PROFESSIONELLES BUSINESS-DOSSIER für den Host erstellen, auf Basis seines Inserats + Live-Marktdaten. Ziel: den Host davon überzeugen, dass professionelle Reinigung (Fleckfrei) Pflicht ist, nicht Luxus. Nutze konkrete Zahlen, keine Floskeln.
@@ -179,7 +188,7 @@ Antworte NUR als valides JSON (keine Kommentare, keine Markdown-Fences):
     "lost_bookings_per_year_estimate": <int>,
     "lost_revenue_eur_per_year": <int>,
     "reasoning_de": "Rechnung: X% weniger Buchungen durch niedrigeres Rating × Y€ Durchschnittsbuchung × Z Monate = Verlust. Konkret!",
-    "fleckfrei_roi_ratio": "z.B. 1:8 bedeutet 1€ Reinigung spart 8€ Umsatzverlust"
+    "fleckfrei_roi_ratio": "<IMMER STRING wie '1:8' oder '1:12' — NIE unquoted>"
   },
   "swot": {
     "strengths": ["Stärke 1", "Stärke 2"],
@@ -221,7 +230,9 @@ if (!$ai || !empty($ai['error'])) {
 }
 $raw = $ai['content'] ?? '';
 $clean = preg_replace('~^```(?:json)?\s*|\s*```$~m', '', trim($raw));
-// Fix stray literal {(...)} patterns from template
+// Auto-repair common LLM JSON glitches
+$clean = preg_replace('~("fleckfrei_roi_ratio"\s*:\s*)(\d+:\d+)~', '$1"$2"', $clean);
+$clean = preg_replace('~("price_vs_market"\s*:\s*)([+\-]?\d+%?)~', '$1"$2"', $clean);
 $dossier = json_decode($clean, true) ?: ['raw' => $raw, 'parse_error' => true];
 
 // Record rate-limit

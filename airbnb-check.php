@@ -150,7 +150,7 @@ function renderDossier(data) {
     html += card(`📊 Markt-Position Berlin <span class="ml-auto text-xs font-normal text-gray-400">${market.sample_size} Listings</span>`,
       `<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-center">
          <div class="p-3 bg-brand/10 rounded"><div class="text-xs text-gray-500">Berlin-Ø-Rating</div><div class="font-bold text-brand">${market.avg_rating}/5</div></div>
-         <div class="p-3 bg-brand/10 rounded"><div class="text-xs text-gray-500">Berlin-Ø Preis/N</div><div class="font-bold text-brand">$${market.avg_price_usd}</div></div>
+         <div class="p-3 bg-brand/10 rounded"><div class="text-xs text-gray-500">Berlin-Ø Preis/N</div><div class="font-bold text-brand">€${market.avg_price_eur || market.avg_price_usd || '?'}</div></div>
          <div class="p-3 bg-brand/10 rounded"><div class="text-xs text-gray-500">Median Reviews</div><div class="font-bold text-brand">${market.median_reviews}</div></div>
          <div class="p-3 bg-amber-50 rounded"><div class="text-xs text-gray-500">Top-20% benötigt</div><div class="font-bold text-amber-700">${mp.rating_benchmark_needed||'?'}</div></div>
        </div>
