@@ -4,9 +4,8 @@
  * Uses OAuth tokens stored in settings table
  */
 
-// Credentials from app_config table (not hardcoded — GitHub secret scanning)
-define('GOOG_CLIENT_ID', val("SELECT config_value FROM app_config WHERE config_key='google_client_id'") ?: '');
-define('GOOG_CLIENT_SECRET', val("SELECT config_value FROM app_config WHERE config_key='google_client_secret'") ?: '');
+// Loaded from google-keys.php (gitignored)
+if (file_exists(__DIR__.'/google-keys.php')) require_once __DIR__.'/google-keys.php';
 
 /**
  * Get valid Google access token (auto-refreshes if expired)

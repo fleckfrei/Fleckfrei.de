@@ -103,6 +103,101 @@ if ($chatId !== HERMES_BOT_CHAT_ID && $fromId !== HERMES_BOT_CHAT_ID) {
     exit;
 }
 
+// === Photo OCR handler (vor command-check) ===
+if (!empty($message['photo']) || !empty($message['document'])) {
+    $caption = trim($message['caption'] ?? '');
+    $fileId = '';
+    if (!empty($message['photo'])) {
+        // Telegram sendet array of sizes — nimm die größte
+        $photos = $message['photo'];
+        usort($photos, fn($a,$b) => ($b['file_size']??0) - ($a['file_size']??0));
+        $fileId = $photos[0]['file_id'] ?? '';
+    } elseif (!empty($message['document']) && in_array($message['document']['mime_type'] ?? '', ['image/png','image/jpeg','image/jpg','image/webp','application/pdf'], true)) {
+        $fileId = $message['document']['file_id'] ?? '';
+    }
+
+    if ($fileId) {
+        tg_send($chatId, '🔍 Scanne Dokument...');
+        // Get file path from Telegram
+        $gf = json_decode(@file_get_contents('https://api.telegram.org/bot' . HERMES_BOT_TOKEN . '/getFile?file_id=' . urlencode($fileId)), true);
+        $tgPath = $gf['result']['file_path'] ?? '';
+        if ($tgPath) {
+            $fileUrl = 'https://api.telegram.org/file/bot' . HERMES_BOT_TOKEN . '/' . $tgPath;
+            $tmp = sys_get_temp_dir() . '/hermes_' . uniqid() . '_' . basename($tgPath);
+            @file_put_contents($tmp, file_get_contents($fileUrl));
+            $mime = mime_content_type($tmp) ?: 'image/jpeg';
+
+            // Convert PDF to JPG if needed
+            $jpgPath = $tmp;
+            if ($mime === 'application/pdf' && extension_loaded('imagick')) {
+                try {
+                    $im = new Imagick();
+                    $im->setResolution(200, 200);
+                    $im->readImage($tmp . '[0]');
+                    $im->setImageFormat('jpeg');
+                    $im->setImageBackgroundColor('white');
+                    $im->setImageAlphaChannel(Imagick::ALPHACHANNEL_REMOVE);
+                    if ($im->getImageWidth() > 1800) $im->resizeImage(1800, 0, Imagick::FILTER_LANCZOS, 1);
+                    $jpgPath = $tmp . '.jpg';
+                    $im->writeImage($jpgPath);
+                    $im->clear();
+                    $mime = 'image/jpeg';
+                } catch (Exception $e) {
+                    tg_send($chatId, '⚠ PDF-Konvertierung fehlgeschlagen: ' . $e->getMessage());
+                    @unlink($tmp);
+                    echo json_encode(['ok' => true]); exit;
+                }
+            }
+
+            // Send to Groq Vision
+            $dataUrl = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($jpgPath));
+            $prompt = trim($caption ?: 'Extrahiere ALLEN sichtbaren Text aus diesem Dokument/Bild. Gib nur den Text zurück, gut formatiert. Wenn Tabellen vorhanden, formatiere als Liste.');
+
+            $payload = json_encode([
+                'model' => 'meta-llama/llama-4-scout-17b-16e-instruct',
+                'temperature' => 0.1,
+                'max_tokens' => 2000,
+                'messages' => [
+                    ['role' => 'user', 'content' => [
+                        ['type' => 'text', 'text' => $prompt],
+                        ['type' => 'image_url', 'image_url' => ['url' => $dataUrl]],
+                    ]],
+                ],
+            ], JSON_UNESCAPED_UNICODE);
+
+            $ch = curl_init('https://api.groq.com/openai/v1/chat/completions');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Authorization: Bearer ' . GROQ_API_KEY]);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+            $resp = curl_exec($ch);
+            curl_close($ch);
+
+            @unlink($tmp);
+            if ($jpgPath !== $tmp) @unlink($jpgPath);
+
+            $ai = json_decode($resp, true);
+            $extracted = $ai['choices'][0]['message']['content'] ?? '';
+            if ($extracted) {
+                // Telegram message limit ist 4096 chars
+                if (strlen($extracted) > 3800) $extracted = substr($extracted, 0, 3800) . "
+
+[...gekürzt]";
+                tg_send($chatId, "📄 *Extrahierter Text:*
+
+" . $extracted);
+            } else {
+                tg_send($chatId, '⚠ Kein Text erkannt. Versuch ein klareres Bild.');
+            }
+        } else {
+            tg_send($chatId, '⚠ Konnte File nicht von Telegram laden.');
+        }
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+}
+
 if ($text === '' || $text[0] !== '/') {
     echo json_encode(['ok' => true, 'note' => 'not a command']);
     exit;

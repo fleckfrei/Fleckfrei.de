@@ -411,6 +411,55 @@ include __DIR__ . '/../includes/layout.php';
         </table>
       </div>
     </div>
+
+    <!-- Automation Section -->
+    <?php
+      $autoToken = val("SELECT auto_token FROM employee WHERE emp_id=?", [$user['id']]);
+      $baseUrl = 'https://app.' . SITE_DOMAIN . '/api/partner-auto.php';
+    ?>
+    <div class="mt-6 bg-white rounded-xl border p-5">
+      <h3 class="font-bold text-gray-900 mb-1">⚡ Automation — ohne App starten/stoppen</h3>
+      <p class="text-sm text-gray-700 mb-4">Starte Jobs automatisch beim Ankommen, per NFC-Tag am Schlüssel, oder per Siri "Hey Siri, Job gestartet". Kein App-Öffnen nötig.</p>
+
+      <div class="bg-brand-light rounded-xl p-4 mb-4">
+        <div class="text-[11px] uppercase font-bold text-brand-dark tracking-wider mb-2">Dein Automation-Token (geheim!):</div>
+        <div class="flex items-center gap-2">
+          <code class="flex-1 font-mono text-xs bg-white border border-brand/20 rounded px-3 py-2 break-all"><?= e($autoToken) ?></code>
+          <button onclick="navigator.clipboard.writeText('<?= e($autoToken) ?>'); this.textContent='✓ Kopiert'; setTimeout(() => this.textContent='Kopieren', 2000)" class="px-3 py-2 bg-brand hover:bg-brand-dark text-white rounded text-xs font-bold whitespace-nowrap">Kopieren</button>
+        </div>
+      </div>
+
+      <div class="border border-gray-200 rounded-xl p-4 mb-3">
+        <h4 class="font-semibold text-gray-900 mb-2 flex items-center gap-2"><span class="text-xl">📱</span> iOS Shortcut (iPhone)</h4>
+        <ol class="space-y-1 text-sm text-gray-800 list-decimal pl-5 mb-3">
+          <li>Kurzbefehle-App → "+"</li>
+          <li>"Inhalt von URL abrufen"</li>
+          <li>URL unten einsetzen</li>
+          <li>Trigger: "Bei Ankunft bei Adresse" oder Siri-Phrase</li>
+        </ol>
+        <div class="space-y-2 text-xs">
+          <div><strong>Start (nächster offener Job):</strong>
+            <code class="block bg-gray-100 text-gray-900 rounded px-2 py-1.5 mt-1 break-all font-mono"><?= e($baseUrl) ?>?token=<?= e($autoToken) ?>&action=start</code>
+          </div>
+          <div><strong>Stop:</strong>
+            <code class="block bg-gray-100 text-gray-900 rounded px-2 py-1.5 mt-1 break-all font-mono"><?= e($baseUrl) ?>?token=<?= e($autoToken) ?>&action=stop</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="border border-gray-200 rounded-xl p-4 mb-3">
+        <h4 class="font-semibold text-gray-900 mb-2 flex items-center gap-2"><span class="text-xl">🏷</span> NFC-Tag am Schlüsselbund</h4>
+        <p class="text-sm text-gray-800 mb-2">NFC-Sticker (NTAG213, ~5€ für 10) mit URL beschreiben. Handy an Tag halten → Job startet.</p>
+        <code class="block bg-gray-100 text-gray-900 rounded px-2 py-1.5 text-xs break-all font-mono"><?= e($baseUrl) ?>?token=<?= e($autoToken) ?>&action=start</code>
+      </div>
+
+      <div class="border border-gray-200 rounded-xl p-4">
+        <h4 class="font-semibold text-gray-900 mb-2 flex items-center gap-2"><span class="text-xl">🤖</span> Android (Tasker / MacroDroid)</h4>
+        <p class="text-sm text-gray-800">Trigger "Geofence entered" → HTTP GET mit obiger URL.</p>
+      </div>
+
+      <p class="text-[11px] text-gray-600 mt-4">⚠ Token ist dein persönlicher Schlüssel — nicht teilen. Kompromittiert? Admin regeneriert.</p>
+    </div>
   </div>
 </div>
 

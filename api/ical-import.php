@@ -73,9 +73,11 @@ foreach ($feeds as $feed) {
     }
 
     $events = parseIcal($icalData);
+    $seenUids = [];
 
     foreach ($events as $ev) {
         $uid = $ev['UID'] ?? '';
+        if ($uid) $seenUids[] = $uid;
         $dtStart = $ev['DTSTART'] ?? '';
         $parsed = icalParseDate($dtStart);
         if (!$parsed) { $skipped++; continue; }
@@ -126,6 +128,24 @@ foreach ($feeds as $feed) {
                  trim($summary . ($description ? "\n" . $description : '')), $location]);
             $created++;
         }
+    }
+
+    // Mark jobs that disappeared from this feed as removed_from_source_at (only future + not running/done)
+    $removedCount = 0;
+    if (!empty($seenUids)) {
+        $placeholders = implode(',', array_fill(0, count($seenUids), '?'));
+        $paramsRm = array_merge([$feed['customer_id_fk'], $feed['platform'] ?: 'ical'], $seenUids);
+        $rm = q("UPDATE jobs SET removed_from_source_at=NOW()
+                  WHERE customer_id_fk=? AND platform=? AND ical_uid IS NOT NULL
+                    AND ical_uid NOT IN ($placeholders)
+                    AND removed_from_source_at IS NULL
+                    AND j_date >= CURDATE()
+                    AND job_status NOT IN ('RUNNING','STARTED','COMPLETED')", $paramsRm);
+        $removedCount = $rm->rowCount();
+        // Un-mark jobs whose UIDs reappeared in this sync
+        $paramsUnRm = array_merge([$feed['customer_id_fk']], $seenUids);
+        q("UPDATE jobs SET removed_from_source_at=NULL
+                  WHERE customer_id_fk=? AND ical_uid IN ($placeholders) AND removed_from_source_at IS NOT NULL", $paramsUnRm);
     }
 
     // Update feed stats

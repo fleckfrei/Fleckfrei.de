@@ -106,7 +106,7 @@ try {
             $cid = (int)($_GET['customer_id'] ?? 0);
             if (!$cid) throw new Exception('Need customer_id');
             // Get services assigned directly to customer + services used in their jobs
-            return all("SELECT DISTINCT s.s_id, s.title, s.street, s.city, s.total_price
+            return all("SELECT DISTINCT s.s_id, s.title, s.street, s.number, s.postal_code, s.city, s.country, s.price, s.total_price, s.is_address
                 FROM services s
                 WHERE s.status=1 AND (
                     s.customer_id_fk = ?
@@ -135,7 +135,7 @@ try {
                     c.name as customer_name, c.customer_type,
                     e.name as emp_name, e.surname as emp_surname,
                     s.title as service_title
-                    FROM jobs j
+                    FROM jobs_calendar j
                     LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
                     LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
                     LEFT JOIN services s ON j.s_id_fk=s.s_id
@@ -336,7 +336,22 @@ try {
 
             // Email notifications based on status
             if ($body['status'] === 'RUNNING') notifyJobStarted($body['j_id']);
-            if ($body['status'] === 'COMPLETED') notifyJobCompleted($body['j_id']);
+            if ($body['status'] === 'COMPLETED') {
+                // B: Auto-mark all checklist items as completed (if not yet)
+                $jobInfo = one("SELECT s_id_fk FROM jobs WHERE j_id=?", [(int)$body['j_id']]);
+                if ($jobInfo) {
+                    $unchecked = all("SELECT cl.checklist_id FROM service_checklists cl
+                        LEFT JOIN checklist_completions cc ON cc.checklist_id_fk=cl.checklist_id AND cc.job_id_fk=?
+                        WHERE cl.s_id_fk=? AND cl.is_active=1 AND (cc.completed IS NULL OR cc.completed=0)",
+                        [(int)$body['j_id'], $jobInfo['s_id_fk']]);
+                    foreach ($unchecked as $u) {
+                        q("INSERT INTO checklist_completions (job_id_fk, checklist_id_fk, completed, auto_completed, completed_at)
+                            VALUES (?,?,1,1,NOW()) ON DUPLICATE KEY UPDATE completed=1, auto_completed=1, completed_at=NOW()",
+                          [(int)$body['j_id'], (int)$u['checklist_id']]);
+                    }
+                }
+                notifyJobCompleted($body['j_id']);
+            }
 
             // Auto-Invoicing: Job erledigt → Rechnung sofort erstellen
             $autoInvoiceId = null;
@@ -1942,11 +1957,11 @@ try {
             if ($job['job_status'] !== 'COMPLETED') throw new Exception('Job not completed');
             global $dbLocal;
             $dbLocal->exec("CREATE TABLE IF NOT EXISTS job_ratings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, j_id INTEGER NOT NULL, emp_id INTEGER,
-                customer_id INTEGER, stars INTEGER NOT NULL, comment TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(j_id)
-            )");
-            $dbLocal->prepare("INSERT OR REPLACE INTO job_ratings (j_id, emp_id, customer_id, stars, comment) VALUES (?,?,?,?,?)")
+                id INT AUTO_INCREMENT PRIMARY KEY, j_id INT NOT NULL, emp_id INT,
+                customer_id INT, stars INT NOT NULL, comment TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_job (j_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            $dbLocal->prepare("REPLACE INTO job_ratings (j_id, emp_id, customer_id, stars, comment) VALUES (?,?,?,?,?)")
                 ->execute([$jid, $job['emp_id_fk'], $job['customer_id_fk'], $stars, $comment]);
             $starEmoji = str_repeat('*', $stars) . str_repeat('.', 5-$stars);
             telegramNotify("⭐ <b>Bewertung</b>\n\n👤 {$job['cname']} → 👷 {$job['ename']}\n⭐ {$starEmoji} ({$stars}/5)\n💬 " . ($comment ?: '—'));
@@ -2957,6 +2972,24 @@ try {
                 'maps_url' => $mapsUrl,
                 'optimized' => true
             ];
+        })(),
+
+        // Checkliste für Job (Kunden-View: titel + completion status)
+        $action === 'checklist/for-job' && $method === 'GET' => (function() {
+            $jid = (int)($_GET['j_id'] ?? 0);
+            if (!$jid) throw new Exception('Need j_id');
+            $job = one("SELECT j.j_id, j.s_id_fk, j.customer_id_fk FROM jobs j WHERE j.j_id=?", [$jid]);
+            if (!$job) throw new Exception('Job not found');
+            $items = [];
+            try {
+                $items = all("SELECT cl.checklist_id, cl.title, cl.room, cl.priority,
+                    COALESCE(cc.completed, 0) AS completed, cc.photo
+                    FROM service_checklists cl
+                    LEFT JOIN checklist_completions cc ON cc.checklist_id_fk=cl.checklist_id AND cc.job_id_fk=?
+                    WHERE cl.s_id_fk=? AND cl.is_active=1
+                    ORDER BY cl.position, cl.checklist_id", [$jid, $job['s_id_fk']]);
+            } catch (Exception $e) {}
+            return ['job_id' => $jid, 'items' => $items, 'total' => count($items), 'completed' => count(array_filter($items, fn($i) => $i['completed']))];
         })(),
 
         default => throw new Exception("Unknown: $action")

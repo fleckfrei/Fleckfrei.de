@@ -53,7 +53,9 @@ include __DIR__ . '/../includes/layout.php';
     <div class="flex gap-2 items-center">
       <?= badge($j['job_status']) ?>
       <button onclick="document.getElementById('editJobModal').classList.remove('hidden')" class="px-3 py-1.5 bg-brand text-white text-sm rounded-lg">Bearbeiten</button>
-      <form method="POST" class="inline" onsubmit="return confirm('Job wirklich löschen?')"><input type="hidden" name="action" value="delete_job"/><input type="hidden" name="j_id" value="<?= $j['j_id'] ?>"/><button class="px-3 py-1.5 bg-red-100 text-red-700 text-sm rounded-lg">Löschen</button></form>
+      <a href="/admin/job-report.php?j_id=<?= (int)$j['j_id'] ?>" target="_blank" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg" title="Versicherungs-Nachweis für Airbnb/Booking.com">📄 Bericht</a>
+      <form method="POST" class="inline" onsubmit="return confirm('Job wirklich löschen?')">
+  <?= csrfField() ?><input type="hidden" name="action" value="delete_job"/><input type="hidden" name="j_id" value="<?= $j['j_id'] ?>"/><button class="px-3 py-1.5 bg-red-100 text-red-700 text-sm rounded-lg">Löschen</button></form>
       <a href="/admin/jobs.php" class="text-sm text-gray-500 hover:text-gray-700">&larr; Zurück</a>
     </div>
   </div>
@@ -161,6 +163,7 @@ include __DIR__ . '/../includes/layout.php';
   <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl m-4">
     <h3 class="text-lg font-semibold mb-4">Job #<?= $j['j_id'] ?> bearbeiten</h3>
     <form method="POST" class="grid grid-cols-2 gap-4">
+  <?= csrfField() ?>
       <input type="hidden" name="action" value="edit_job"/>
       <input type="hidden" name="j_id" value="<?= $j['j_id'] ?>"/>
       <div><label class="block text-sm font-medium text-gray-600 mb-1">Kunde</label>
@@ -190,6 +193,9 @@ include __DIR__ . '/../includes/layout.php';
     </form>
   </div>
 </div>
+<?php if (!empty($_GET['edit'])): ?>
+<script>document.addEventListener('DOMContentLoaded', () => document.getElementById('editJobModal')?.classList.remove('hidden'));</script>
+<?php endif; ?>
 <?php endif; ?>
 
 <!-- Calendar + Day Panel -->
@@ -216,11 +222,11 @@ include __DIR__ . '/../includes/layout.php';
       <button onclick="document.getElementById('addJobModal').classList.remove('hidden')" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium hover:bg-brand-dark transition">+ Neuer Job</button>
     </div>
     <!-- Farb-Legende -->
-    <div class="flex items-center flex-wrap gap-3 mb-3 px-2 text-[11px] font-medium text-gray-700">
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#eab308"></span>Neue Buchung (Partner fehlt)</div>
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#2563EB"></span>Offen / Bestätigt</div>
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#ea580c"></span>Partner läuft</div>
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#16a34a"></span>Erledigt</div>
+    <div class="flex items-center flex-wrap gap-3 mb-3 px-2 text-[11px] font-medium text-gray-800">
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#eab308"></span>Kein Partner</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#2563EB"></span>Partner zugewiesen</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#ea580c"></span>Partner in Bearbeitung</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#2E7D6B"></span>Erledigt</div>
       <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#dc2626"></span>Storniert</div>
     </div>
     <div id="calendar"></div>
@@ -488,26 +494,30 @@ if ('serviceWorker' in navigator) {
 }
 const API = '/api/index.php';
 const KEY = '{$apiKey}';
-// Softer, professional colors
-// Farb-Mapping nach Workflow (wie Max es kennt):
-// Gelb = Neue Buchung (Partner fehlt noch)
-// Blau = PENDING/CONFIRMED (Partner zugewiesen, wartet auf Start)
-// Orange = RUNNING/STARTED (Partner hat Start gedrückt)
-// Grün = COMPLETED (Partner hat Stop gedrückt)
-// Rot = CANCELLED
+// Farb-Standard (Max Spec 2026-04-13, plattformweit):
+// Gelb    = kein Partner zugewiesen
+// Blau    = Partner zugewiesen, noch nicht gestartet
+// Orange  = Partner hat angefangen (RUNNING/STARTED)
+// Grün    = Fertig (COMPLETED) — Fleckfrei Brand-Grün
+// Rot     = Storniert
 const colors = {
-  NEW: '#eab308',         // Gelb — neu erstellt, Partner fehlt
-  PENDING: '#2563EB',     // Blau — wartet auf Start
-  CONFIRMED: '#1d4ed8',   // Blau-dunkel — bestätigt
+  UNASSIGNED: '#eab308',  // Gelb — kein Partner
+  PENDING: '#2563EB',     // Blau — Partner zugewiesen, wartet
+  CONFIRMED: '#2563EB',   // Blau
+  NEW: '#2563EB',         // Blau
   RUNNING: '#ea580c',     // Orange — läuft
   STARTED: '#ea580c',     // Orange — läuft
-  COMPLETED: '#16a34a',   // Grün — fertig
+  COMPLETED: '#2E7D6B',   // Fleckfrei-Brand-Grün — fertig
   CANCELLED: '#dc2626'    // Rot — storniert
 };
 function jobColor(j) {
-  // Ohne Partner = neue Buchung = gelb (überschreibt PENDING)
-  if (!j.emp_id_fk && (j.job_status === 'PENDING' || j.job_status === 'NEW')) return colors.NEW;
-  return colors[j.job_status] || '#64748b';
+  if (j.job_status === 'CANCELLED') return colors.CANCELLED;
+  if (j.job_status === 'COMPLETED') return colors.COMPLETED;
+  if (j.job_status === 'RUNNING' || j.job_status === 'STARTED') return colors.RUNNING;
+  // Kein Partner → Gelb
+  if (!j.emp_id_fk) return colors.UNASSIGNED;
+  // Partner zugewiesen → Blau
+  return colors.PENDING;
 }
 const statusLabels = {PENDING:'Offen',CONFIRMED:'Bestätigt',RUNNING:'Laufend',STARTED:'Laufend',COMPLETED:'Erledigt',CANCELLED:'Storniert'};
 let allEvents = [];
@@ -985,11 +995,17 @@ function applyBookingTemplate(custId) {
             .then(r => r.json())
             .then(d => {
                 svcSel.innerHTML = '<option value="">Wählen...</option>';
+                window._svcCache = {};
                 if (d.success && d.data.length > 0) {
                     d.data.forEach(s => {
+                        window._svcCache[s.s_id] = s;
                         const o = document.createElement('option');
                         o.value = s.s_id;
-                        o.textContent = s.title + (s.street ? ' — ' + s.street + ' ' + (s.city||'') : '') + (s.total_price ? ' (' + s.total_price + ' €/h)' : '');
+                        const addr = [s.street, s.number].filter(Boolean).join(' ').trim();
+                        const cityPart = [s.postal_code, s.city].filter(Boolean).join(' ').trim();
+                        const fullAddr = [addr, cityPart].filter(Boolean).join(', ');
+                        const priceStr = s.total_price > 0 ? ' · ' + parseFloat(s.total_price).toFixed(2) + '€' : (s.price > 0 ? ' · ' + parseFloat(s.price).toFixed(2) + '€/h' : '');
+                        o.textContent = s.title + (fullAddr ? ' — ' + fullAddr : '') + priceStr;
                         svcSel.appendChild(o);
                     });
                 } else {
@@ -1001,6 +1017,24 @@ function applyBookingTemplate(custId) {
                         o.textContent = s.title + (s.street ? ' — ' + s.street + ' ' + s.city : '');
                         svcSel.appendChild(o);
                     });
+                }
+            })
+            .then(() => {
+                // Auto-fill address + price + hours when service selected
+                if (!svcSel._listenerAttached) {
+                    svcSel._listenerAttached = true;
+                    svcSel.addEventListener('change', function() {
+                        const s = (window._svcCache || {})[svcSel.value];
+                        if (!s) return;
+                        const addrInput = document.querySelector('#newJobModal input[name="address"], form input[name="address"]');
+                        if (addrInput && !addrInput.value) {
+                            const parts = [s.street, s.number].filter(Boolean).join(' ').trim();
+                            const cityPart = [s.postal_code, s.city, s.country].filter(Boolean).join(', ').trim();
+                            addrInput.value = [parts, cityPart].filter(Boolean).join(', ');
+                        }
+                    });
+                    // Trigger if pre-selected
+                    if (svcSel.value) svcSel.dispatchEvent(new Event('change'));
                 }
             })
             .catch(() => { svcSel.innerHTML = '<option value="">Fehler</option>'; });

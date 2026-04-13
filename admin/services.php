@@ -14,10 +14,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: /admin/services.php?added=1"); exit;
     }
     if ($act === 'edit_service') {
-        q("UPDATE services SET title=?,customer_id_fk=?,street=?,number=?,postal_code=?,city=?,country=?,price=?,total_price=?,unit=?,box_code=?,client_code=?,deposit_code=?,access_phone=?,wifi_name=?,wifi_password=?,qm=?,room=?,is_cleaning=?,status=? WHERE s_id=?",
+        $waKey = trim(preg_replace('/[^\w\-]/u', '', $_POST['wa_keyword'] ?? ''));
+        q("UPDATE services SET title=?,customer_id_fk=?,street=?,number=?,postal_code=?,city=?,country=?,price=?,total_price=?,unit=?,box_code=?,client_code=?,deposit_code=?,access_phone=?,wifi_name=?,wifi_password=?,qm=?,room=?,is_cleaning=?,status=?,wa_keyword=? WHERE s_id=?",
           [$_POST['title'],$_POST['customer_id_fk'],$_POST['street']??'',$_POST['number']??'',$_POST['postal_code']??'',$_POST['city']??'',$_POST['country']??'',
            $_POST['price']??0,$_POST['total_price']??0,$_POST['unit']??'hour',$_POST['box_code']??'',$_POST['client_code']??'',$_POST['deposit_code']??'',$_POST['access_phone']??'',
-           $_POST['wifi_name']??'',$_POST['wifi_password']??'',$_POST['qm']??'',$_POST['room']??'',$_POST['is_cleaning']??0,$_POST['status'],$_POST['s_id']]);
+           $_POST['wifi_name']??'',$_POST['wifi_password']??'',$_POST['qm']??'',$_POST['room']??'',$_POST['is_cleaning']??0,$_POST['status'],$waKey ?: null,$_POST['s_id']]);
         header("Location: /admin/services.php?saved=1"); exit;
     }
     if ($act === 'delete_service') { q("UPDATE services SET status=0 WHERE s_id=?", [$_POST['s_id']]); header("Location: /admin/services.php"); exit; }
@@ -76,10 +77,12 @@ include __DIR__ . '/../includes/layout.php';
       <td class="px-4 py-3"><?= $sv['jobs'] ?></td>
       <td class="px-4 py-3"><div class="flex gap-1">
         <?php if ($tab === 'archive'): ?>
-          <form method="POST" class="inline"><input type="hidden" name="action" value="reactivate_service"/><input type="hidden" name="s_id" value="<?= $sv['s_id'] ?>"/><button class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg font-medium">Aktivieren</button></form>
+          <form method="POST" class="inline">
+  <?= csrfField() ?><input type="hidden" name="action" value="reactivate_service"/><input type="hidden" name="s_id" value="<?= $sv['s_id'] ?>"/><button class="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-lg font-medium">Aktivieren</button></form>
         <?php else: ?>
           <button @click='s=<?= json_encode(["s_id"=>$sv["s_id"],"title"=>$sv["title"],"customer_id_fk"=>$sv["customer_id_fk"],"street"=>$sv["street"],"number"=>$sv["number"],"postal_code"=>$sv["postal_code"],"city"=>$sv["city"],"country"=>$sv["country"],"price"=>$sv["price"],"total_price"=>$sv["total_price"],"unit"=>$sv["unit"],"box_code"=>$sv["box_code"]??"","client_code"=>$sv["client_code"]??"","deposit_code"=>$sv["deposit_code"]??"","access_phone"=>$sv["access_phone"]??"","wifi_name"=>$sv["wifi_name"]??"","wifi_password"=>$sv["wifi_password"]??"","qm"=>$sv["qm"]??"","room"=>$sv["room"]??"","is_cleaning"=>$sv["is_cleaning"]??0,"status"=>$sv["status"]],JSON_HEX_APOS) ?>; editOpen=true' class="px-2 py-1 text-xs bg-brand/10 text-brand rounded-lg">Edit</button>
-          <form method="POST" class="inline" onsubmit="return confirm('Service archivieren?')"><input type="hidden" name="action" value="delete_service"/><input type="hidden" name="s_id" value="<?= $sv['s_id'] ?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Archiv</button></form>
+          <form method="POST" class="inline" onsubmit="return confirm('Service archivieren?')">
+  <?= csrfField() ?><input type="hidden" name="action" value="delete_service"/><input type="hidden" name="s_id" value="<?= $sv['s_id'] ?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded-lg">Archiv</button></form>
         <?php endif; ?>
       </div></td>
     </tr>
@@ -90,6 +93,7 @@ include __DIR__ . '/../includes/layout.php';
       <div class="bg-white rounded-2xl p-6 w-full max-w-3xl shadow-2xl m-4">
         <h3 class="text-lg font-semibold mb-4" x-text="s.s_id ? 'Service bearbeiten' : 'Neuer Service'"></h3>
         <form method="POST" class="grid grid-cols-3 gap-4">
+  <?= csrfField() ?>
           <input type="hidden" name="action" :value="s.s_id ? 'edit_service' : 'add_service'"/>
           <input type="hidden" name="s_id" :value="s.s_id"/>
           <div class="col-span-2"><label class="block text-xs font-medium text-gray-500 mb-1">Titel *</label><input name="title" :value="s.title" required class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
@@ -112,6 +116,11 @@ include __DIR__ . '/../includes/layout.php';
           <div><label class="block text-xs font-medium text-gray-500 mb-1">Zimmer</label><input name="room" :value="s.room" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
           <div><label class="flex items-center gap-2 mt-5"><input type="checkbox" name="is_cleaning" value="1" :checked="s.is_cleaning==1"/> Spezialreinigung</label></div>
           <div x-show="s.s_id"><label class="block text-xs font-medium text-gray-500 mb-1">Status</label><select name="status" class="w-full px-3 py-2 border rounded-xl text-sm"><option value="1" :selected="s.status=='1'">Aktiv</option><option value="0" :selected="s.status=='0'">Inaktiv</option></select></div>
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-gray-700 mb-1">💬 WhatsApp-Keyword <span class="text-[10px] text-gray-500 font-normal">(für n8n Flow-Trigger, z.B. "Svea", "Auroerei", "Decebal")</span></label>
+            <input name="wa_keyword" :value="s.wa_keyword || ''" placeholder="z.B. Svea" pattern="[A-Za-z0-9_-]+" class="w-full px-3 py-2 border-2 border-brand/30 bg-brand-light/30 rounded-xl text-sm font-mono"/>
+            <div class="text-[10px] text-gray-600 mt-1">Kunde schreibt "Keyword: Svea" auf WhatsApp → Bot erkennt Property automatisch. Nur Buchstaben/Zahlen, keine Leerzeichen.</div>
+          </div>
           <div class="col-span-3 flex gap-3 mt-2">
             <button type="button" @click="editOpen=false" class="flex-1 px-4 py-2.5 border rounded-xl">Abbrechen</button>
             <button type="submit" class="flex-1 px-4 py-2.5 bg-brand text-white rounded-xl font-medium">Speichern</button>

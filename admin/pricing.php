@@ -22,6 +22,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // === Pricing-Rules: Multiplikatoren + Partner-Bonus ===
+    if ($act === 'save_addon') {
+        $opId = (int)($_POST['op_id'] ?? 0);
+        $data = [
+            trim($_POST['name'] ?? ''),
+            trim($_POST['description'] ?? ''),
+            $_POST['pricing_type'] ?? 'flat',
+            (float)($_POST['customer_price'] ?? 0),
+            (float)($_POST['partner_bonus'] ?? 0),
+            (float)($_POST['tax_percentage'] ?? 19),
+            !empty($_POST['is_active']) ? 1 : 0,
+            $_POST['visibility'] ?? 'all',
+            trim($_POST['icon'] ?? ''),
+            (int)($_POST['sort_order'] ?? 0),
+        ];
+        if ($opId > 0) {
+            $data[] = $opId;
+            q("UPDATE optional_products SET name=?, description=?, pricing_type=?, customer_price=?, partner_bonus=?, tax_percentage=?, is_active=?, visibility=?, icon=?, sort_order=? WHERE op_id=?", $data);
+        } else {
+            q("INSERT INTO optional_products (name, description, pricing_type, customer_price, partner_bonus, tax_percentage, is_active, visibility, icon, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?)", $data);
+        }
+        audit('update', 'optional_products', $opId ?: (int)lastInsertId(), 'Add-On gespeichert: ' . $_POST['name']);
+        header('Location: /admin/pricing.php?saved=1#addons'); exit;
+    }
+    if ($act === 'delete_addon') {
+        $opId = (int)($_POST['op_id'] ?? 0);
+        q("UPDATE optional_products SET is_active=0 WHERE op_id=?", [$opId]);
+        audit('delete', 'optional_products', $opId, 'Add-On deaktiviert');
+        header('Location: /admin/pricing.php?saved=1#addons'); exit;
+    }
     if ($act === 'save_rule') {
         $prId = (int)($_POST['pr_id'] ?? 0);
         $fields = [
@@ -438,5 +467,86 @@ function editRule(r) {
   f.active.checked = !!parseInt(r.active);
   document.getElementById('ruleFormTitle').textContent = 'Regel #' + r.pr_id + ' bearbeiten';
   document.getElementById('ruleModal').classList.remove('hidden');
+}
+</script>
+<?php
+$addons = all("SELECT * FROM optional_products ORDER BY sort_order, name");
+?>
+<div id="addons" class="bg-white rounded-xl border p-5 mt-6">
+  <div class="flex items-center justify-between mb-4">
+    <h3 class="font-semibold flex items-center gap-2">🧴 Add-On Preise (Zusatzleistungen)</h3>
+    <button type="button" onclick="editAddon({op_id:0,pricing_type:'flat',is_active:1,visibility:'all',tax_percentage:19,sort_order:0})" class="px-3 py-1.5 bg-brand text-white rounded-lg text-sm">+ Neues Add-On</button>
+  </div>
+  <p class="text-xs text-amber-700 mb-3 bg-amber-50 px-3 py-2 rounded">⚠ Änderungen wirken NUR auf neue Buchungen. Bestehende Jobs/Services behalten ihre alten Preise.</p>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+      <tr><th class="px-3 py-2 text-left">Name</th><th class="px-3 py-2 text-left">Typ</th><th class="px-3 py-2 text-right">Kunde</th><th class="px-3 py-2 text-right">Partner-Bonus</th><th class="px-3 py-2 text-left">Sichtbar für</th><th class="px-3 py-2 text-center">Aktiv</th><th class="px-3 py-2 text-right">Aktion</th></tr>
+    </thead>
+    <tbody>
+      <?php foreach ($addons as $a): ?>
+      <tr class="border-t hover:bg-gray-50">
+        <td class="px-3 py-2"><?= e($a['icon']) ?> <strong><?= e($a['name']) ?></strong><div class="text-xs text-gray-500"><?= e($a['description']) ?></div></td>
+        <td class="px-3 py-2 text-xs"><?= e($a['pricing_type']) ?></td>
+        <td class="px-3 py-2 text-right font-semibold"><?= number_format((float)$a['customer_price'], 2, ',', '.') ?> €</td>
+        <td class="px-3 py-2 text-right text-gray-600"><?= number_format((float)$a['partner_bonus'], 2, ',', '.') ?> €</td>
+        <td class="px-3 py-2 text-xs"><?= e($a['visibility']) ?></td>
+        <td class="px-3 py-2 text-center"><?= $a['is_active'] ? '✓' : '✗' ?></td>
+        <td class="px-3 py-2 text-right">
+          <button onclick='editAddon(<?= json_encode($a, JSON_HEX_APOS) ?>)' class="text-brand hover:underline text-xs">Edit</button>
+          <form method="POST" class="inline" onsubmit="return confirm('Add-On deaktivieren?')">
+            <?= csrfField() ?><input type="hidden" name="action" value="delete_addon"/><input type="hidden" name="op_id" value="<?= $a['op_id'] ?>"/>
+            <button class="text-red-500 hover:underline text-xs ml-2">Del</button>
+          </form>
+        </td>
+      </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>
+
+<!-- Addon Edit Modal -->
+<div id="addonModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="bg-white rounded-2xl max-w-xl w-full p-6 max-h-[90vh] overflow-y-auto">
+    <h3 class="text-lg font-semibold mb-4" id="addonModalTitle">Add-On bearbeiten</h3>
+    <form method="POST" class="space-y-3" id="addonForm">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="save_addon"/>
+      <input type="hidden" name="op_id" id="a_op_id"/>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="block text-xs text-gray-500 mb-1">Name *</label><input name="name" id="a_name" required class="w-full px-3 py-2 border rounded-lg"/></div>
+        <div><label class="block text-xs text-gray-500 mb-1">Icon (Emoji)</label><input name="icon" id="a_icon" maxlength="4" class="w-full px-3 py-2 border rounded-lg"/></div>
+      </div>
+      <div><label class="block text-xs text-gray-500 mb-1">Beschreibung</label><textarea name="description" id="a_description" rows="2" class="w-full px-3 py-2 border rounded-lg"></textarea></div>
+      <div class="grid grid-cols-3 gap-3">
+        <div><label class="block text-xs text-gray-500 mb-1">Pricing-Typ</label>
+          <select name="pricing_type" id="a_pricing_type" class="w-full px-3 py-2 border rounded-lg">
+            <option value="flat">Pauschal</option><option value="per_hour">Pro Stunde</option><option value="percentage">% von Total</option>
+          </select></div>
+        <div><label class="block text-xs text-gray-500 mb-1">Kunden-Preis €</label><input type="number" step="0.01" name="customer_price" id="a_customer_price" class="w-full px-3 py-2 border rounded-lg"/></div>
+        <div><label class="block text-xs text-gray-500 mb-1">Partner-Bonus €</label><input type="number" step="0.01" name="partner_bonus" id="a_partner_bonus" class="w-full px-3 py-2 border rounded-lg"/></div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div><label class="block text-xs text-gray-500 mb-1">Steuer %</label><input type="number" step="0.5" name="tax_percentage" id="a_tax_percentage" value="19" class="w-full px-3 py-2 border rounded-lg"/></div>
+        <div><label class="block text-xs text-gray-500 mb-1">Sichtbar für</label>
+          <select name="visibility" id="a_visibility" class="w-full px-3 py-2 border rounded-lg">
+            <option value="all">Alle</option><option value="private">Private</option><option value="business">Business</option><option value="host">Host/STR</option><option value="hidden">Versteckt</option>
+          </select></div>
+        <div><label class="block text-xs text-gray-500 mb-1">Sortierung</label><input type="number" name="sort_order" id="a_sort_order" value="0" class="w-full px-3 py-2 border rounded-lg"/></div>
+      </div>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_active" id="a_is_active" value="1" class="rounded"/> Aktiv</label>
+      <div class="flex gap-2 pt-3 border-t">
+        <button type="submit" class="flex-1 px-4 py-2 bg-brand text-white rounded-lg font-semibold">Speichern</button>
+        <button type="button" onclick="document.getElementById('addonModal').classList.add('hidden')" class="px-4 py-2 bg-gray-200 rounded-lg">Abbrechen</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function editAddon(a) {
+  const ids = ['op_id','name','icon','description','pricing_type','customer_price','partner_bonus','tax_percentage','visibility','sort_order'];
+  ids.forEach(k => { const el = document.getElementById('a_'+k); if (el) el.value = a[k] ?? ''; });
+  document.getElementById('a_is_active').checked = !!parseInt(a.is_active || 0);
+  document.getElementById('addonModalTitle').textContent = a.op_id ? ('Add-On #'+a.op_id+' bearbeiten') : 'Neues Add-On';
+  document.getElementById('addonModal').classList.remove('hidden');
 }
 </script>

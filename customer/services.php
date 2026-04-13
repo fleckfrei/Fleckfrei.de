@@ -199,7 +199,7 @@ if (!empty($_GET['saved']))   echo '<div class="card-elev bg-green-50 border-gre
         <svg class="w-6 h-6 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
       </div>
       <div class="min-w-0 flex-1">
-        <div class="font-bold text-gray-900 text-base"><?= e($s['title']) ?></div>
+        <div class="font-bold text-gray-900 text-base break-words" title="<?= e($s["title"]) ?>"><?= e($s["title"]) ?></div>
         <div class="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
           <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/></svg>
           <?= e(trim(($s['street'] ?? '') . ' ' . ($s['number'] ?? ''))) ?>

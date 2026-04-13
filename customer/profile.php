@@ -58,8 +58,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         audit('update', 'customer_phone', $cid, "Telefon geändert: {$old['phone']} → $newPhone");
     }
 
-    q("UPDATE customer SET name=?, surname=?, phone=?, phone_history=?, notes=? WHERE customer_id=?",
-      [$_POST['name'] ?? '', $_POST['surname'] ?? '', $newPhone, $newHistory, $_POST['notes'] ?? '', $cid]);
+    q("UPDATE customer SET name=?, surname=?, phone=?, phone_history=?, notes=?, cc_email=? WHERE customer_id=?",
+      [$_POST['name'] ?? '', $_POST['surname'] ?? '', $newPhone, $newHistory, $_POST['notes'] ?? '', trim($_POST['cc_email'] ?? '') ?: null, $cid]);
 
     if (!empty($_POST['new_password'])) {
         q("UPDATE customer SET password=? WHERE customer_id=?",
@@ -78,6 +78,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
        $cid]);
     audit('update', 'customer_consent', $cid, 'Marketing-Einwilligungen aktualisiert');
     header("Location: /customer/profile.php?section=privacy&saved=1"); exit;
+}
+
+// Update data sharing (was Partner/extern sehen darf)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_sharing') {
+    if (!verifyCsrf()) { header('Location: /customer/profile.php?section=privacy'); exit; }
+    q("UPDATE customer SET share_phone_with_partner=?, share_email_with_partner=?, share_full_address_external=?, allow_photo_upload=?, allow_video_upload=? WHERE customer_id=?",
+      [!empty($_POST['share_phone_with_partner']) ? 1 : 0,
+       !empty($_POST['share_email_with_partner']) ? 1 : 0,
+       !empty($_POST['share_full_address_external']) ? 1 : 0,
+       !empty($_POST['allow_photo_upload']) ? 1 : 0,
+       !empty($_POST['allow_video_upload']) ? 1 : 0,
+       $cid]);
+    audit('update', 'customer_sharing', $cid, 'Daten-Sharing-Einstellungen aktualisiert');
+    header("Location: /customer/profile.php?section=privacy&saved=1"); exit;
+}
+
+// Generate / regenerate own API token
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'generate_api_token') {
+    if (!verifyCsrf()) { header('Location: /customer/profile.php?section=api'); exit; }
+    // Blocked? No self-generation allowed.
+    $blocked = (int)(val("SELECT api_access_blocked FROM customer WHERE customer_id=?", [$cid]) ?? 0);
+    if ($blocked) { header('Location: /customer/profile.php?section=api&error=blocked'); exit; }
+    $token = bin2hex(random_bytes(24));
+    q("UPDATE customer SET api_token=?, api_created_at=NOW(), api_requests_count=0 WHERE customer_id=?", [$token, $cid]);
+    audit('api_token_self_regenerate', 'customer', $cid, 'Kunde hat eigenen API-Token (neu) generiert');
+    header("Location: /customer/profile.php?section=api&saved=1"); exit;
+}
+
+// Revoke own API token
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'revoke_api_token') {
+    if (!verifyCsrf()) { header('Location: /customer/profile.php?section=api'); exit; }
+    q("UPDATE customer SET api_token=NULL WHERE customer_id=?", [$cid]);
+    audit('api_token_self_revoke', 'customer', $cid, 'Kunde hat eigenen API-Token widerrufen');
+    header("Location: /customer/profile.php?section=api&saved=1"); exit;
 }
 
 // Delete an address
@@ -163,6 +197,7 @@ include __DIR__ . '/../includes/layout-customer.php';
     <a href="?section=personal" class="tab-underline whitespace-nowrap <?= $section === 'personal' ? 'active' : '' ?>">Persönlich</a>
     <a href="?section=addresses" class="tab-underline whitespace-nowrap <?= $section === 'addresses' ? 'active' : '' ?>">Adressen</a>
     <a href="?section=privacy" class="tab-underline whitespace-nowrap <?= $section === 'privacy' ? 'active' : '' ?>">Datenschutz</a>
+    <a href="?section=api" class="tab-underline whitespace-nowrap <?= $section === 'api' ? 'active' : '' ?>">API-Zugang</a>
     <a href="?section=account" class="tab-underline whitespace-nowrap <?= $section === 'account' ? 'active' : '' ?>">Konto</a>
   </div>
 </div>
@@ -206,6 +241,11 @@ include __DIR__ . '/../includes/layout-customer.php';
     <div>
       <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Telefon</label>
       <input name="phone" value="<?= e($customer['phone']) ?>" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+    </div>
+    <div>
+      <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">CC-E-Mail (optional)</label>
+      <input type="email" name="cc_email" value="<?= e($customer['cc_email'] ?? '') ?>" placeholder="z.B. buchhaltung@firma.de" class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+      <div class="text-[11px] text-gray-400 mt-1">Bekommt Kopie aller Mails (Buchungsbestätigung, Rechnungen, Berichte).</div>
       <?php
         $phoneHist = json_decode($customer['phone_history'] ?? '[]', true) ?: [];
         if (!empty($phoneHist)):
@@ -384,6 +424,188 @@ include __DIR__ . '/../includes/layout-customer.php';
 
     <button type="submit" class="w-full sm:w-auto px-6 py-3 bg-brand hover:bg-brand-dark text-white rounded-lg font-semibold text-sm mt-2">Einwilligungen speichern</button>
   </form>
+</div>
+
+<!-- Daten-Sharing (wer darf was von mir sehen) -->
+<div class="card-elev p-6 max-w-2xl mt-6">
+  <h2 class="font-bold text-lg mb-1">Daten-Freigaben</h2>
+  <p class="text-sm text-gray-500 mb-5">Sie entscheiden, welche Informationen an Partner (Reinigungskraft) oder externe Systeme weitergegeben werden.</p>
+
+  <form method="POST" class="space-y-3">
+    <?= csrfField() ?>
+    <input type="hidden" name="action" value="update_sharing"/>
+
+    <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-xl hover:border-brand cursor-pointer transition">
+      <input type="checkbox" name="share_phone_with_partner" value="1" <?= !empty($customer['share_phone_with_partner']) ? 'checked' : '' ?> class="mt-1 accent-brand w-4 h-4"/>
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-gray-900 text-sm">Telefonnummer an Partner freigeben</div>
+        <div class="text-xs text-gray-500 mt-0.5">Der zugewiesene Partner kann Sie bei Rückfragen anrufen. Empfohlen für Erreichbarkeit vor Ort.</div>
+      </div>
+    </label>
+
+    <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-xl hover:border-brand cursor-pointer transition">
+      <input type="checkbox" name="share_email_with_partner" value="1" <?= !empty($customer['share_email_with_partner']) ? 'checked' : '' ?> class="mt-1 accent-brand w-4 h-4"/>
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-gray-900 text-sm">E-Mail an Partner freigeben</div>
+        <div class="text-xs text-gray-500 mt-0.5">Partner kann Ihnen direkt Fotos oder Hinweise per E-Mail schicken.</div>
+      </div>
+    </label>
+
+    <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-xl hover:border-brand cursor-pointer transition">
+      <input type="checkbox" name="allow_photo_upload" value="1" <?= !empty($customer['allow_photo_upload']) ? 'checked' : '' ?> class="mt-1 accent-brand w-4 h-4"/>
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-gray-900 text-sm">Foto-Nachweise erlauben 📷</div>
+        <div class="text-xs text-gray-500 mt-0.5">Partner dürfen Vorher/Nachher-Fotos pro Checklist-Item hochladen. Diese sind nur für Sie (&amp; Admin) sichtbar und dienen als Qualitätsnachweis sowie Versicherungs-Beleg.</div>
+      </div>
+    </label>
+
+    <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-xl hover:border-brand cursor-pointer transition">
+      <input type="checkbox" name="allow_video_upload" value="1" <?= !empty($customer['allow_video_upload']) ? 'checked' : '' ?> class="mt-1 accent-brand w-4 h-4"/>
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-gray-900 text-sm">Video-Nachweise erlauben 🎬</div>
+        <div class="text-xs text-gray-500 mt-0.5">Partner dürfen kurze Video-Rundgänge (bis 50 MB) als Nachweis hochladen. Besonders nützlich für Airbnb-/Booking.com-Beweise nach Gast-Check-out.</div>
+      </div>
+    </label>
+
+    <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-xl hover:border-brand cursor-pointer transition">
+      <input type="checkbox" name="share_full_address_external" value="1" <?= !empty($customer['share_full_address_external']) ? 'checked' : '' ?> class="mt-1 accent-brand w-4 h-4"/>
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-gray-900 text-sm">Vollständige Adresse an Drittsysteme</div>
+        <div class="text-xs text-gray-500 mt-0.5">Erlaubt Übermittlung der vollen Adresse an externe Systeme (Smoobu-Sync, Airbnb-API, Route-Optimierung). Ohne Freigabe: nur Straße/Stadt, keine Hausnummer.</div>
+      </div>
+    </label>
+
+    <div class="text-[11px] text-gray-500 bg-gray-50 rounded-lg p-3 mt-3">
+      <strong>🔒 Standard-Schutz:</strong> Unabhängig von diesen Einstellungen erhalten Partner immer nur die Adresse am Tag des Auftrags und verlieren sofort nach Jobende den Zugriff auf Ihre Daten. Wir geben keine Daten an Werbepartner weiter.
+    </div>
+
+    <button type="submit" class="w-full sm:w-auto px-6 py-3 bg-brand hover:bg-brand-dark text-white rounded-lg font-semibold text-sm mt-2">Freigaben speichern</button>
+  </form>
+</div>
+
+<?php elseif ($section === 'api'): ?>
+<!-- ===================== API-ZUGANG ===================== -->
+<?php
+$apiBlocked = !empty($customer['api_access_blocked']);
+$apiToken   = $customer['api_token'] ?? '';
+?>
+
+<?php if (!empty($_GET['error']) && $_GET['error'] === 'blocked'): ?>
+<div class="mb-4 card-elev border-red-200 bg-red-50 p-4 text-sm text-red-800">
+  Ihr API-Zugang wurde vom Administrator gesperrt. Bitte kontaktieren Sie den Support.
+</div>
+<?php endif; ?>
+
+<div class="card-elev p-6 max-w-2xl mb-6" x-data="{ copied: false, showToken: false }">
+  <div class="flex items-start gap-3 mb-4">
+    <div class="w-10 h-10 rounded-xl bg-brand-light flex items-center justify-center text-xl flex-shrink-0">🔑</div>
+    <div class="flex-1">
+      <h2 class="font-bold text-lg text-gray-900">API-Zugang</h2>
+      <p class="text-xs text-gray-500 mt-0.5">Mit Ihrem persönlichen API-Key können Sie Buchungen, Jobs und Rechnungen programmgesteuert verwalten — z.B. mit n8n, Zapier, Smoobu oder eigenen Apps.</p>
+    </div>
+  </div>
+
+  <?php if ($apiBlocked): ?>
+  <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
+    <div class="font-bold mb-1">🚫 API-Zugang gesperrt</div>
+    <p class="text-xs">Der Administrator hat Ihren API-Zugang vorübergehend deaktiviert. Kontaktieren Sie bitte den Support für Details.</p>
+  </div>
+
+  <?php elseif ($apiToken): ?>
+  <!-- Token vorhanden -->
+  <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-3">
+    <div class="flex items-center gap-2 mb-2">
+      <code class="flex-1 min-w-0 text-[11px] font-mono text-gray-700 break-all" x-show="showToken"><?= e($apiToken) ?></code>
+      <code class="flex-1 min-w-0 text-[11px] font-mono text-gray-400" x-show="!showToken">••••••••••••••••••••••••••••••••••••••••••••••••</code>
+      <button @click="showToken = !showToken" type="button" class="px-2 py-1 border border-gray-200 rounded-lg text-[11px] text-gray-600 hover:bg-gray-100 transition whitespace-nowrap">
+        <span x-show="!showToken">Zeigen</span>
+        <span x-show="showToken" x-cloak>Verbergen</span>
+      </button>
+      <button @click="navigator.clipboard.writeText('<?= e($apiToken) ?>'); copied = true; setTimeout(() => copied = false, 2000)" type="button"
+              class="px-3 py-1 bg-brand hover:bg-brand-dark text-white rounded-lg text-[11px] font-semibold whitespace-nowrap transition">
+        <span x-show="!copied">Kopieren</span>
+        <span x-show="copied" x-cloak>✓ Kopiert</span>
+      </button>
+    </div>
+    <div class="text-[11px] text-gray-500 flex flex-wrap gap-x-4 gap-y-0.5 pt-1 border-t border-gray-200">
+      <?php if (!empty($customer['api_created_at'])): ?>
+      <span>Erstellt: <?= date('d.m.Y', strtotime($customer['api_created_at'])) ?></span>
+      <?php endif; ?>
+      <?php if (!empty($customer['api_last_used'])): ?>
+      <span>Zuletzt genutzt: <?= date('d.m.Y H:i', strtotime($customer['api_last_used'])) ?></span>
+      <?php endif; ?>
+      <span>Requests: <?= (int)($customer['api_requests_count'] ?? 0) ?></span>
+    </div>
+  </div>
+
+  <div class="flex flex-wrap gap-2 mb-5">
+    <form method="POST" class="inline" onsubmit="return confirm('Neuen Token erstellen? Ihr alter Token wird sofort ungültig!')">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="generate_api_token"/>
+      <button type="submit" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold">🔄 Neuen Token erstellen</button>
+    </form>
+    <form method="POST" class="inline" onsubmit="return confirm('Token widerrufen? Alle API-Zugriffe werden sofort gestoppt.')">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="revoke_api_token"/>
+      <button type="submit" class="px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold">Widerrufen</button>
+    </form>
+  </div>
+
+  <?php else: ?>
+  <!-- Kein Token -->
+  <div class="text-center py-6 mb-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+    <p class="text-sm text-gray-600 mb-3">Sie haben noch keinen API-Token.</p>
+    <form method="POST" class="inline">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="generate_api_token"/>
+      <button type="submit" class="px-5 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold">+ API-Token generieren</button>
+    </form>
+  </div>
+  <?php endif; ?>
+
+  <?php if ($apiToken && !$apiBlocked): ?>
+  <!-- Doku -->
+  <div class="border-t pt-4 mt-4">
+    <h3 class="font-bold text-gray-900 text-sm mb-2">📘 Schnellstart</h3>
+    <p class="text-xs text-gray-600 mb-3">Base-URL: <code class="bg-gray-100 px-2 py-0.5 rounded font-mono">https://app.fleckfrei.de/api/customer-api.php</code></p>
+    <p class="text-xs text-gray-600 mb-3">Authentifizierung: Header <code class="bg-gray-100 px-2 py-0.5 rounded">X-Customer-Token: …</code> oder Query <code class="bg-gray-100 px-2 py-0.5 rounded">?token=…</code></p>
+
+    <div class="overflow-x-auto -mx-2">
+      <table class="w-full text-xs px-2">
+        <thead>
+          <tr class="text-left font-bold text-gray-700 border-b">
+            <th class="py-1.5 px-2">Action</th><th class="py-1.5 px-2">Method</th><th class="py-1.5 px-2">Zweck</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-800 divide-y">
+          <tr><td class="py-1.5 px-2"><code>?action=me</code></td><td class="px-2">GET</td><td class="px-2">Ihre Kundendaten + Stats</td></tr>
+          <tr><td class="py-1.5 px-2"><code>?action=jobs</code></td><td class="px-2">GET</td><td class="px-2">Ihre Jobs (optional <code>&amp;from=YYYY-MM-DD&amp;to=…</code>)</td></tr>
+          <tr><td class="py-1.5 px-2"><code>?action=job/123</code></td><td class="px-2">GET</td><td class="px-2">Einzel-Job</td></tr>
+          <tr><td class="py-1.5 px-2"><code>?action=services</code></td><td class="px-2">GET</td><td class="px-2">Ihre Services/Properties</td></tr>
+          <tr><td class="py-1.5 px-2"><code>?action=invoices</code></td><td class="px-2">GET</td><td class="px-2">Ihre Rechnungen</td></tr>
+          <tr><td class="py-1.5 px-2"><code>?action=book</code></td><td class="px-2">POST</td><td class="px-2">Neue Buchung (JSON)</td></tr>
+          <tr><td class="py-1.5 px-2"><code>?action=cancel/123</code></td><td class="px-2">POST</td><td class="px-2">Job stornieren</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-4 bg-gray-900 text-gray-100 rounded-xl p-3 text-[11px] font-mono overflow-x-auto">
+<pre style="margin:0; white-space:pre-wrap;"># Kundendaten abrufen
+curl "https://app.fleckfrei.de/api/customer-api.php?action=me" \
+  -H "X-Customer-Token: <?= e(substr($apiToken, 0, 12)) ?>…"
+
+# Neue Buchung
+curl -X POST "https://app.fleckfrei.de/api/customer-api.php?action=book" \
+  -H "X-Customer-Token: <?= e(substr($apiToken, 0, 12)) ?>…" \
+  -H "Content-Type: application/json" \
+  -d '{"service_id":448,"date":"2026-05-01","time":"11:00","hours":3}'</pre>
+    </div>
+
+    <div class="mt-4 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+      <strong>⚠ Sicherheit:</strong> Behandeln Sie Ihren Token wie ein Passwort. Nicht in öffentliche Repositories committen, nicht per E-Mail versenden. Bei Verdacht auf Kompromittierung sofort neu generieren.
+    </div>
+  </div>
+  <?php endif; ?>
 </div>
 
 <?php elseif ($section === 'account'): ?>

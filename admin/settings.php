@@ -5,8 +5,8 @@ $title = 'Einstellungen'; $page = 'settings';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'update_settings') {
     if (!verifyCsrf()) { header('Location: /admin/settings.php'); exit; }
-    $fields = ['first_name','last_name','company','phone','email','website','invoice_prefix','invoice_number','bank','bic','iban','USt_IdNr','business_number','fiscal_number','invoice_text','street','number','postal_code','city','country','note_for_email','email_booking','email_job_start','email_job_complete','email_invoice','email_reminder'];
-    $checkboxes = ['email_booking','email_job_start','email_job_complete','email_invoice','email_reminder'];
+    $fields = ['first_name','last_name','company','phone','email','website','invoice_prefix','invoice_number','bank','bic','iban','USt_IdNr','business_number','fiscal_number','invoice_text','street','number','postal_code','city','country','note_for_email','email_booking','email_job_start','email_job_complete','email_invoice','email_reminder','discount_weekly','discount_biweekly','discount_monthly','discount_active'];
+    $checkboxes = ['email_booking','email_job_start','email_job_complete','email_invoice','email_reminder','discount_active'];
     $sets = []; $params = [];
     foreach ($fields as $f) { $sets[] = "$f=?"; $params[] = in_array($f, $checkboxes) ? (isset($_POST[$f]) ? '1' : '0') : ($_POST[$f] ?? ''); }
 
@@ -99,6 +99,31 @@ include __DIR__ . '/../includes/layout.php';
         <div><label class="block text-sm font-medium text-gray-600 mb-1">Finanzamt-Nr.</label><input name="fiscal_number" value="<?= e($s['fiscal_number']??'') ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>
         <div><label class="block text-sm font-medium text-gray-600 mb-1">Rechnungstext</label><textarea name="invoice_text" rows="3" class="w-full px-3 py-2.5 border rounded-xl"><?= e($s['invoice_text']??'') ?></textarea></div>
         <div><label class="block text-sm font-medium text-gray-600 mb-1">E-Mail Notiz</label><textarea name="note_for_email" rows="3" class="w-full px-3 py-2.5 border rounded-xl"><?= e($s['note_for_email']??'') ?></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  
+  <!-- Stammkunden-Rabatte -->
+  <div class="bg-white rounded-xl border p-5">
+    <h3 class="font-semibold mb-1">💰 Stammkunden-Rabatte (Booking)</h3>
+    <p class="text-xs text-gray-500 mb-4">Wirkt auf Customer-Booking-Form. Inaktiv = keine Rabatte gewährt, Buttons zeigen kein "Sparen Sie X%".</p>
+    <label class="flex items-center gap-3 mb-4 p-3 bg-gray-50 rounded-lg cursor-pointer">
+      <input type="checkbox" name="discount_active" value="1" <?= ($s['discount_active']??1) ? 'checked' : '' ?> class="rounded"/>
+      <span class="text-sm font-medium">Rabatte aktiv</span>
+    </label>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Wöchentlich (%)</label>
+        <input type="number" step="0.5" min="0" max="50" name="discount_weekly" value="<?= e($s['discount_weekly']??7) ?>" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Alle 2 Wochen (%)</label>
+        <input type="number" step="0.5" min="0" max="50" name="discount_biweekly" value="<?= e($s['discount_biweekly']??5) ?>" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Monatlich (%)</label>
+        <input type="number" step="0.5" min="0" max="50" name="discount_monthly" value="<?= e($s['discount_monthly']??3) ?>" class="w-full px-3 py-2 border rounded-lg text-sm"/>
       </div>
     </div>
   </div>

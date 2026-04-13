@@ -45,6 +45,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         q("UPDATE customer SET status=1 WHERE customer_id=?", [$_POST['customer_id']]);
         header("Location: /admin/customers.php?tab=active&saved=".$_POST['customer_id']); exit;
     }
+    if ($act === 'bulk_perms_all') {
+        // Bulk-Setzung Portal-Rechte für ALLE aktiven Kunden
+        $perms = [];
+        $allPerms = ['dashboard','jobs','invoices','workhours','profile','booking','documents','messages','cancel','recurring',
+            'wh_datum','wh_service','wh_mitarbeiter','wh_stunden','wh_umsatz','wh_fotos','wh_start_ende',
+            'inv_betrag','inv_pdf','inv_status',
+            'jobs_status','jobs_ma','jobs_adresse','jobs_zeit'];
+        foreach ($allPerms as $pName) {
+            $perms[$pName] = !empty($_POST['perm_'.$pName]) ? 1 : 0;
+        }
+        $permsJson = json_encode($perms);
+        $rs = q("UPDATE customer SET email_permissions=? WHERE status=1", [$permsJson]);
+        $cnt = $rs->rowCount();
+        audit('bulk_update', 'customer', 0, "Portal-Rechte für $cnt Kunden zentral gesetzt (List-Page)");
+        header("Location: /admin/customers.php?bulk_applied=$cnt"); exit;
+    }
 }
 
 $tab = in_array($_GET['tab'] ?? '', ['active', 'archive'], true) ? $_GET['tab'] : 'active';
@@ -58,6 +74,7 @@ include __DIR__ . '/../includes/layout.php';
 
 <?php if (!empty($_GET['saved'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">Kunde gespeichert.</div><?php endif; ?>
 <?php if (!empty($_GET['added'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">Neuer Kunde erstellt.</div><?php endif; ?>
+<?php if (!empty($_GET['bulk_applied'])): ?><div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl mb-4">⚙ Portal-Rechte für <?= (int)$_GET['bulk_applied'] ?> aktive Kunden gesetzt.</div><?php endif; ?>
 
 <!-- Tabs: Aktive / Archiv -->
 <div class="flex gap-1 mb-4 bg-white rounded-xl border p-1 w-fit">
@@ -69,12 +86,13 @@ include __DIR__ . '/../includes/layout.php';
   </a>
 </div>
 
-<div x-data="{ editOpen:false, c:{} }" class="bg-white rounded-xl border">
+<div x-data="{ editOpen:false, c:{} , bulkPermsOpen: false }" class="bg-white rounded-xl border">
   <div class="p-5 border-b flex items-center justify-between">
     <h3 class="font-semibold"><?= $tab==='archive' ? 'Archivierte Kunden' : 'Aktive Kunden' ?> (<?= count($customers) ?>)</h3>
     <div class="flex gap-3">
       <input type="text" placeholder="Suchen..." class="px-3 py-2 border rounded-lg text-sm w-64" oninput="filterRows(this.value)"/>
       <?php if ($tab === 'active'): ?>
+      <button @click="bulkPermsOpen=true" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-medium">⚙ Portal-Rechte für ALLE</button>
       <button @click="c={customer_type:'Private',status:'1'}; editOpen=true" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium">+ Neuer Kunde</button>
       <?php endif; ?>
     </div>
@@ -170,6 +188,63 @@ include __DIR__ . '/../includes/layout.php';
       </div>
     </div>
   </template>
+  <!-- Bulk Portal-Rechte Modal -->
+  <div x-show="bulkPermsOpen" x-cloak class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" @click.self="bulkPermsOpen=false">
+    <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold">⚙ Portal-Rechte für ALLE Kunden setzen</h3>
+        <button type="button" @click="bulkPermsOpen=false" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
+      </div>
+      <div class="bg-amber-50 border border-amber-200 text-amber-900 text-xs px-3 py-2 rounded-lg mb-4">
+        ⚠ Setzt diese Rechte auf ALLE <?= (int)$activeCount ?> aktiven Kunden. Stammdaten + Notizen unberührt.
+      </div>
+      <form method="POST">
+        <?= csrfField() ?>
+        <input type="hidden" name="action" value="bulk_perms_all"/>
+        <?php
+        $bulkGroups = [
+          'Seiten' => [
+            'dashboard' => 'Dashboard', 'profile' => 'Profil bearbeiten',
+            'booking' => 'Neue Buchung', 'messages' => 'Nachrichten',
+          ],
+          'Jobs' => [
+            'jobs' => 'Jobs sehen', 'jobs_status' => '— Status', 'jobs_ma' => '— Partner',
+            'jobs_adresse' => '— Adresse', 'jobs_zeit' => '— Start/Ende', 'cancel' => '— Stornieren', 'recurring' => '— Wiederkehrende',
+          ],
+          'Rechnungen' => [
+            'invoices' => 'Rechnungen sehen', 'inv_betrag' => '— Betrag', 'inv_pdf' => '— PDF Download', 'inv_status' => '— Zahlstatus',
+          ],
+          'Arbeitsstunden' => [
+            'workhours' => 'Arbeitsstunden sehen', 'wh_datum' => '— Datum', 'wh_service' => '— Service',
+            'wh_mitarbeiter' => '— Partner', 'wh_stunden' => '— Stunden', 'wh_start_ende' => '— Start/Ende',
+            'wh_umsatz' => '— Preis/Umsatz', 'wh_fotos' => '— Fotos/Videos',
+          ],
+          'Medien' => ['documents' => 'Dokumente'],
+        ];
+        foreach ($bulkGroups as $grp => $items): ?>
+          <div class="mb-3">
+            <h4 class="text-xs font-semibold text-gray-500 uppercase mb-1.5"><?= $grp ?></h4>
+            <div class="grid grid-cols-2 gap-1.5">
+              <?php foreach ($items as $key => $label): ?>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="perm_<?= $key ?>" value="1" class="rounded"/>
+                <span><?= $label ?></span>
+              </label>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        <?php endforeach; ?>
+        <div class="flex gap-2 pt-3 border-t mt-4">
+          <button type="button" onclick="document.querySelectorAll('[name^=perm_]').forEach(c=>c.checked=true)" class="text-xs text-brand hover:underline">Alle an</button>
+          <button type="button" onclick="document.querySelectorAll('[name^=perm_]').forEach(c=>c.checked=false)" class="text-xs text-red-500 hover:underline">Alle aus</button>
+        </div>
+        <button type="submit" onclick="return confirm('Diese Rechte WIRKLICH auf alle <?= (int)$activeCount ?> aktiven Kunden anwenden?');"
+                class="w-full px-4 py-3 mt-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold">
+          ⚙ Auf alle <?= (int)$activeCount ?> Kunden anwenden
+        </button>
+      </form>
+    </div>
+  </div>
 </div>
 
 <?php

@@ -101,9 +101,6 @@ $user = me(); $page = $page ?? ''; ?>
     /* Print */
     @media print { aside, header, footer, button { display: none !important; } main { margin: 0; } }
   </style>
-  <link rel="stylesheet" href="/assets/ui-polish.css?v=20260413"/>
-  <script>window.__userLang = '<?= function_exists("userLang") ? userLang() : "de" ?>';</script>
-  <script defer src="/assets/auto-translate.js?v=20260413"></script>
 </head>
 <body class="h-full bg-gray-50" x-data="{ sidebarOpen: window.innerWidth >= 1024 }">
 <div class="flex h-full">
@@ -113,36 +110,14 @@ $user = me(); $page = $page ?? ''; ?>
 
   <!-- Sidebar -->
   <aside x-show="sidebarOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="-translate-x-full" class="w-64 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col" id="sidebar">
-    <?php
-      // Home-Link je Rolle
-      $homeLink = match($user['type']) {
-          'admin' => '/admin/',
-          'employee' => '/employee/',
-          'customer' => '/customer/',
-          default => '/login.php'
-      };
-      $panelLabel = match($user['type']) {
-          'admin' => '🛠 Admin-Panel',
-          'employee' => '👷 Partner-Portal',
-          'customer' => '👤 Kundenbereich',
-          default => 'Portal'
-      };
-      // Partner-Portal bekommt andere Brand-Farbe (optisch erkennbar)
-      $brandBg = $user['type'] === 'employee' ? 'bg-gradient-to-br from-brand-dark to-brand' : 'bg-brand';
-    ?>
-    <div class="p-5 border-b <?= $user['type'] === 'employee' ? 'bg-gradient-to-r from-brand-light to-transparent' : '' ?>">
-      <a href="<?= e($homeLink) ?>" class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg <?= $brandBg ?> flex items-center justify-center shadow-sm">
-          <span class="text-white font-bold text-sm"><?= $user['type'] === 'employee' ? '👷' : 'F' ?></span>
-        </div>
+    <div class="p-5 border-b">
+      <a href="/admin/" class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center"><span class="text-white font-bold text-sm">F</span></div>
         <div>
-          <div class="text-base font-bold text-gray-900 leading-tight"><?= SITE ?></div>
-          <div class="text-[11px] font-semibold <?= $user['type']==='employee' ? 'text-brand-dark' : 'text-gray-500' ?> -mt-0.5"><?= $panelLabel ?></div>
+          <div class="text-lg font-bold text-gray-900"><?= SITE ?></div>
+          <div class="text-[10px] text-gray-400 -mt-0.5"><?= ucfirst($user['type']) ?> Panel</div>
         </div>
       </a>
-      <?php if ($user['type'] === 'employee'): ?>
-        <div class="mt-2 text-[11px] text-gray-700 truncate">Hallo <strong><?= e($user['name']) ?></strong></div>
-      <?php endif; ?>
     </div>
     <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
       <?php
@@ -185,12 +160,8 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/live-map.php', 'Live-Karte', 'live-map', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>', ''],
           ['/admin/partners-live.php', 'Partner Live', 'partners-live', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>', ''],
           ['/admin/arrivals.php', 'Ankünfte Berlin', 'arrivals', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>', ''],
-          ['/admin/doc-scanner.php', '📜 Doc-Scanner AI', 'doc-scanner', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>', ''],
           ['/admin/audit.php', 'Protokoll', 'audit', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>', ''],
-          ['/admin/consent-log.php', 'DSGVO Consent', 'consent-log', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>', ''],
-          ['/admin/api-tokens.php', 'API-Tokens', 'api-tokens', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>', ''],
           ['/admin/notifications.php', 'Benachrichtigungen', 'notifications', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>', ''],
-          ['/admin/booking-priority.php', 'Buchungs-Priorität', 'booking-priority', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>', ''],
           ['/admin/health.php', 'Health', 'health', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>', ''],
           ['/admin/settings.php', 'Einstellungen', 'settings', $iconCog, ''],
         ];

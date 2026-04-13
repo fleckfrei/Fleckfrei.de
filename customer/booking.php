@@ -4,6 +4,12 @@ requireCustomer();
 if (!customerCan('booking')) { header('Location: /customer/'); exit; }
 $title = 'Neue Buchung'; $page = 'booking';
 $cid = me()['id'];
+// Frequency-Discounts aus settings
+$_st = one("SELECT discount_weekly, discount_biweekly, discount_monthly, discount_active FROM settings LIMIT 1") ?: [];
+$discountActive = (int)($_st['discount_active'] ?? 1);
+$discountWeekly = (float)($_st['discount_weekly'] ?? 7);
+$discountBiweekly = (float)($_st['discount_biweekly'] ?? 5);
+$discountMonthly = (float)($_st['discount_monthly'] ?? 3);
 $user = me();
 
 $customer = one("SELECT * FROM customer WHERE customer_id=?", [$cid]);
@@ -1002,9 +1008,9 @@ function bookingForm() {
     newAddrError: null,
     frequencies: [
       { value: 'einmalig', label: 'Einmalig', discount: '' },
-      { value: 'monatlich', label: 'Monatlich', discount: 'Sparen Sie 3 %' },
-      { value: '2wochen', label: 'Alle 2 Wochen', discount: 'Sparen Sie 5 %' },
-      { value: 'woechentlich', label: 'Wöchentlich', discount: 'Sparen Sie 7 %' },
+      { value: 'monatlich', label: 'Monatlich', discount: <?= $discountActive ? json_encode('Sparen Sie ' . rtrim(rtrim(number_format($discountMonthly, 2, ',', ''), '0'), ',') . ' %') : "''" ?> },
+      { value: '2wochen', label: 'Alle 2 Wochen', discount: <?= $discountActive ? json_encode('Sparen Sie ' . rtrim(rtrim(number_format($discountBiweekly, 2, ',', ''), '0'), ',') . ' %') : "''" ?> },
+      { value: 'woechentlich', label: 'Wöchentlich', discount: <?= $discountActive ? json_encode('Sparen Sie ' . rtrim(rtrim(number_format($discountWeekly, 2, ',', ''), '0'), ',') . ' %') : "''" ?> },
     ],
     loading: false,
     submitted: false,
@@ -1021,7 +1027,7 @@ function bookingForm() {
     },
     get discount() {
       if (this.fixedPriceMode) return 0; // Host/B2B: keine Rabatte
-      const rates = { woechentlich: 0.07, '2wochen': 0.05, monatlich: 0.03, einmalig: 0 };
+      const rates = <?= $discountActive ? json_encode(['woechentlich' => $discountWeekly/100, '2wochen' => $discountBiweekly/100, 'monatlich' => $discountMonthly/100, 'einmalig' => 0]) : '{einmalig:0, monatlich:0, "2wochen":0, woechentlich:0}' ?>;
       return this.basePrice * parseInt(this.form.hours) * (rates[this.form.frequency] || 0);
     },
     // Last-minute discount: cheaper if booking within threshold (idle slot fill)

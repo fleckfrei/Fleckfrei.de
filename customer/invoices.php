@@ -247,7 +247,7 @@ include __DIR__ . '/../includes/layout-customer.php';
       </div>
     </div>
     <div class="flex items-center gap-2 flex-wrap justify-end">
-      <a href="/admin/invoice-pdf.php?id=<?= (int) $inv['inv_id'] ?>" target="_blank" class="px-3 py-2 border border-brand/30 bg-brand/5 hover:bg-brand/10 text-brand rounded-lg text-xs font-semibold flex items-center gap-1 transition">
+      <a href="/admin/invoice-pdf.php?id=<?= (int) $inv['inv_id'] ?>" target="_blank" class="px-3 py-2 border-2 border-brand bg-white hover:bg-brand hover:text-white text-brand-dark rounded-lg text-xs font-bold flex items-center gap-1 transition">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
         PDF
       </a>
@@ -471,6 +471,7 @@ function stripePayInv(invId, ev) {
 (function () {
   const s = document.createElement('script');
   s.src = 'https://www.paypal.com/web-sdk/v6/core';
+  s.onerror = function() { console.error('[PayPal] SDK konnte nicht geladen werden'); document.querySelectorAll('.paypal-v6-btn').forEach(b => b.style.display='none'); };
   s.onload = async function () {
     try {
       const sdkInstance = await window.paypal.createInstance({
@@ -480,7 +481,7 @@ function stripePayInv(invId, ev) {
         locale: 'de-DE',
       });
       const methods = await sdkInstance.findEligibleMethods({ currencyCode: 'EUR' });
-      if (!methods.isEligible('paypal')) return;
+      if (!methods.isEligible('paypal')) { console.warn('[PayPal] Not eligible — region/currency restriction. Buttons werden ausgeblendet.'); document.querySelectorAll('.paypal-v6-btn').forEach(b => b.style.display='none'); return; }
 
       document.querySelectorAll('.paypal-v6-btn').forEach(btn => {
         const invId = parseInt(btn.dataset.inv);

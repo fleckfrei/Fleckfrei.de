@@ -9,6 +9,22 @@ if (!$cid) { header('Location: /admin/customers.php'); exit; }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCsrf()) { header('Location: ' . $_SERVER['REQUEST_URI']); exit; }
     $act = $_POST['action'] ?? '';
+    if ($act === 'apply_perms_all') {
+        // Bulk: gleiche Portal-Rechte auf ALLE aktiven Customer anwenden (Stammdaten/Notes UNANGETASTET)
+        $perms = [];
+        $allPerms = ['dashboard','jobs','invoices','workhours','profile','booking','documents','messages','cancel','recurring',
+            'wh_datum','wh_service','wh_mitarbeiter','wh_stunden','wh_umsatz','wh_fotos','wh_start_ende',
+            'inv_betrag','inv_pdf','inv_status',
+            'jobs_status','jobs_ma','jobs_adresse','jobs_zeit'];
+        foreach ($allPerms as $pName) {
+            $perms[$pName] = !empty($_POST['perm_'.$pName]) ? 1 : 0;
+        }
+        $permsJson = json_encode($perms);
+        $rs = q("UPDATE customer SET email_permissions=? WHERE status=1", [$permsJson]);
+        $cnt = $rs->rowCount();
+        audit('bulk_update', 'customer', 0, "Portal-Rechte auf $cnt Kunden gespiegelt von cust=$cid");
+        header("Location: /admin/view-customer.php?id=$cid&applied_all=$cnt"); exit;
+    }
     if ($act === 'save') {
         // Build permissions JSON from checkboxes
         $perms = [];
@@ -20,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $perms[$p] = !empty($_POST['perm_'.$p]) ? 1 : 0;
         }
         $permsJson = json_encode($perms);
-        $pw = !empty($_POST['password']) ? $_POST['password'] : null;
+        $pw = !empty($_POST['password']) ? password_hash($_POST['password'], PASSWORD_BCRYPT, ['cost' => 12]) : null;
         if ($pw) {
             q("UPDATE customer SET name=?,surname=?,email=?,phone=?,customer_type=?,status=?,notes=?,password=?,email_permissions=? WHERE customer_id=?",
               [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['customer_type'],$_POST['status'],$_POST['notes']??'',$pw,$permsJson,$cid]);
@@ -289,6 +305,7 @@ if ($emailDomain) {
 <?php if ($tab === 'info'): ?>
 <!-- Stammdaten -->
 <form method="POST">
+  <?= csrfField() ?>
   <input type="hidden" name="action" value="save"/>
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="bg-white rounded-xl border p-5">
@@ -302,7 +319,7 @@ if ($emailDomain) {
           <select name="customer_type" class="w-full px-3 py-2 border rounded-xl text-sm"><?php foreach(['Private Person','Company','Airbnb','Host'] as $t): ?><option <?= $c['customer_type']===$t?'selected':'' ?>><?= $t ?></option><?php endforeach; ?></select></div>
         <div><label class="block text-xs font-medium text-gray-500 mb-1">Status</label>
           <select name="status" class="w-full px-3 py-2 border rounded-xl text-sm"><option value="1" <?= $c['status']?'selected':'' ?>>Aktiv</option><option value="0" <?= !$c['status']?'selected':'' ?>>Inaktiv</option></select></div>
-        <div><label class="block text-xs font-medium text-gray-500 mb-1">Passwort setzen</label><input type="password" name="password" value="" placeholder="Neues Passwort (leer = unverändert)" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
+        <div><label class="block text-xs font-medium text-gray-500 mb-1">Passwort setzen</label><input type="password" name="password" autocomplete="new-password" value="" placeholder="Neues Passwort (leer = unverändert)" class="w-full px-3 py-2 border rounded-xl text-sm"/></div>
       </div>
       <!-- Portal-Rechte: granular mit Sub-Permissions -->
       <div class="mt-4 pt-4 border-t">
@@ -375,7 +392,20 @@ if ($emailDomain) {
       </div>
       </div>
       <div class="mt-3"><label class="block text-xs font-medium text-gray-500 mb-1">Notizen</label><textarea name="notes" rows="3" class="w-full px-3 py-2 border rounded-xl text-sm"><?= e($c['notes']) ?></textarea></div>
-      <button type="submit" class="w-full px-4 py-2.5 bg-brand text-white rounded-xl font-medium mt-3">Speichern</button>
+      <div class="mt-4 pt-4 border-t space-y-2">
+        <button type="submit" class="w-full px-4 py-3 bg-brand text-white rounded-xl font-semibold text-base">💾 Speichern (nur dieser Kunde)</button>
+        <button type="submit" name="action" value="apply_perms_all"
+                onclick="return confirm('Diese Portal-Rechte werden auf ALLE aktiven Kunden gesetzt. Stammdaten + Notizen bleiben unverändert. Fortfahren?');"
+                class="w-full px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold text-base">
+          ⚙ Auf ALLE Kunden anwenden
+        </button>
+        <p class="text-xs text-gray-500 text-center pt-1">💡 Tipp: "Alle aus" + "Auf ALLE Kunden anwenden" = Portal komplett deaktivieren</p>
+      </div>
+      <?php if (isset($_GET['applied_all'])): ?>
+      <div class="mt-2 px-3 py-2 bg-green-50 border border-green-200 text-green-800 rounded-lg text-xs">
+        ✓ Portal-Rechte auf <?= (int)$_GET['applied_all'] ?> Kunden angewendet.
+      </div>
+      <?php endif; ?>
     </div>
 
     <div class="space-y-5">

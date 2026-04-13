@@ -10,6 +10,48 @@ requireCustomer();
 $title = 'Reinigungs-Checkliste';
 $page = 'checklist';
 $cid = me()['id'];
+$cid_for_handlers = $cid ?? me()['id'];
+// === Checklist Media Handlers ===
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action']??''), ['upload_media','delete_media'], true)) {
+    $itemId = (int)($_POST['checklist_id'] ?? 0);
+    // ownership check
+    $owns = val("SELECT COUNT(*) FROM service_checklists WHERE checklist_id=? AND customer_id_fk=?", [$itemId, $cid_for_handlers]);
+    if (!$owns) { header('Location: ' . $_SERVER['REQUEST_URI']); exit; }
+
+    if ($_POST['action'] === 'upload_media' && !empty($_FILES['mediafile']['tmp_name'])) {
+        $mime = mime_content_type($_FILES['mediafile']['tmp_name']);
+        $isImg = str_starts_with($mime, 'image/');
+        $isVid = str_starts_with($mime, 'video/');
+        if (($isImg || $isVid) && $_FILES['mediafile']['size'] < 50*1024*1024) {
+            $type = $isImg ? 'image' : 'video';
+            $ext = pathinfo($_FILES['mediafile']['name'], PATHINFO_EXTENSION);
+            $dir = __DIR__ . '/../uploads/checklist-media/' . $itemId . '/';
+            if (!is_dir($dir)) mkdir($dir, 0755, true);
+            $fname = $type . '_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+            if (move_uploaded_file($_FILES['mediafile']['tmp_name'], $dir . $fname)) {
+                q("INSERT INTO checklist_media (checklist_id_fk, media_type, file_path, file_name, file_size, mime_type, caption, uploaded_by) VALUES (?,?,?,?,?,?,?,?)",
+                  [$itemId, $type, '/uploads/checklist-media/' . $itemId . '/' . $fname,
+                   $_FILES['mediafile']['name'], $_FILES['mediafile']['size'], $mime, trim($_POST['caption'] ?? ''), 'customer']);
+            }
+        }
+    }
+    if ($_POST['action'] === 'delete_media') {
+        $mid = (int)($_POST['media_id'] ?? 0);
+        $m = one("SELECT file_path FROM checklist_media WHERE media_id=? AND checklist_id_fk=?", [$mid, $itemId]);
+        if ($m) {
+            @unlink(__DIR__ . '/..' . $m['file_path']);
+            q("DELETE FROM checklist_media WHERE media_id=? AND checklist_id_fk=?", [$mid, $itemId]);
+        }
+    }
+    header('Location: ' . $_SERVER['REQUEST_URI']); exit;
+}
+
+// Pre-load media for all items
+$mediaByItem = [];
+$mediaRows = all("SELECT m.* FROM checklist_media m INNER JOIN service_checklists c ON m.checklist_id_fk=c.checklist_id WHERE c.customer_id_fk=?", [$cid_for_handlers]);
+foreach ($mediaRows as $m) $mediaByItem[$m['checklist_id_fk']][] = $m;
+
+
 
 // Service selection
 $serviceId = (int)($_GET['service_id'] ?? 0);
@@ -177,14 +219,14 @@ include __DIR__ . '/../includes/layout-customer.php';
 </div>
 <?php endif; ?>
 <?php if (!empty($_GET['ai_added'])): ?>
-<div class="mb-4 p-3 rounded-xl bg-purple-50 border border-purple-200 text-sm text-purple-800">
+<div class="mb-4 p-3 rounded-xl bg-brand-light border border-brand/30 text-sm text-brand-dark">
   ✨ <?= (int)$_GET['ai_added'] ?> AI-Vorschläge hinzugefügt
 </div>
 <?php endif; ?>
 
 <!-- AI Ideas Generator -->
 <?php if ($activeService): ?>
-<div class="card-elev p-5 mb-6 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200" x-data="aiIdeas()">
+<div class="card-elev p-5 mb-6 bg-brand-light border border-brand/30" x-data="aiIdeas()">
   <div class="flex items-start gap-3 mb-3">
     <span class="text-2xl">🤖</span>
     <div class="flex-1 min-w-0">
@@ -192,7 +234,7 @@ include __DIR__ . '/../includes/layout-customer.php';
       <p class="text-xs text-gray-600 mt-0.5">Basiert auf echten Host-Erfahrungen, Reddit /r/airbnb_hosts, Superhost-Standards und häufigen Gast-Beschwerden. Findet Aufgaben die Sie vielleicht übersehen haben.</p>
     </div>
     <button @click="loadIdeas()" :disabled="loading"
-            class="flex-shrink-0 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-500/20 disabled:opacity-50 whitespace-nowrap">
+            class="flex-shrink-0 px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-xl text-xs font-bold shadow-lg shadow-brand/20 disabled:opacity-50 whitespace-nowrap">
       <span x-show="!loading">✨ Ideen vorschlagen</span>
       <span x-show="loading" x-cloak>⏳ Denke nach...</span>
     </button>
@@ -200,19 +242,19 @@ include __DIR__ . '/../includes/layout-customer.php';
 
   <!-- Ideas list -->
   <div x-show="ideas.length > 0" x-cloak class="mt-4 space-y-2">
-    <div class="text-[11px] font-bold text-purple-900 uppercase tracking-wide flex items-center justify-between">
+    <div class="text-[11px] font-bold text-brand-dark uppercase tracking-wide flex items-center justify-between">
       <span x-text="ideas.length + ' Vorschläge · ' + source"></span>
       <div class="flex gap-1">
-        <button type="button" @click="ideas.forEach(i => i.selected = true)" class="text-purple-700 hover:text-purple-900 normal-case font-semibold">Alle auswählen</button>
-        <span class="text-purple-300">·</span>
-        <button type="button" @click="ideas.forEach(i => i.selected = false)" class="text-purple-700 hover:text-purple-900 normal-case font-semibold">Keine</button>
+        <button type="button" @click="ideas.forEach(i => i.selected = true)" class="text-brand hover:text-brand-dark normal-case font-semibold">Alle auswählen</button>
+        <span class="text-brand/30">·</span>
+        <button type="button" @click="ideas.forEach(i => i.selected = false)" class="text-brand hover:text-brand-dark normal-case font-semibold">Keine</button>
       </div>
     </div>
 
     <template x-for="(idea, i) in ideas" :key="i">
-      <label class="flex items-start gap-3 p-3 rounded-lg bg-white border hover:border-purple-300 cursor-pointer transition"
-             :class="idea.selected ? 'border-purple-400 ring-2 ring-purple-200' : 'border-gray-200'">
-        <input type="checkbox" x-model="idea.selected" class="mt-0.5 w-4 h-4 text-purple-600 rounded focus:ring-purple-500"/>
+      <label class="flex items-start gap-3 p-3 rounded-lg bg-white border hover:border-brand cursor-pointer transition"
+             :class="idea.selected ? 'border-brand ring-2 ring-brand/30' : 'border-gray-200'">
+        <input type="checkbox" x-model="idea.selected" class="mt-0.5 w-4 h-4 text-brand rounded focus:ring-brand"/>
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="font-semibold text-sm text-gray-900" x-text="idea.title"></span>
@@ -236,7 +278,7 @@ include __DIR__ . '/../includes/layout-customer.php';
       <input type="hidden" name="action" value="add_ai_ideas"/>
       <input type="hidden" name="ideas" :value="JSON.stringify(ideas.filter(i => i.selected))"/>
       <button type="submit" :disabled="!ideas.some(i => i.selected)"
-              class="w-full py-2.5 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded-xl text-sm font-bold transition">
+              class="w-full py-2.5 bg-brand hover:bg-brand-dark disabled:bg-gray-300 text-white rounded-xl text-sm font-bold transition">
         <span x-text="ideas.filter(i => i.selected).length + ' Aufgaben hinzufügen'"></span>
       </button>
     </form>
@@ -390,6 +432,47 @@ function aiIdeas() {
         <img src="<?= e($item['photo']) ?>" class="w-full h-32 object-cover rounded-lg" alt=""/>
       </a>
       <?php endif; ?>
+
+      <!-- Multi-Media Gallery (Customer → Partner instructions) -->
+      <?php $itemMedia = $mediaByItem[$item['checklist_id']] ?? []; ?>
+      <?php if ($itemMedia): ?>
+      <div class="grid grid-cols-3 gap-1.5 mb-2">
+        <?php foreach ($itemMedia as $m): ?>
+        <div class="relative group">
+          <?php if ($m['media_type'] === 'video'): ?>
+            <video src="<?= e($m['file_path']) ?>" controls class="w-full h-20 object-cover rounded-md bg-black"></video>
+          <?php else: ?>
+            <a href="<?= e($m['file_path']) ?>" target="_blank">
+              <img src="<?= e($m['file_path']) ?>" class="w-full h-20 object-cover rounded-md" alt=""/>
+            </a>
+          <?php endif; ?>
+          <?php if ($m['caption']): ?><div class="text-[10px] text-gray-500 mt-0.5 truncate" title="<?= e($m['caption']) ?>"><?= e($m['caption']) ?></div><?php endif; ?>
+          <form method="POST" class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition" onsubmit="return confirm('Datei löschen?')">
+            <?= csrfField() ?>
+            <input type="hidden" name="action" value="delete_media"/>
+            <input type="hidden" name="checklist_id" value="<?= $item['checklist_id'] ?>"/>
+            <input type="hidden" name="media_id" value="<?= $m['media_id'] ?>"/>
+            <button class="bg-red-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center" title="Löschen">×</button>
+          </form>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
+
+      <!-- Upload Bilder/Videos für Partner-Anweisungen -->
+      <details class="mb-2 text-xs">
+        <summary class="cursor-pointer text-gray-500 hover:text-brand">📎 Bild/Video für Partner hochladen</summary>
+        <form method="POST" enctype="multipart/form-data" class="mt-2 p-2 bg-gray-50 rounded-lg">
+          <?= csrfField() ?>
+          <input type="hidden" name="action" value="upload_media"/>
+          <input type="hidden" name="checklist_id" value="<?= $item['checklist_id'] ?>"/>
+          <input type="file" name="mediafile" accept="image/*,video/*" required class="block w-full text-xs mb-1.5"/>
+          <input name="caption" placeholder="Kurze Beschreibung (optional)" class="block w-full px-2 py-1 border rounded text-xs mb-1.5"/>
+          <button type="submit" class="px-3 py-1 bg-brand text-white rounded text-xs">📤 Hochladen</button>
+          <span class="text-[10px] text-gray-400">max 50MB · Bilder oder Videos</span>
+        </form>
+      </details>
+
       <div class="flex items-start justify-between gap-2 mb-1">
         <h4 class="font-bold text-gray-900 text-sm flex-1"><?= e($item['title']) ?></h4>
         <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap <?= $prBadge[1] ?>"><?= $prBadge[0] ?> <?= $prBadge[2] ?></span>

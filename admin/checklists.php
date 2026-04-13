@@ -7,6 +7,47 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdmin();
 $title = 'Checklisten'; $page = 'checklists';
 
+// ============================================================
+// POST handlers — Admin can add/edit/delete checklist items
+// ============================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
+    $act = $_POST['action'] ?? '';
+    $sid = (int)($_POST['s_id_fk'] ?? 0);
+
+    if ($act === 'add_item' && $sid) {
+        $cid = (int) val("SELECT customer_id_fk FROM services WHERE s_id=?", [$sid]);
+        $pos = (int) val("SELECT COALESCE(MAX(position),0)+1 FROM service_checklists WHERE s_id_fk=?", [$sid]);
+        q("INSERT INTO service_checklists (s_id_fk, customer_id_fk, title, description, room, priority, position, is_active)
+           VALUES (?,?,?,?,?,?,?,1)",
+          [$sid, $cid, trim($_POST['title'] ?? ''), trim($_POST['description'] ?? ''),
+           trim($_POST['room'] ?? ''), $_POST['priority'] ?? 'normal', $pos]);
+        audit('create', 'service_checklists', (int)lastInsertId(), 'Admin: Aufgabe hinzugefügt');
+        header("Location: /admin/checklists.php?s=$sid&saved=1#detail"); exit;
+    }
+
+    if ($act === 'edit_item') {
+        $itemId = (int)($_POST['checklist_id'] ?? 0);
+        $row = one("SELECT s_id_fk FROM service_checklists WHERE checklist_id=?", [$itemId]);
+        if ($row) {
+            q("UPDATE service_checklists SET title=?, description=?, room=?, priority=? WHERE checklist_id=?",
+              [trim($_POST['title'] ?? ''), trim($_POST['description'] ?? ''),
+               trim($_POST['room'] ?? ''), $_POST['priority'] ?? 'normal', $itemId]);
+            audit('update', 'service_checklists', $itemId, 'Admin: Aufgabe bearbeitet');
+            header("Location: /admin/checklists.php?s={$row['s_id_fk']}&saved=1#detail"); exit;
+        }
+    }
+
+    if ($act === 'delete_item') {
+        $itemId = (int)($_POST['checklist_id'] ?? 0);
+        $row = one("SELECT s_id_fk FROM service_checklists WHERE checklist_id=?", [$itemId]);
+        if ($row) {
+            q("UPDATE service_checklists SET is_active=0 WHERE checklist_id=?", [$itemId]);
+            audit('delete', 'service_checklists', $itemId, 'Admin: Aufgabe entfernt');
+            header("Location: /admin/checklists.php?s={$row['s_id_fk']}&saved=1#detail"); exit;
+        }
+    }
+}
+
 $search = trim($_GET['q'] ?? '');
 $whereExtra = '';
 $params = [];
@@ -52,6 +93,13 @@ $detailItems = $detailServiceId
 $detailService = $detailServiceId
     ? one("SELECT s.*, c.name AS customer_name FROM services s LEFT JOIN customer c ON s.customer_id_fk=c.customer_id WHERE s.s_id=?", [$detailServiceId])
     : null;
+$detailJobs = $detailServiceId
+    ? all("SELECT j_id, j_date, j_time, job_status, emp_id_fk,
+                  (SELECT CONCAT(e.name,' ',COALESCE(e.surname,'')) FROM employee e WHERE e.emp_id=j.emp_id_fk) AS partner_name
+           FROM jobs j
+           WHERE j.s_id_fk=? AND j.status=1
+           ORDER BY j.j_date DESC LIMIT 30", [$detailServiceId])
+    : [];
 
 include __DIR__ . '/../includes/layout.php';
 ?>
@@ -147,17 +195,72 @@ include __DIR__ . '/../includes/layout.php';
 </div>
 
 <!-- Detail view -->
-<?php if ($detailService && !empty($detailItems)): ?>
-<div class="bg-white rounded-xl border overflow-hidden mb-6">
+<?php if ($detailService): ?>
+<div id="detail" class="bg-white rounded-xl border overflow-hidden mb-6" x-data="{ editId: null, showAdd: false }">
   <div class="px-5 py-3 border-b bg-brand/5 flex items-center justify-between">
     <div>
       <h2 class="font-bold text-gray-900">Detail: <?= e($detailService['title']) ?></h2>
       <div class="text-xs text-gray-500"><?= e($detailService['customer_name']) ?> · <?= count($detailItems) ?> Aufgaben</div>
     </div>
-    <a href="?" class="text-[11px] text-gray-500 hover:text-brand">Schließen ×</a>
+    <div class="flex gap-2 items-center">
+      <button @click="showAdd = !showAdd" class="px-3 py-1.5 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-semibold">+ Aufgabe</button>
+      <a href="?" class="text-[11px] text-gray-500 hover:text-brand">Schließen ×</a>
+    </div>
   </div>
+
+  <!-- Jobs für diesen Service -->
+  <?php if (!empty($detailJobs)): ?>
+  <div class="px-5 py-3 border-b bg-gray-50">
+    <h3 class="text-[11px] uppercase font-bold text-gray-500 tracking-wide mb-2">Jobs für diesen Service <span class="text-gray-400 normal-case">· Klick auf Job-Nr = direkt bearbeiten</span></h3>
+    <div class="flex flex-wrap gap-2">
+      <?php foreach ($detailJobs as $jb):
+        $bg = match($jb['job_status']) {
+          'COMPLETED' => 'bg-green-50 border-green-300 text-green-800',
+          'CANCELLED' => 'bg-red-50 border-red-300 text-red-800',
+          'RUNNING'   => 'bg-orange-50 border-orange-300 text-orange-800',
+          'CONFIRMED' => 'bg-amber-50 border-amber-300 text-amber-800',
+          'PENDING'   => !$jb['emp_id_fk'] ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-amber-50 border-amber-300 text-amber-800',
+          default     => 'bg-gray-50 border-gray-300 text-gray-700',
+        };
+      ?>
+      <a href="/admin/jobs.php?view=<?= (int)$jb['j_id'] ?>&edit=1"
+         class="flex flex-col items-start px-3 py-2 border rounded-lg hover:shadow-md hover:-translate-y-0.5 transition <?= $bg ?>"
+         title="Job bearbeiten">
+        <div class="text-[10px] font-bold uppercase tracking-wide opacity-70">JOB</div>
+        <div class="font-mono font-bold text-sm">#<?= (int)$jb['j_id'] ?></div>
+        <div class="font-mono text-[11px] opacity-80"><?= date('d.m.', strtotime($jb['j_date'])) ?></div>
+        <div class="flex items-center gap-1 mt-1">
+          <a href="/admin/job-report.php?j_id=<?= (int)$jb['j_id'] ?>" target="_blank" class="text-[9px] underline opacity-70 hover:opacity-100" onclick="event.stopPropagation()" title="Versicherungs-Bericht">📄 Bericht</a>
+        </div>
+      </a>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- Add form -->
+  <div x-show="showAdd" x-cloak x-transition class="px-5 py-4 border-b bg-green-50/40">
+    <form method="POST" class="grid grid-cols-1 md:grid-cols-6 gap-2">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="add_item"/>
+      <input type="hidden" name="s_id_fk" value="<?= (int)$detailServiceId ?>"/>
+      <input name="title" required placeholder="Aufgabe (z.B. Küche reinigen)" class="md:col-span-2 px-3 py-2 border rounded-lg text-sm"/>
+      <input name="room" placeholder="Raum (z.B. Küche)" class="px-3 py-2 border rounded-lg text-sm"/>
+      <select name="priority" class="px-3 py-2 border rounded-lg text-sm bg-white">
+        <option value="normal">Normal</option>
+        <option value="high">🟠 Wichtig</option>
+        <option value="critical">🔴 Kritisch</option>
+      </select>
+      <input name="description" placeholder="Notizen (optional)" class="px-3 py-2 border rounded-lg text-sm"/>
+      <button type="submit" class="px-3 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-sm font-semibold">Speichern</button>
+    </form>
+  </div>
+
+  <!-- Checklist items -->
   <div class="p-4 space-y-2">
-    <?php
+    <?php if (empty($detailItems)): ?>
+    <div class="text-center py-6 text-sm text-gray-400">Noch keine Aufgaben. Klick "+ Aufgabe" oben.</div>
+    <?php else:
     $itemsByRoom = [];
     foreach ($detailItems as $it) {
       $r = $it['room'] ?: 'Allgemein';
@@ -175,23 +278,53 @@ include __DIR__ . '/../includes/layout.php';
             default    => 'border-l-gray-300 bg-white',
           };
         ?>
-        <div class="p-2.5 rounded border-l-4 border border-gray-100 <?= $prCls ?> flex items-start gap-3">
-          <?php if ($it['photo']): ?>
-          <a href="<?= e($it['photo']) ?>" target="_blank" class="flex-shrink-0">
-            <img src="<?= e($it['photo']) ?>" class="w-12 h-12 object-cover rounded"/>
-          </a>
-          <?php endif; ?>
-          <div class="flex-1">
-            <div class="font-semibold text-sm"><?= e($it['title']) ?>
-              <?php if ($it['priority'] === 'critical'): ?><span class="text-[10px] text-red-600 font-normal">🔴 kritisch</span><?php elseif ($it['priority'] === 'high'): ?><span class="text-[10px] text-amber-600 font-normal">🟠 wichtig</span><?php endif; ?>
+        <div class="p-2.5 rounded border-l-4 border border-gray-100 <?= $prCls ?>">
+          <div x-show="editId !== <?= (int)$it['checklist_id'] ?>" class="flex items-start gap-3">
+            <?php if ($it['photo']): ?>
+            <a href="<?= e($it['photo']) ?>" target="_blank" class="flex-shrink-0">
+              <img src="<?= e($it['photo']) ?>" class="w-12 h-12 object-cover rounded"/>
+            </a>
+            <?php endif; ?>
+            <div class="flex-1">
+              <div class="font-semibold text-sm"><?= e($it['title']) ?>
+                <?php if ($it['priority'] === 'critical'): ?><span class="text-[10px] text-red-600 font-normal">🔴 kritisch</span><?php elseif ($it['priority'] === 'high'): ?><span class="text-[10px] text-amber-600 font-normal">🟠 wichtig</span><?php endif; ?>
+              </div>
+              <?php if ($it['description']): ?><div class="text-xs text-gray-600 mt-0.5"><?= nl2br(e($it['description'])) ?></div><?php endif; ?>
             </div>
-            <?php if ($it['description']): ?><div class="text-xs text-gray-600 mt-0.5"><?= nl2br(e($it['description'])) ?></div><?php endif; ?>
+            <div class="flex-shrink-0 flex gap-1">
+              <button @click="editId = <?= (int)$it['checklist_id'] ?>" class="px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-100 rounded" title="Bearbeiten">✎</button>
+              <form method="POST" class="inline" onsubmit="return confirm('Aufgabe entfernen?')">
+                <?= csrfField() ?>
+                <input type="hidden" name="action" value="delete_item"/>
+                <input type="hidden" name="checklist_id" value="<?= (int)$it['checklist_id'] ?>"/>
+                <button class="px-2 py-1 text-[11px] text-red-600 hover:bg-red-50 rounded" title="Löschen">🗑</button>
+              </form>
+            </div>
+          </div>
+          <div x-show="editId === <?= (int)$it['checklist_id'] ?>" x-cloak>
+            <form method="POST" class="grid grid-cols-1 md:grid-cols-6 gap-2">
+              <?= csrfField() ?>
+              <input type="hidden" name="action" value="edit_item"/>
+              <input type="hidden" name="checklist_id" value="<?= (int)$it['checklist_id'] ?>"/>
+              <input name="title" value="<?= e($it['title']) ?>" required class="md:col-span-2 px-3 py-1.5 border rounded text-sm"/>
+              <input name="room" value="<?= e($it['room']) ?>" placeholder="Raum" class="px-3 py-1.5 border rounded text-sm"/>
+              <select name="priority" class="px-3 py-1.5 border rounded text-sm bg-white">
+                <option value="normal" <?= $it['priority']==='normal'?'selected':'' ?>>Normal</option>
+                <option value="high" <?= $it['priority']==='high'?'selected':'' ?>>🟠 Wichtig</option>
+                <option value="critical" <?= $it['priority']==='critical'?'selected':'' ?>>🔴 Kritisch</option>
+              </select>
+              <input name="description" value="<?= e($it['description']) ?>" placeholder="Notizen" class="px-3 py-1.5 border rounded text-sm"/>
+              <div class="flex gap-1">
+                <button type="submit" class="flex-1 px-2 py-1.5 bg-brand text-white rounded text-xs font-semibold">✓</button>
+                <button type="button" @click="editId = null" class="px-2 py-1.5 border rounded text-xs">✕</button>
+              </div>
+            </form>
           </div>
         </div>
         <?php endforeach; ?>
       </div>
     </div>
-    <?php endforeach; ?>
+    <?php endforeach; endif; ?>
   </div>
 </div>
 <?php endif; ?>

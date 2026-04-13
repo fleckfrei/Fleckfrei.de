@@ -11,3 +11,4 @@ scripts/monitor_stdout.log
 scripts/monitor_stderr.log
 scripts/monitor.log
 php_errors.log
+includes/google-keys.php

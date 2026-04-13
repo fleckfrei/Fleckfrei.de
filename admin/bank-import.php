@@ -203,6 +203,7 @@ include __DIR__ . '/../includes/layout.php';
         <h2 class="text-lg font-semibold mb-1">Manueller CSV Import</h2>
         <p class="text-sm text-gray-500 mb-4">N26 CSV hochladen — System matched automatisch mit offenen Rechnungen.</p>
         <form method="POST" enctype="multipart/form-data" class="flex gap-3">
+  <?= csrfField() ?>
           <input type="hidden" name="action" value="upload"/>
           <label class="flex-1 border-2 border-dashed border-gray-300 rounded-xl px-4 py-3 cursor-pointer hover:border-brand hover:bg-brand/5 transition text-sm text-gray-500">
             <input type="file" name="csv" accept=".csv" required class="hidden" onchange="this.closest('label').querySelector('span').textContent=this.files[0].name"/>
@@ -253,6 +254,7 @@ include __DIR__ . '/../includes/layout.php';
 </div>
 
 <form method="POST">
+  <?= csrfField() ?>
   <input type="hidden" name="action" value="apply"/>
   <div class="bg-white rounded-xl border">
     <div class="p-5 border-b flex items-center justify-between">

@@ -15,9 +15,40 @@ function sendEmail($to, $subject, $bodyHtml, $replyTo = null) {
         'X-Mailer: ' . SITE . '/Admin',
     ];
     if ($replyTo) $headers[] = 'Reply-To: ' . $replyTo;
+    // BCC alle Mails an info@fleckfrei.de (Audit/Backup) — Skip wenn $to bereits diese Adresse ist
+    if (strcasecmp(trim($to), CONTACT_EMAIL) !== 0) {
+        $headers[] = 'Bcc: ' . CONTACT_EMAIL;
+    }
+    // CC zu zusätzlicher Customer-Adresse (cc_email auf customer profile)
+    try {
+        $ccRow = one("SELECT cc_email FROM customer WHERE email=? AND status=1 LIMIT 1", [trim($to)]);
+        if (!empty($ccRow['cc_email']) && filter_var($ccRow['cc_email'], FILTER_VALIDATE_EMAIL)) {
+            $headers[] = 'Cc: ' . $ccRow['cc_email'];
+        }
+    } catch (Exception $e) {}
 
     return @mail($to, $subject, $bodyHtml, implode("\r\n", $headers));
 }
+
+/**
+ * Notification gate — prüft globalen Settings-Toggle + Customer-Consent.
+ * @param string $toggleField z.B. 'email_booking', 'email_job_start' usw.
+ * @param int $customerId
+ * @return bool true = darf senden
+ */
+function canSendNotification($toggleField, $customerId) {
+    // 1) Globaler Toggle aus settings (default 1 wenn fehlt)
+    try {
+        $globalOn = (int) val("SELECT COALESCE($toggleField, 1) FROM settings LIMIT 1");
+        if ($globalOn === 0) return false;
+    } catch (Exception $e) {}
+    // Operative E-Mails (Auftragsbestätigung/Rechnung/Reminder) sind VERTRAGS-basiert —
+    // brauchen keine consent_email Einwilligung (Art 6(1)b DSGVO). Marketing-Mails MÜSSEN
+    // canContact()/marketingSend() separat nutzen, NICHT diese Funktion.
+    return true;
+}
+
+
 
 function emailTemplate($title, $content, $ctaText = '', $ctaUrl = '') {
     $brand = BRAND;
@@ -60,6 +91,9 @@ HTML;
 // ═══════════════════════════════════════
 
 function notifyBookingConfirmation($jobId) {
+    $tmp = one("SELECT customer_id_fk FROM jobs WHERE j_id=?", [func_get_arg(0)]); $cid_check = (int)($tmp['customer_id_fk'] ?? 0);
+    if (!canSendNotification('email_booking', $cid_check)) return false;
+
     $job = one("SELECT j.*, c.name as cname, c.email as cemail, s.title as stitle, e.name as ename
         FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
         LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
@@ -88,6 +122,9 @@ function notifyBookingConfirmation($jobId) {
 }
 
 function notifyJobStarted($jobId) {
+    $tmp = one("SELECT customer_id_fk FROM jobs WHERE j_id=?", [func_get_arg(0)]); $cid_check = (int)($tmp['customer_id_fk'] ?? 0);
+    if (!canSendNotification('email_job_start', $cid_check)) return false;
+
     $job = one("SELECT j.*, c.name as cname, c.email as cemail, s.title as stitle, e.name as ename
         FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
         LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
@@ -108,6 +145,9 @@ function notifyJobStarted($jobId) {
 }
 
 function notifyJobCompleted($jobId) {
+    $tmp = one("SELECT customer_id_fk FROM jobs WHERE j_id=?", [func_get_arg(0)]); $cid_check = (int)($tmp['customer_id_fk'] ?? 0);
+    if (!canSendNotification('email_job_complete', $cid_check)) return false;
+
     $job = one("SELECT j.*, c.name as cname, c.email as cemail, s.title as stitle, e.name as ename
         FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
         LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
@@ -125,10 +165,33 @@ function notifyJobCompleted($jobId) {
     </table>
     <p style='color:#6b7280'>Die Rechnung wird automatisch erstellt und Ihnen zugesandt.</p>";
 
+    // D: Photo-Galerie aller Beweisfotos vom Partner
+    $photos = all("SELECT cc.photo, cc.video, cl.title FROM checklist_completions cc
+                   LEFT JOIN service_checklists cl ON cc.checklist_id_fk=cl.checklist_id
+                   WHERE cc.job_id_fk=? AND (cc.photo IS NOT NULL OR cc.video IS NOT NULL)
+                   ORDER BY cc.completed_at", [$jobId]);
+    $photoGallery = '';
+    if ($photos) {
+        $photoGallery = '<h3 style="margin-top:24px">Beweisfotos vom Partner</h3><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0">';
+        foreach ($photos as $p) {
+            if (!empty($p['photo'])) {
+                $photoGallery .= '<div><img src="https://app.fleckfrei.de' . htmlspecialchars($p['photo']) . '" style="width:100%;border-radius:8px;border:1px solid #e5e7eb"/><div style="font-size:11px;color:#6b7280;margin-top:4px">' . htmlspecialchars($p['title'] ?? '') . '</div></div>';
+            }
+            if (!empty($p['video'])) {
+                $photoGallery .= '<div><a href="https://app.fleckfrei.de' . htmlspecialchars($p['video']) . '" style="display:block;padding:20px;background:#f3f4f6;text-align:center;border-radius:8px;text-decoration:none;color:#374151">▶ Video ' . htmlspecialchars($p['title'] ?? '') . '</a></div>';
+            }
+        }
+        $photoGallery .= '</div>';
+    }
+    $content .= $photoGallery;
+
     return sendEmail($job['cemail'], SITE . ' — Job abgeschlossen', emailTemplate('Job abgeschlossen', $content, 'Bewertung abgeben', 'https://wa.me/' . CONTACT_WA));
 }
 
 function notifyInvoiceCreated($invoiceId) {
+    $tmp = one("SELECT i.customer_id_fk AS cid FROM invoices i WHERE i.inv_id=?", [func_get_arg(0)]); $cid_check = (int)($tmp['cid'] ?? 0);
+    if (!canSendNotification('email_invoice', $cid_check)) return false;
+
     $inv = one("SELECT i.*, c.name as cname, c.email as cemail
         FROM invoices i LEFT JOIN customer c ON i.customer_id_fk=c.customer_id WHERE i.inv_id=?", [$invoiceId]);
     if (!$inv || !$inv['cemail']) return false;
@@ -149,6 +212,9 @@ function notifyInvoiceCreated($invoiceId) {
 }
 
 function notifyJobReminder($jobId) {
+    $tmp = one("SELECT customer_id_fk FROM jobs WHERE j_id=?", [func_get_arg(0)]); $cid_check = (int)($tmp['customer_id_fk'] ?? 0);
+    if (!canSendNotification('email_reminder', $cid_check)) return false;
+
     $job = one("SELECT j.*, c.name as cname, c.email as cemail, s.title as stitle, e.name as ename
         FROM jobs j LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
         LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id

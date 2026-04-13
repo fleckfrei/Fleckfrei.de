@@ -61,17 +61,35 @@ if (!empty($_FILES['photo']['name']) && $_FILES['photo']['error'] === UPLOAD_ERR
     }
 }
 
+// Handle video upload
+$videoPath = null;
+if (!empty($_FILES['video']['name']) && $_FILES['video']['error'] === UPLOAD_ERR_OK) {
+    $tmp = $_FILES['video']['tmp_name'];
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($tmp);
+    $allowedVid = ['video/mp4'=>'mp4','video/quicktime'=>'mov','video/webm'=>'webm','video/x-m4v'=>'m4v','video/3gpp'=>'3gp'];
+    if (isset($allowedVid[$mime]) && $_FILES['video']['size'] < 50 * 1024 * 1024) {
+        $dir = __DIR__ . '/../uploads/checklists/completed/' . $jobId . '/';
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        $fname = 'v_' . bin2hex(random_bytes(8)) . '.' . $allowedVid[$mime];
+        if (move_uploaded_file($tmp, $dir . $fname)) {
+            $videoPath = '/uploads/checklists/completed/' . $jobId . '/' . $fname;
+        }
+    }
+}
+
 // Upsert
-$existing = one("SELECT completion_id, photo FROM checklist_completions WHERE job_id_fk=? AND checklist_id_fk=?", [$jobId, $checklistId]);
+$existing = one("SELECT completion_id, photo, video FROM checklist_completions WHERE job_id_fk=? AND checklist_id_fk=?", [$jobId, $checklistId]);
 if ($existing) {
     // Keep existing photo if no new one uploaded
     $finalPhoto = $photoPath ?: $existing['photo'];
-    q("UPDATE checklist_completions SET completed=?, note=?, photo=?, completed_at=? WHERE completion_id=?",
-      [$completed, $note, $finalPhoto, $completed ? date('Y-m-d H:i:s') : null, $existing['completion_id']]);
+    $finalVideo = $videoPath ?: ($existing['video'] ?? null);
+    q("UPDATE checklist_completions SET completed=?, note=?, photo=?, video=?, completed_at=? WHERE completion_id=?",
+      [$completed, $note, $finalPhoto, $finalVideo, $completed ? date('Y-m-d H:i:s') : null, $existing['completion_id']]);
     $completionId = $existing['completion_id'];
 } else {
-    q("INSERT INTO checklist_completions (job_id_fk, checklist_id_fk, completed, note, photo, completed_at) VALUES (?,?,?,?,?,?)",
-      [$jobId, $checklistId, $completed, $note, $photoPath, $completed ? date('Y-m-d H:i:s') : null]);
+    q("INSERT INTO checklist_completions (job_id_fk, checklist_id_fk, completed, note, photo, video, completed_at) VALUES (?,?,?,?,?,?,?)",
+      [$jobId, $checklistId, $completed, $note, $photoPath, $videoPath, $completed ? date('Y-m-d H:i:s') : null]);
     $completionId = (int) lastInsertId();
 }
 
@@ -79,5 +97,5 @@ echo json_encode([
     'success' => true,
     'completion_id' => $completionId,
     'completed' => (bool)$completed,
-    'photo' => $photoPath,
+    'photo' => $photoPath, 'video' => $videoPath,
 ]);

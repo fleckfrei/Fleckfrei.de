@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/email.php';
 require_once __DIR__ . '/../includes/checklist-helpers.php';
+require_once __DIR__ . '/../includes/translate-helper.php';
 requireEmployee();
 $title = 'Meine Jobs'; $page = 'dashboard';
 $user = me();
@@ -39,15 +40,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($_FILES['photos']['tmp_name'] as $i => $tmp) {
                 if ($_FILES['photos']['error'][$i] !== UPLOAD_ERR_OK) continue;
                 if ($_FILES['photos']['size'][$i] > 10 * 1024 * 1024) continue;
-                // MIME type check
+                // MIME type check — Fotos + Videos
                 $finfo = new finfo(FILEINFO_MIME_TYPE);
                 $mime = $finfo->file($tmp);
-                $allowedMimes = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp','image/heic'=>'heic'];
+                $allowedMimes = [
+                    'image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp','image/heic'=>'heic',
+                    'video/mp4'=>'mp4','video/webm'=>'webm','video/quicktime'=>'mov','video/x-m4v'=>'m4v'
+                ];
                 if (!isset($allowedMimes[$mime])) continue;
-                // Verify it's a real image
-                if ($mime !== 'image/heic' && @getimagesize($tmp) === false) continue;
+                $isVideo = str_starts_with($mime, 'video/');
+                // Video Größe bis 50 MB; Foto bis 10 MB
+                $maxBytes = $isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+                if (filesize($tmp) > $maxBytes) continue;
+                // Bilder: verifizieren dass es echt ein Bild ist
+                if (!$isVideo && $mime !== 'image/heic' && @getimagesize($tmp) === false) continue;
                 $ext = $allowedMimes[$mime];
-                $fname = bin2hex(random_bytes(8)) . '.' . $ext;
+                // Filename mit Zeitstempel für Nachweis (YYYYMMDD_HHMMSS_random.ext)
+                $fname = date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
                 if (move_uploaded_file($tmp, $uploadDir . $fname)) {
                     $photos[] = $fname;
                 }
@@ -98,11 +107,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $today = date('Y-m-d');
 $empId = $user['id'];
 
+// HEUTE + überfällige offene Jobs der letzten 2 Tage
 $todayJobs = all("SELECT j.*, s.title as stitle, s.street, s.city, s.box_code, s.client_code, s.deposit_code, s.wifi_name, s.wifi_password,
     c.name as cname, c.phone as cphone, c.customer_type as ctype,
-    j.no_children, j.no_pets, j.has_separate_beds, j.has_sofa_bed, j.extras_note
+    j.no_children, j.no_pets, j.has_separate_beds, j.has_sofa_bed, j.extras_note, j.optional_products
     FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
-    WHERE j.emp_id_fk=? AND j.j_date=? AND j.status=1 AND j.job_status!='CANCELLED'
+    WHERE j.emp_id_fk=? AND j.status=1 AND j.job_status NOT IN ('CANCELLED','COMPLETED')
+      AND (j.j_date = ? OR (j.j_date < ? AND j.j_date >= DATE_SUB(?, INTERVAL 2 DAY)))
+    ORDER BY j.j_date, j.j_time", [$empId, $today, $today, $today]);
+
+// Completed jobs heute zum informativ zeigen
+$todayDoneJobs = all("SELECT j.j_id, j.j_time, j.end_time, j.total_hours, s.title as stitle, c.name as cname
+    FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
+    WHERE j.emp_id_fk=? AND j.j_date=? AND j.status=1 AND j.job_status='COMPLETED'
     ORDER BY j.j_time", [$empId, $today]);
 
 // Map smart_locks per (customer + service) for today's jobs — enables "Tür öffnen" button
@@ -152,6 +169,18 @@ $jobIds = array_column($todayJobs, 'j_id');
 if (!empty($jobIds)) {
     $idList = implode(',', array_map('intval', $jobIds));
     $completions = all("SELECT job_id_fk, checklist_id_fk, completed, note, photo FROM checklist_completions WHERE job_id_fk IN ($idList)");
+// Preload customer-uploaded media per checklist item (für Partner-Anweisungen)
+$customerMediaByItem = [];
+try {
+    $allItemIds = [];
+    foreach ($checklistsByService as $svcCl) foreach ($svcCl as $x) $allItemIds[] = (int)$x['checklist_id'];
+    if ($allItemIds) {
+        $idStr = implode(',', array_unique($allItemIds));
+        foreach (all("SELECT * FROM checklist_media WHERE checklist_id_fk IN ($idStr) ORDER BY uploaded_at") as $m) {
+            $customerMediaByItem[$m['checklist_id_fk']][] = $m;
+        }
+    }
+} catch (Exception $e) {}
     foreach ($completions as $c) {
         $completionsByJobItem[$c['job_id_fk'] . ':' . $c['checklist_id_fk']] = $c;
     }
@@ -180,9 +209,53 @@ include __DIR__ . '/../includes/layout.php';
 <?php if(!empty($_GET['stopped'])): ?><div class="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-xl mb-4">Job beendet! Arbeitszeit gespeichert.</div><?php endif; ?>
 <?php if(!empty($_GET['msg_sent'])): ?><div class="bg-brand-light border border-brand/20 text-brand px-4 py-3 rounded-xl mb-4">✓ Nachricht an Kunde gesendet.</div><?php endif; ?>
 
-<div class="mb-6">
-  <h2 class="text-lg font-semibold mb-1"><?= t('emp.hello') ?> <?= e($empData['name']) ?>!</h2>
-  <p class="text-gray-500"><?= t('emp.today') ?>: <?= date('d.m.Y') ?> — <?= count($todayJobs) ?> Job(s)</p>
+<?php
+  // Partner-Stats — offene/erledigte
+  $runningCount = count(array_filter($todayJobs, fn($j) => in_array($j['job_status'], ['RUNNING','STARTED'])));
+  $doneToday = count($todayDoneJobs);
+  $openCount = count($todayJobs);
+  $hoursToday = array_sum(array_map(fn($j) => (float)($j['total_hours'] ?: 0), $todayDoneJobs));
+  $tariff = (float)($empData['tariff'] ?? 0);
+  $earningsToday = round($hoursToday * $tariff, 2);
+  // Woche
+  $weekCount = (int)val("SELECT COUNT(*) FROM jobs WHERE emp_id_fk=? AND j_date BETWEEN ? AND DATE_ADD(?, INTERVAL 7 DAY) AND status=1 AND job_status NOT IN ('CANCELLED','COMPLETED')", [$empId, $today, $today]);
+?>
+
+<!-- Partner-Portal Hero-Banner -->
+<div class="relative mb-6 bg-gradient-to-br from-brand via-brand-dark to-brand text-white rounded-2xl p-6 shadow-lg overflow-hidden">
+  <div class="absolute inset-0 opacity-10">
+    <svg class="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <circle cx="15" cy="20" r="2" fill="white"/><circle cx="85" cy="30" r="1.5" fill="white"/>
+      <circle cx="50" cy="70" r="2" fill="white"/><circle cx="90" cy="85" r="1.5" fill="white"/>
+    </svg>
+  </div>
+  <div class="relative flex items-start justify-between flex-wrap gap-4">
+    <div>
+      <div class="text-[11px] uppercase font-bold tracking-widest opacity-80 mb-1">👷 Partner-Portal</div>
+      <h1 class="text-2xl sm:text-3xl font-extrabold">Hallo <?= e($empData['name']) ?>!</h1>
+      <p class="text-white/90 text-sm mt-1"><?= date('l, d. F Y', strtotime('today')) ?></p>
+    </div>
+    <div class="grid grid-cols-3 gap-2 sm:gap-4 text-center">
+      <div class="bg-white/20 backdrop-blur rounded-xl px-3 py-2 min-w-[80px]">
+        <div class="text-2xl font-extrabold"><?= $openCount ?></div>
+        <div class="text-[10px] uppercase opacity-90">Offen</div>
+      </div>
+      <div class="bg-white/20 backdrop-blur rounded-xl px-3 py-2 min-w-[80px]">
+        <div class="text-2xl font-extrabold"><?= $doneToday ?></div>
+        <div class="text-[10px] uppercase opacity-90">Heute erledigt</div>
+      </div>
+      <div class="bg-white/20 backdrop-blur rounded-xl px-3 py-2 min-w-[80px]">
+        <div class="text-2xl font-extrabold"><?= $weekCount ?></div>
+        <div class="text-[10px] uppercase opacity-90">Diese Woche</div>
+      </div>
+    </div>
+  </div>
+  <?php if ($runningCount > 0): ?>
+  <div class="relative mt-4 flex items-center gap-2 bg-green-400/30 rounded-lg px-3 py-2">
+    <span class="w-2 h-2 rounded-full bg-green-300 animate-pulse"></span>
+    <span class="text-sm font-semibold"><?= $runningCount ?> Job läuft gerade</span>
+  </div>
+  <?php endif; ?>
 </div>
 
 <!-- Today's Jobs -->
@@ -204,12 +277,26 @@ include __DIR__ . '/../includes/layout.php';
     </div>
 
     <?php
-    // Extras: children, pets, beds, sofa, notes
-    $hasExtras = !empty($j['no_children']) || !empty($j['no_pets']) || !empty($j['has_separate_beds']) || !empty($j['has_sofa_bed']) || !empty($j['extras_note']);
+    // Extras: children, pets, beds, sofa, notes + dynamische Zusatzleistungen
+    $optionalRaw = trim((string)($j['optional_products'] ?? ''));
+    $optionalList = $optionalRaw !== '' ? array_values(array_filter(array_map('trim', explode(',', $optionalRaw)))) : [];
+    $hasExtras = !empty($j['no_children']) || !empty($j['no_pets']) || !empty($j['has_separate_beds']) || !empty($j['has_sofa_bed']) || !empty($j['extras_note']) || !empty($optionalList);
+
+    // Lookup: icon pro Zusatzleistung (optional_products-Tabelle)
+    $opLookup = [];
+    if (!empty($optionalList)) {
+        try {
+            $placeholders = implode(',', array_fill(0, count($optionalList), '?'));
+            foreach (all("SELECT name, icon, description FROM optional_products WHERE name IN ($placeholders)", $optionalList) as $op) {
+                $opLookup[$op['name']] = $op;
+            }
+        } catch (Exception $e) {}
+    }
+
     if ($hasExtras): ?>
     <div class="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200">
       <div class="text-[10px] uppercase font-bold text-amber-900 tracking-wide mb-1.5 flex items-center gap-1">
-        <span>📋</span> Extras vom Kunden
+        <span>📋</span> Extras vom Kunden <span class="text-amber-700 normal-case">· vom Host ausgewählt</span>
       </div>
       <div class="flex flex-wrap gap-2 text-xs">
         <?php if (!empty($j['no_children'])): ?>
@@ -224,6 +311,15 @@ include __DIR__ . '/../includes/layout.php';
         <?php if (!empty($j['has_sofa_bed'])): ?>
           <span class="px-2 py-1 bg-white border border-amber-200 rounded-full font-semibold">🛋️ Sofa-Bett</span>
         <?php endif; ?>
+        <?php foreach ($optionalList as $opName):
+          $opInfo = $opLookup[$opName] ?? null;
+          $icon = $opInfo['icon'] ?? '✓';
+          $desc = $opInfo['description'] ?? '';
+        ?>
+          <span class="px-2 py-1 bg-white border-2 border-brand/40 text-brand-dark rounded-full font-semibold" <?= $desc ? 'title="' . e($desc) . '"' : '' ?>>
+            <?= e($icon) ?> <?= e($opName) ?>
+          </span>
+        <?php endforeach; ?>
       </div>
       <?php if (!empty($j['extras_note'])): ?>
       <div class="mt-2 text-xs text-amber-900 bg-white/60 rounded-lg px-2 py-1.5 border border-amber-100">
@@ -237,7 +333,7 @@ include __DIR__ . '/../includes/layout.php';
       <?php if ($j['code_door']): ?><p><strong>Türcode:</strong> <span class="font-mono bg-gray-100 px-2 py-0.5 rounded"><?= e($j['code_door']) ?></span></p><?php endif; ?>
       <?php if ($j['box_code']): ?><p><strong>Box:</strong> <?= e($j['box_code']) ?> | <strong>Client:</strong> <?= e($j['client_code']) ?> | <strong>Deposit:</strong> <?= e($j['deposit_code']) ?></p><?php endif; ?>
       <?php if ($j['wifi_name']): ?><p><strong>WiFi:</strong> <?= e($j['wifi_name']) ?> / <?= e($j['wifi_password']) ?></p><?php endif; ?>
-      <?php if ($j['emp_message']): ?><p class="mt-2 bg-yellow-50 p-2 rounded text-yellow-800"><?= e($j['emp_message']) ?></p><?php endif; ?>
+      <?php if ($j['emp_message']): ?><p class="mt-2 bg-yellow-50 p-2 rounded text-yellow-800"><?= autoTranslateHtml($j['emp_message'] ?? '', $partnerLang) ?></p><?php endif; ?>
     </div>
 
     <?php $chk = $checklistsByService[(int)$j['s_id_fk']] ?? []; if (!empty($chk)):
@@ -287,6 +383,24 @@ include __DIR__ . '/../includes/layout.php';
             <a href="<?= e($item['photo']) ?>" target="_blank" class="flex-shrink-0">
               <img src="<?= e($item['photo']) ?>" class="w-14 h-14 object-cover rounded-lg border" alt=""/>
             </a>
+            <?php endif; ?>
+            <?php $cMedia = $customerMediaByItem[$item['checklist_id']] ?? []; ?>
+            <?php if ($cMedia): ?>
+            <div class="flex-shrink-0 flex gap-1">
+              <?php foreach (array_slice($cMedia, 0, 3) as $m): ?>
+                <?php if ($m['media_type'] === 'video'): ?>
+                  <a href="<?= e($m['file_path']) ?>" target="_blank" class="relative w-14 h-14 rounded-lg border block bg-black overflow-hidden" title="<?= e($m['caption']) ?>">
+                    <video src="<?= e($m['file_path']) ?>" muted class="w-full h-full object-cover"></video>
+                    <div class="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-lg">▶</div>
+                  </a>
+                <?php else: ?>
+                  <a href="<?= e($m['file_path']) ?>" target="_blank" class="flex-shrink-0" title="<?= e($m['caption']) ?>">
+                    <img src="<?= e($m['file_path']) ?>" class="w-14 h-14 object-cover rounded-lg border-2 border-blue-300" alt="Kunde-Anweisung"/>
+                  </a>
+                <?php endif; ?>
+              <?php endforeach; ?>
+              <?php if (count($cMedia) > 3): ?><span class="w-14 h-14 flex items-center justify-center text-xs text-gray-500 bg-gray-100 rounded-lg border">+<?= count($cMedia)-3 ?></span><?php endif; ?>
+            </div>
             <?php endif; ?>
 
             <div class="flex-1 min-w-0">
@@ -417,8 +531,8 @@ include __DIR__ . '/../includes/layout.php';
       <textarea name="note" required placeholder="Notiz zum Job (Pflicht!)..." class="w-full px-4 py-3 border rounded-xl" rows="2"></textarea>
       <div>
         <label class="block text-sm font-medium text-gray-600 mb-1">Fotos (optional)</label>
-        <input type="file" name="photos[]" multiple accept="image/*" capture="environment" class="w-full px-3 py-2 border rounded-xl text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-brand/10 file:text-brand file:font-medium"/>
-        <p class="text-xs text-gray-400 mt-1">Max. 10MB pro Foto. JPG, PNG, WebP.</p>
+        <input type="file" name="photos[]" multiple accept="image/*,video/*" capture="environment" class="w-full px-3 py-2 border rounded-xl text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-brand/10 file:text-brand file:font-medium"/>
+        <p class="text-xs text-gray-500 mt-1">📸 Foto (bis 10MB) · 🎥 Video (bis 50MB) · JPG/PNG/WebP/MP4/WebM · <strong>Mit Zeitstempel für Nachweis</strong></p>
       </div>
 
       <!-- KI Foto-Check (vor dem Abschließen) -->
@@ -459,7 +573,7 @@ include __DIR__ . '/../includes/layout.php';
     <?php elseif ($j['job_status'] === 'COMPLETED'): ?>
     <div class="bg-green-50 rounded-xl p-3 text-green-800 text-sm">
       Erledigt: <?= substr($j['start_time'],0,5) ?> — <?= substr($j['end_time'],0,5) ?> (<?= round($j['total_hours'],1) ?>h)
-      <?php if ($j['job_note']): ?><p class="mt-1 text-gray-600"><?= e($j['job_note']) ?></p><?php endif; ?>
+      <?php if ($j['job_note']): ?><p class="mt-1 text-gray-600"><?= autoTranslateHtml($j['job_note'] ?? '', $partnerLang) ?></p><?php endif; ?>
       <?php
         $jobPhotos = !empty($j['job_photos']) ? json_decode($j['job_photos'], true) : [];
         if (!empty($jobPhotos)):
@@ -667,7 +781,7 @@ function toggleChecklist(jobId, checklistId, btn) {
 function uploadChecklistPhoto(jobId, checklistId) {
     var input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
+    input.accept = 'image/*,video/*';
     input.capture = 'environment';
     input.onchange = function() {
       if (!input.files.length) return;
@@ -675,7 +789,9 @@ function uploadChecklistPhoto(jobId, checklistId) {
       fd.append('job_id', jobId);
       fd.append('checklist_id', checklistId);
       fd.append('completed', '1');
-      fd.append('photo', input.files[0]);
+      var f = input.files[0];
+      var isVideo = f.type.startsWith('video/');
+      fd.append(isVideo ? 'video' : 'photo', f);
       fetch('/api/checklist-complete.php', { method: 'POST', credentials: 'same-origin', body: fd })
         .then(r => r.json())
         .then(d => {

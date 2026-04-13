@@ -817,6 +817,14 @@ $lastGroupKey = null;
       </div>
       <?php endif; ?>
 
+      <?php if ($j['job_status'] === 'COMPLETED'): ?>
+      <a href="/admin/job-report.php?j_id=<?= (int) $j['j_id'] ?>" target="_blank"
+         class="w-full px-3 py-1.5 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+         title="Nachweis für Versicherung / Airbnb / Booking.com">
+        📄 Bericht anfordern
+      </a>
+      <?php endif; ?>
+
       <?php if ($j['job_status'] === 'COMPLETED' && customerCan('booking') && !$canRate && !$canReklamation): ?>
       <a href="/customer/booking.php?repeat=<?= (int) $j['j_id'] ?>" class="w-full px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-brand flex items-center justify-center gap-1.5 transition">
         ↻ Nochmal buchen

@@ -90,6 +90,9 @@ $page = $page ?? '';
     /* iOS safe areas */
     body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
   </style>
+  <link rel="stylesheet" href="/assets/ui-polish.css?v=20260413"/>
+  <script>window.__userLang = '<?= function_exists("userLang") ? userLang() : "de" ?>';</script>
+  <script defer src="/assets/auto-translate.js?v=20260413"></script>
 </head>
 <body class="h-full" x-data="{ mobileMenu: false, userMenu: false }">
 
@@ -125,10 +128,11 @@ $page = $page ?? '';
 
         <!-- User dropdown -->
         <div class="relative hidden lg:block" @click.away="userMenu = false">
-          <button @click="userMenu = !userMenu" class="flex items-center gap-2 text-white hover:bg-white/10 rounded-full px-2 py-1.5 transition">
+          <button @click="userMenu = !userMenu" class="flex items-center gap-2 text-white hover:bg-white/10 rounded-full px-3 py-1.5 transition">
             <div class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center font-semibold text-white">
               <?= strtoupper(substr($customer['name'] ?? 'M', 0, 1)) ?>
             </div>
+            <span class="hidden md:inline text-sm font-semibold max-w-[200px] truncate" title="<?= e($customer['name'] ?? '') ?>"><?= e($customer['name'] ?? '') ?></span>
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
           </button>
           <div x-show="userMenu" x-cloak x-transition class="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border overflow-hidden">
@@ -144,10 +148,10 @@ $page = $page ?? '';
               <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
               Dokumente
             </a>
-            <a href="/customer/workhours.php" class="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">
+            <?php if (customerCan('workhours')): ?><a href="/customer/workhours.php" class="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">
               <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
               Arbeitsstunden
-            </a>
+            </a><?php endif; ?>
             <?php if ($isHost): ?>
             <a href="/customer/ical.php" class="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">
               <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>

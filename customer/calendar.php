@@ -99,7 +99,7 @@ $jobs = all("
     SELECT j.j_id, j.j_date, j.j_time, j.job_status, j.total_hours, j.j_hours, j.emp_id_fk, j.s_id_fk,
            j.no_people, j.no_children, j.no_pets, j.address, j.code_door, j.emp_message, j.job_note, j.platform,
            s.title AS stitle, e.display_name AS edisplay, e.profile_pic AS eavatar
-    FROM jobs j
+    FROM jobs_calendar j
     LEFT JOIN services s ON j.s_id_fk = s.s_id
     LEFT JOIN employee e ON j.emp_id_fk = e.emp_id
     WHERE j.customer_id_fk = ?
@@ -484,7 +484,7 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
   <?php if ($view === 'week'):
     // Need to load jobs/events for week range if different from month range
     $weekJobs = all("SELECT j.*, s.title as stitle, s.street, s.city, e.display_name as edisplay, e.profile_pic as eavatar
-        FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
+        FROM jobs_calendar j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
         WHERE j.customer_id_fk=? AND j.j_date BETWEEN ? AND ? AND j.status=1 ORDER BY j.j_date, j.j_time", [$cid, $weekStart, $weekEnd]);
     $weekJobsByDate = [];
     foreach ($weekJobs as $j) $weekJobsByDate[$j['j_date']][] = $j;
@@ -570,10 +570,19 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
   </div>
   <?php else: ?>
 
+  <!-- Farb-Legende -->
+  <div class="flex items-center flex-wrap gap-3 px-4 py-2 text-[10px] font-medium text-gray-700 bg-white border-b border-gray-100">
+    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-yellow-400"></span>Kein Partner</div>
+    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-blue-500"></span>Partner zugewiesen</div>
+    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-orange-500"></span>Läuft</div>
+    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-green-500"></span>Erledigt</div>
+    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-gray-200"></span>Storniert</div>
+  </div>
+
   <!-- Weekday header -->
   <div class="grid grid-cols-7 border-b border-gray-100 bg-gray-50">
     <?php foreach (['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as $wd): ?>
-    <div class="px-1 sm:px-2 py-2 text-center text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider"><?= $wd ?></div>
+    <div class="px-1 sm:px-2 py-2 text-center text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider"><?= $wd ?></div>
     <?php endforeach; ?>
   </div>
 
@@ -609,6 +618,38 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         // - Check-outs (actionable: cleaning needed)
         // SKIP: check-ins, mid-stay "Belegt" — irrelevant for cleaning planning
         $relevantJobs = array_filter($cellJobs, fn($j) => ($j['job_status'] ?? '') !== 'CANCELLED');
+        // A: Pre-load proofs (Beweisfotos+Videos vom Partner) per job in this cell
+        $jobIdsForProofs = array_column($relevantJobs, 'j_id');
+        $proofsByJob = [];
+        if (!empty($jobIdsForProofs)) {
+            $_ph = implode(',', array_fill(0, count($jobIdsForProofs), '?'));
+            try {
+                $_proofs = all("SELECT cc.job_id_fk, cc.photo, cc.video, cc.note, cc.completed, cc.completed_at, cl.title FROM checklist_completions cc LEFT JOIN service_checklists cl ON cc.checklist_id_fk=cl.checklist_id WHERE cc.job_id_fk IN ($_ph) AND (cc.photo IS NOT NULL OR cc.video IS NOT NULL OR (cc.note IS NOT NULL AND cc.note <> '')) ORDER BY cc.completed_at DESC", $jobIdsForProofs);
+                foreach ($_proofs as $_p) $proofsByJob[$_p['job_id_fk']][] = $_p;
+                // Merge LR jobs.job_file (Partner uploaded via la-renting.de)
+                try {
+                    $_jobFiles = all("SELECT j_id, job_file, job_file2 FROM jobs WHERE j_id IN ($_ph) AND ((job_file IS NOT NULL AND job_file != '' AND job_file != '[]') OR (job_file2 IS NOT NULL AND job_file2 != '' AND job_file2 != '[]'))", $jobIdsForProofs);
+                    foreach ($_jobFiles as $_jf) {
+                        foreach (['job_file','job_file2'] as $_fld) {
+                            $_arr = json_decode($_jf[$_fld] ?: '[]', true) ?: [];
+                            foreach ($_arr as $_url) {
+                                if (!$_url) continue;
+                                $_isVid = preg_match('/\.(mp4|mov|webm|m4v)$/i', $_url);
+                                $proofsByJob[$_jf['j_id']][] = [
+                                    'job_id_fk' => $_jf['j_id'],
+                                    'photo' => $_isVid ? null : $_url,
+                                    'video' => $_isVid ? $_url : null,
+                                    'note' => null,
+                                    'completed' => 1,
+                                    'completed_at' => null,
+                                    'title' => 'Beweisfoto vom Partner (LR)',
+                                ];
+                            }
+                        }
+                    }
+                } catch (Exception $e) {}
+            } catch (Exception $e) {}
+        }
         $checkouts = array_filter($cellExt, fn($ev) => $ev['end_date'] === $cellDate);
 
         // Best-effort: match checkout feed_label to a customer service by name containment
@@ -646,7 +687,7 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
                 'emp_message' => $j['emp_message'] ?? '',
                 'job_note' => $j['job_note'] ?? '',
                 'platform' => $j['platform'] ?? '',
-                'booked_by' => in_array($j['platform'] ?? '', ['airbnb','booking','smoobu','vrbo','ical']) ? 'host' : 'customer',
+                'proofs' => $proofsByJob[$j['j_id']] ?? [], 'booked_by' => (in_array($j['platform'] ?? '', ['airbnb','booking','smoobu','vrbo','ical']) || (in_array(strtolower(trim($j['platform'] ?? '', "' ")), ['whatsapp']) && !empty($j['guest_name']) && trim($j['guest_name']) !== '.')) ? 'host' : 'customer',
             ], $relevantJobs),
             array_map(fn($ev) => [
                 'id' => 'ext_' . $ev['ev_id'],
@@ -701,28 +742,47 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         $shown = 0;
         foreach ($cellJobs as $j):
             if ($shown >= 2) break; $shown++;
-            $isCompleted = ($j['job_status'] ?? '') === 'COMPLETED';
-            $isCancelled = ($j['job_status'] ?? '') === 'CANCELLED';
-            $bgClass = $isCompleted ? 'bg-green-100 text-green-800' : ($isCancelled ? 'bg-gray-100 text-gray-400 line-through' : 'bg-brand/15 text-brand');
+            $status = $j['job_status'] ?? '';
+            $isCompleted = $status === 'COMPLETED';
+            $isCancelled = $status === 'CANCELLED';
+            $isRunning = in_array($status, ['RUNNING','STARTED']);
+            // Farblogik wie Admin-Kalender
+            if ($isCompleted) {
+                $bgClass = 'bg-green-500 text-white border-green-600';
+                $icon = '✓';
+            } elseif ($isCancelled) {
+                $bgClass = 'bg-gray-100 text-gray-400 line-through border-gray-200';
+                $icon = '✕';
+            } elseif ($isRunning) {
+                $bgClass = 'bg-orange-500 text-white border-orange-600 animate-pulse';
+                $icon = '▶';
+            } elseif (empty($j['emp_id_fk'])) {
+                // Kein Partner zugewiesen → Gelb (Max Spec 2026-04-13)
+                $bgClass = 'bg-yellow-400 text-yellow-900 border-yellow-500';
+                $icon = '⏳';
+            } else {
+                // Partner zugewiesen, noch nicht gestartet → Blau
+                $bgClass = 'bg-blue-500 text-white border-blue-600';
+                $icon = '🧹';
+            }
             $jTime = substr($j['j_time'] ?? '', 0, 5);
             $jTitle = $j['stitle'] ?? 'Reinigung';
             $jPeople = (int)($j['no_people'] ?? 1);
             $jChildren = (int)($j['no_children'] ?? 0);
             $jPets = (int)($j['no_pets'] ?? 0);
             $hasMsg = !empty($j['emp_message']);
-            // Badge für wichtige Infos
             $badges = [];
             if ($jPeople > 1) $badges[] = '👥' . $jPeople;
             if ($jChildren > 0) $badges[] = '👶' . $jChildren;
             if ($jPets > 0) $badges[] = '🐾' . $jPets;
             if ($hasMsg) $badges[] = '💬';
         ?>
-        <div class="text-[10px] sm:text-[11px] px-1.5 py-0.5 rounded <?= $bgClass ?> font-semibold flex items-center gap-1 overflow-hidden">
-          <span class="flex-shrink-0">🧹</span>
+        <div class="text-[10px] sm:text-[11px] px-1.5 py-0.5 rounded border <?= $bgClass ?> font-semibold flex items-center gap-1 overflow-hidden shadow-sm">
+          <span class="flex-shrink-0"><?= $icon ?></span>
           <span class="font-bold flex-shrink-0"><?= e($jTime) ?></span>
-          <span class="truncate flex-1 min-w-0"><?= e(mb_substr($jTitle, 0, 20)) ?></span>
+          <span class="truncate flex-1 min-w-0"><?= e(mb_substr($jTitle, 0, 15)) ?></span>
           <?php if ($badges): ?>
-          <span class="flex-shrink-0 text-[9px] opacity-80"><?= implode(' ', $badges) ?></span>
+          <span class="flex-shrink-0 text-[9px] opacity-90"><?= implode(' ', $badges) ?></span>
           <?php endif; ?>
         </div>
         <?php endforeach; ?>
@@ -851,18 +911,26 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
                           <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                           <span x-text="job.time + ' Uhr'"></span>
                         </span>
-                        <span x-show="job.hours > 0" x-text="'· ' + parseFloat(job.hours).toFixed(1) + 'h'"></span>
+                        <span x-show="job.hours > 0" x-text="'· ' + parseFloat(Math.max(2, parseFloat(job.hours))).toFixed(1) + 'h'"></span>
                         <span x-show="parseFloat(job.hours) < 2 || parseFloat(job.planned_hours) < 2" class="text-amber-700 text-[10px] font-semibold">⚠ min. 2h berechnet</span>
                       </div>
                     </div>
-                    <span class="px-2 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap"
-                      :class="{
-                        'bg-green-100 text-green-700': job.status === 'COMPLETED',
-                        'bg-amber-100 text-amber-700': job.status === 'RUNNING' || job.status === 'STARTED',
-                        'bg-brand/10 text-brand': job.status === 'CONFIRMED',
-                        'bg-blue-100 text-blue-700': job.status === 'PENDING' || job.status === 'NEW'
-                      }"
-                      x-text="{COMPLETED: 'Erledigt ✓', CONFIRMED: 'Bestätigt', PENDING: 'Geplant', RUNNING: 'Läuft gerade', STARTED: 'Läuft gerade', NEW: 'Neu'}[job.status] || job.status"></span>
+                    <template x-if="job.status === 'RUNNING' || job.status === 'STARTED'">
+                      <span class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap bg-orange-500 text-white shadow-lg flex items-center gap-1.5 animate-pulse">
+                        <span class="w-2 h-2 bg-white rounded-full"></span>
+                        🟠 LIVE · Läuft gerade
+                      </span>
+                    </template>
+                    <template x-if="job.status !== 'RUNNING' && job.status !== 'STARTED'">
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
+                        :class="{
+                          'bg-green-100 text-green-700': job.status === 'COMPLETED',
+                          'bg-brand/10 text-brand': job.status === 'CONFIRMED',
+                          'bg-blue-100 text-blue-700': job.status === 'PENDING' || job.status === 'NEW',
+                          'bg-red-100 text-red-700': job.status === 'CANCELLED'
+                        }"
+                        x-text="{COMPLETED: 'Erledigt ✓', CONFIRMED: 'Bestätigt', PENDING: 'Geplant', NEW: 'Neu', CANCELLED: 'Storniert'}[job.status] || job.status"></span>
+                    </template>
                   </div>
 
                   <!-- Gebucht von: Kunde oder Host/Platform -->
@@ -870,6 +938,23 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                     <span x-show="job.booked_by === 'host'">Buchung über <strong x-text="job.platform.toUpperCase()"></strong> (Host-Plattform)</span>
                     <span x-show="job.booked_by === 'customer'">Gebucht von Ihnen</span>
+                  </div>
+                  <!-- A: Beweisfoto-Galerie wenn COMPLETED -->
+                  <template x-if="job.proofs && job.proofs.length > 0">
+                    <div class="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <div class="text-xs font-semibold text-green-800 mb-2">📸 Updates vom Partner (<span x-text="job.proofs.length"></span>)</div>
+                      <div class="grid grid-cols-3 gap-1.5">
+                        <template x-for="p in job.proofs" :key="p.photo + (p.video || '')">
+                          <div>
+                            <template x-if="p.photo"><a :href="p.photo" target="_blank"><img :src="p.photo" :alt="p.title" class="w-full h-20 object-cover rounded border"/></a></template>
+                            <template x-if="p.video"><a :href="'/video360.php?file=' + encodeURIComponent(p.video)" target="_blank" class="flex items-center justify-center h-20 bg-black text-white rounded text-2xl">▶</a></template>
+                            <div class="text-[9px] text-gray-500 truncate" x-text="p.title"></div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                  <div x-show="job.proofs && job.proofs.length === 0 && job.booked_by" style="display:none">
                   </div>
 
                   <!-- Details: Personen / Kinder / Haustiere -->

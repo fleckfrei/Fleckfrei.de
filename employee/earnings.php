@@ -9,7 +9,7 @@ $eid = $user['id'];
 $emp = one("SELECT * FROM employee WHERE emp_id=?", [$eid]);
 $month = $_GET['month'] ?? date('Y-m');
 
-$jobs = all("SELECT j.*, s.title as stitle, c.name as cname
+$jobs = all("SELECT j.*, s.title as stitle, c.name as cname, j.optional_products
     FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
     WHERE j.emp_id_fk=? AND j.job_status='COMPLETED' AND j.j_date LIKE ? AND j.status=1
     ORDER BY j.j_date DESC", [$eid, "$month%"]);
@@ -17,10 +17,19 @@ $jobs = all("SELECT j.*, s.title as stitle, c.name as cname
 // Checklist bonus rate — 5% bonus when ALL checklist items are completed (with proof photos)
 define('CHECKLIST_BONUS_RATE', 0.05);
 
+// Load partner_bonus lookup from optional_products (name → partner_bonus €)
+$bonusLookup = [];
+try {
+    foreach (all("SELECT name, partner_bonus, pricing_type FROM optional_products WHERE partner_bonus > 0") as $op) {
+        $bonusLookup[$op['name']] = ['bonus' => (float)$op['partner_bonus'], 'type' => $op['pricing_type']];
+    }
+} catch (Exception $e) {}
+
 $tariff = (float)($emp['tariff'] ?: 0);
 $totalHours = 0;
 $totalBase = 0;
-$totalBonus = 0;
+$totalBonus = 0;                 // Checklist bonus
+$totalZusatzBonus = 0;           // Zusatzleistungs-Bonus (neu)
 $bonusEligibleCount = 0;
 
 // Compute per-job bonus
@@ -34,6 +43,8 @@ foreach ($jobs as $k => $j) {
     $jobs[$k]['base_pay'] = $base;
     $jobs[$k]['bonus'] = 0;
     $jobs[$k]['bonus_reason'] = '';
+    $jobs[$k]['zusatz_bonus'] = 0;
+    $jobs[$k]['zusatz_items'] = [];
 
     if (!empty($j['s_id_fk'])) {
         $totalItems = (int) val("SELECT COUNT(*) FROM service_checklists WHERE s_id_fk=? AND is_active=1", [$j['s_id_fk']]);
@@ -53,8 +64,25 @@ foreach ($jobs as $k => $j) {
             }
         }
     }
+
+    // Zusatzleistungs-Bonus: pro vom Kunden ausgewähltem Produkt
+    $opRaw = trim((string)($j['optional_products'] ?? ''));
+    if ($opRaw !== '') {
+        $selected = array_filter(array_map('trim', explode(',', $opRaw)));
+        $zBonus = 0;
+        foreach ($selected as $name) {
+            if (isset($bonusLookup[$name])) {
+                $bInfo = $bonusLookup[$name];
+                $add = $bInfo['type'] === 'per_hour' ? $bInfo['bonus'] * $hrs : $bInfo['bonus'];
+                $zBonus += $add;
+                $jobs[$k]['zusatz_items'][] = ['name' => $name, 'bonus' => round($add, 2)];
+            }
+        }
+        $jobs[$k]['zusatz_bonus'] = round($zBonus, 2);
+        $totalZusatzBonus += $zBonus;
+    }
 }
-$totalEarnings = $totalBase + $totalBonus;
+$totalEarnings = $totalBase + $totalBonus + $totalZusatzBonus;
 
 // Last 6 months for chart
 $monthlyData = [];
@@ -88,11 +116,15 @@ include __DIR__ . '/../includes/layout.php';
     <?php endif; ?>
   </div>
   <div class="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-xl border border-amber-200 p-4">
-    <div class="text-2xl font-bold text-amber-600"><?= money($totalBonus) ?></div>
+    <div class="text-2xl font-bold text-amber-600"><?= money($totalBonus + $totalZusatzBonus) ?></div>
     <div class="text-sm text-gray-500 flex items-center gap-1">
-      <span>🏆</span> Checklist-Bonus
+      <span>🏆</span> Boni gesamt
     </div>
-    <div class="text-[10px] text-gray-400 mt-0.5"><?= $bonusEligibleCount ?> von <?= count($jobs) ?> Jobs</div>
+    <div class="text-[10px] text-gray-400 mt-0.5">
+      <?php if ($totalBonus > 0): ?><?= money($totalBonus) ?> Checklist<?php endif; ?>
+      <?php if ($totalBonus > 0 && $totalZusatzBonus > 0): ?> · <?php endif; ?>
+      <?php if ($totalZusatzBonus > 0): ?><?= money($totalZusatzBonus) ?> Zusatzleistungen<?php endif; ?>
+    </div>
   </div>
   <div class="bg-white rounded-xl border p-4">
     <div class="text-2xl font-bold"><?= count($jobs) ?></div>
@@ -104,9 +136,12 @@ include __DIR__ . '/../includes/layout.php';
 <div class="mb-6 p-4 rounded-xl bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 flex items-start gap-3">
   <span class="text-2xl">🏆</span>
   <div class="flex-1">
-    <div class="font-bold text-sm text-amber-900">Checklist-Bonus: +5 % auf den Job</div>
-    <div class="text-xs text-amber-800 mt-0.5">
-      Wenn Sie bei einem Job <strong>alle Checklist-Items</strong> abhaken <strong>und jedes mit einem Beweisfoto</strong> belegen, bekommen Sie automatisch <strong>+5 %</strong> auf den Job-Verdienst. Kein Zusatzaufwand — einfach die Fotos direkt beim Job machen.
+    <div class="font-bold text-sm text-amber-900">Zwei Wege zum Extra-Verdienst</div>
+    <div class="text-xs text-amber-800 mt-1">
+      <strong>🏆 Checklist-Bonus (+5 %):</strong> Alle Checklist-Items abhaken und mit Foto belegen → automatisch +5 % auf den Job-Verdienst.
+    </div>
+    <div class="text-xs text-amber-800 mt-1">
+      <strong>➕ Zusatzleistungs-Bonus:</strong> Pro vom Kunden gebuchter Zusatzleistung (z.B. Wäsche-Service, Welcome-Paket) bekommen Sie einen <strong>festen Aufschlag</strong> — er wird automatisch zum Verdienst addiert.
     </div>
   </div>
 </div>
@@ -139,10 +174,20 @@ include __DIR__ . '/../includes/layout.php';
         $bonus = $j['bonus'] ?? 0;
         $total = $base + $bonus;
       ?>
-      <tr class="hover:bg-gray-50 <?= $bonus > 0 ? 'bg-amber-50/30' : '' ?>">
+      <?php $zBonus = $j['zusatz_bonus'] ?? 0; $total = $base + $bonus + $zBonus; ?>
+      <tr class="hover:bg-gray-50 <?= ($bonus + $zBonus) > 0 ? 'bg-amber-50/30' : '' ?>">
         <td class="px-4 py-3 font-mono"><?= date('d.m.Y', strtotime($j['j_date'])) ?></td>
         <td class="px-4 py-3"><?= employeeCan('can_see_customer_info') ? e($j['cname']) : '***' ?></td>
-        <td class="px-4 py-3"><?= e($j['stitle']) ?></td>
+        <td class="px-4 py-3">
+          <?= e($j['stitle']) ?>
+          <?php if (!empty($j['zusatz_items'])): ?>
+            <div class="text-[10px] text-brand-dark mt-0.5">
+              <?php foreach ($j['zusatz_items'] as $zi): ?>
+                <span class="inline-block px-1.5 py-0 bg-brand/10 rounded mr-1 mb-0.5"><?= e($zi['name']) ?> +<?= number_format($zi['bonus'], 2, ',', '.') ?>€</span>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
+        </td>
         <td class="px-4 py-3">
           <?php if (!empty($j['checklist_total'])): ?>
             <span class="text-xs font-semibold <?= $bonus > 0 ? 'text-green-600' : 'text-gray-500' ?>"><?= $j['checklist_done'] ?? 0 ?>/<?= $j['checklist_total'] ?></span>
@@ -154,13 +199,16 @@ include __DIR__ . '/../includes/layout.php';
         <td class="px-4 py-3 font-medium"><?= number_format($hrs, 1) ?>h</td>
         <td class="px-4 py-3 text-gray-700"><?= money($base) ?></td>
         <td class="px-4 py-3">
-          <?php if ($bonus > 0): ?>
-          <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold">+<?= money($bonus) ?></span>
+          <?php if ($bonus > 0 || $zBonus > 0): ?>
+          <div class="flex flex-col gap-0.5">
+            <?php if ($bonus > 0): ?><span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold">🏆 +<?= money($bonus) ?></span><?php endif; ?>
+            <?php if ($zBonus > 0): ?><span class="px-2 py-0.5 rounded-full bg-brand/15 text-brand-dark text-[11px] font-bold">➕ +<?= money($zBonus) ?></span><?php endif; ?>
+          </div>
           <?php else: ?>
           <span class="text-[10px] text-gray-300">—</span>
           <?php endif; ?>
         </td>
-        <td class="px-4 py-3 font-bold <?= $bonus > 0 ? 'text-amber-700' : 'text-green-600' ?>"><?= money($total) ?></td>
+        <td class="px-4 py-3 font-bold <?= ($bonus+$zBonus) > 0 ? 'text-amber-700' : 'text-green-600' ?>"><?= money($total) ?></td>
       </tr>
       <?php endforeach; ?>
       <?php if (empty($jobs)): ?>

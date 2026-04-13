@@ -24,7 +24,7 @@ $cid = (int)$_SESSION['uid'];
 // Find an active job: RUNNING, or PENDING/CONFIRMED and starting within ±2 hours
 $now = date('Y-m-d H:i:s');
 $job = one("
-    SELECT j.*, s.title AS stitle, s.street, s.city, s.lat AS s_lat, s.lng AS s_lng,
+    SELECT j.*, s.title AS stitle, s.street, s.number, s.postal_code, s.city, s.lat AS s_lat, s.lng AS s_lng,
            e.display_name AS partner_name, e.profile_pic AS partner_pic, e.emp_id
     FROM jobs j
     LEFT JOIN services s ON j.s_id_fk = s.s_id
@@ -83,18 +83,42 @@ if ((!$sLat || !$sLng) && !empty($job['street']) && !empty($job['city'])) {
     }
 }
 
+// Partner bleibt anonym für Kunden — nur Status + Zeiten werden zurückgegeben
+// Adresse voll zusammenbauen (Street + Nr + PLZ + Stadt)
+$svcNumber = $job['number'] ?? '';
+$svcPLZ = $job['postal_code'] ?? '';
+$addressParts = array_filter([
+    trim(($job['street'] ?? '') . ' ' . $svcNumber),
+    trim($svcPLZ . ' ' . ($job['city'] ?? '')),
+]);
+
+// Kundentyp: Host/B2B = Pauschal-Modus (keine Zeit-Details), Privat = pro-h
+$cust = one("SELECT customer_type FROM customer WHERE customer_id=?", [$cid]);
+$isFlatRate = in_array($cust['customer_type'] ?? '', ['Airbnb','Host','Co-Host','Short-Term Rental','Booking','Company','B2B','Firma','GmbH','Business']);
+
+// Live-Dauer berechnen (Sekunden seit start_time)
+$elapsedSec = null;
+if (!empty($job['start_time']) && in_array($job['job_status'], ['RUNNING','STARTED'])) {
+    $startTs = strtotime($job['j_date'] . ' ' . $job['start_time']);
+    $elapsedSec = max(0, time() - $startTs);
+}
+
 $out = [
     'success'        => true,
     'status'         => $job['job_status'],
     'job_id'         => (int)$job['j_id'],
-    'partner_name'   => $job['partner_name'] ?: 'Ihr Partner',
-    'partner_pic'    => $job['partner_pic'] ?: null,
     'service_title'  => $job['stitle'] ?: 'Reinigung',
     'service_lat'    => $sLat ?: null,
     'service_lng'    => $sLng ?: null,
-    'service_address'=> trim(($job['street'] ?? '') . ', ' . ($job['city'] ?? ''), ', '),
+    'service_address'=> implode(', ', $addressParts),
     'job_date'       => $job['j_date'],
     'job_time'       => substr($job['j_time'] ?? '', 0, 5),
+    'job_started_at' => !empty($job['start_time']) ? substr($job['start_time'], 0, 5) : null,
+    'job_ended_at'   => !empty($job['end_time']) ? substr($job['end_time'], 0, 5) : null,
+    'is_started'     => in_array($job['job_status'], ['RUNNING','STARTED']) && !empty($job['start_time']),
+    'is_flat_rate'   => $isFlatRate,      // Pauschal-Kunde: weniger Details
+    'elapsed_seconds'=> $elapsedSec,       // Sekunden seit Start (für Live-Counter)
+    'planned_hours'  => (float)($job['j_hours'] ?? 0),
 ];
 
 if ($pos) {

@@ -8,10 +8,30 @@ session_set_cookie_params([
 ]);
 session_start();
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/translate-helper.php';
 
+
+function urlSlug($name, $id) {
+    $name = strtolower(trim((string)$name));
+    $name = strtr($name, ['ä'=>'ae','ö'=>'oe','ü'=>'ue','ß'=>'ss']);
+    $name = preg_replace('/[^a-z0-9]+/', '-', $name);
+    $name = trim($name, '-');
+    $name = substr($name, 0, 30);
+    return $name ? ($name . '-' . (int)$id) : (string)(int)$id;
+}
 function requireLogin($type = null) {
     if (empty($_SESSION['uid']) || empty($_SESSION['utype'])) { header('Location: /login.php'); exit; }
     if ($type && $_SESSION['utype'] !== $type) { header('Location: /login.php'); exit; }
+    // URL-Personalisierung: hänge ?u={uid} an für customer/employee — hilft beim Debug/Support
+    if (in_array($_SESSION['utype'], ['customer','employee'], true)
+        && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET'
+        && empty($_GET['u'])
+        && empty($_SERVER['HTTP_X_REQUESTED_WITH'])
+        && !headers_sent()) {
+        $sep = strpos($_SERVER['REQUEST_URI'], '?') === false ? '?' : '&';
+        header('Location: ' . $_SERVER['REQUEST_URI'] . $sep . 'u=' . urlSlug($_SESSION['uname'] ?? '', $_SESSION['uid']));
+        exit;
+    }
 }
 function requireAdmin() { requireLogin('admin'); }
 function requireCustomer() { requireLogin('customer'); }
@@ -48,15 +68,29 @@ function employeeCan($perm) {
 
 // Check if customer has a specific permission
 function customerCan($perm) {
-    if (($_SESSION['utype'] ?? '') !== 'customer') return true; // admin/employee can do everything
-    if (!empty($_SESSION['admin_uid'])) return true; // impersonating admin can see everything
+    if (($_SESSION['utype'] ?? '') !== 'customer') return true;
+    if (!empty($_SESSION['admin_uid'])) return true;
     $cid = $_SESSION['uid'] ?? 0;
     if (!$cid) return false;
     static $perms = null;
     if ($perms === null) {
         $raw = val("SELECT email_permissions FROM customer WHERE customer_id=?", [$cid]);
+        $defaults = ['dashboard'=>1,'jobs'=>1,'invoices'=>1,'workhours'=>1,'profile'=>1,'booking'=>1,'documents'=>1,'messages'=>1,'cancel'=>1,'recurring'=>0,'rate'=>1,'calendar'=>1,'wh_umsatz'=>1,'wh_fotos'=>1];
         $perms = json_decode($raw ?: '{}', true);
-        if (!is_array($perms)) $perms = ($raw === 'all' || $raw === '') ? ['dashboard'=>1,'jobs'=>1,'invoices'=>1,'workhours'=>1,'profile'=>1,'booking'=>1,'documents'=>1,'messages'=>1,'cancel'=>1,'recurring'=>0,'rate'=>1,'calendar'=>1,'wh_umsatz'=>1,'wh_fotos'=>1] : [];
+        if (!is_array($perms)) {
+            $r = trim((string)$raw);
+            // Leer oder nur "all" → alle Standard-Rechte
+            if ($r === '' || $r === 'all') {
+                $perms = $defaults;
+            } else {
+                // Komma-getrennte Liste parsen — "all" als Eintrag = alle Standard-Rechte + extras
+                $parts = array_filter(array_map('trim', explode(',', $r)));
+                $perms = in_array('all', $parts, true) ? $defaults : [];
+                foreach ($parts as $p) {
+                    if ($p !== 'all') $perms[$p] = 1;
+                }
+            }
+        }
     }
     return !empty($perms[$perm]);
 }

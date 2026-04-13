@@ -5,21 +5,34 @@ requireAdmin();
 $title = 'Email Inbox'; $page = 'email-inbox';
 global $dbLocal;
 
-// Create tables
+// Create tables (MariaDB)
 try {
     $dbLocal->exec("CREATE TABLE IF NOT EXISTS email_inbox (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, message_id TEXT UNIQUE, from_email TEXT, from_name TEXT,
-        to_email TEXT, subject TEXT, body_text TEXT, body_html TEXT, date_received DATETIME,
-        is_read INTEGER DEFAULT 0, customer_id INTEGER, employee_id INTEGER, job_id INTEGER,
-        category TEXT DEFAULT 'unassigned', starred INTEGER DEFAULT 0, archived INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        message_id VARCHAR(255) UNIQUE,
+        from_email VARCHAR(255), from_name VARCHAR(255),
+        to_email VARCHAR(255), subject VARCHAR(500),
+        body_text MEDIUMTEXT, body_html MEDIUMTEXT,
+        date_received DATETIME,
+        is_read TINYINT DEFAULT 0,
+        customer_id INT NULL, employee_id INT NULL, job_id INT NULL,
+        category VARCHAR(50) DEFAULT 'unassigned',
+        starred TINYINT DEFAULT 0, archived TINYINT DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_customer (customer_id), INDEX idx_category (category), INDEX idx_archived (archived)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $dbLocal->exec("CREATE TABLE IF NOT EXISTS email_accounts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, imap_host TEXT NOT NULL,
-        imap_port INTEGER DEFAULT 993, imap_user TEXT NOT NULL, imap_pass TEXT NOT NULL,
-        imap_ssl INTEGER DEFAULT 1, active INTEGER DEFAULT 1, last_sync DATETIME,
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        imap_host VARCHAR(255) NOT NULL,
+        imap_port INT DEFAULT 993,
+        imap_user VARCHAR(255) NOT NULL,
+        imap_pass VARCHAR(255) NOT NULL,
+        imap_ssl TINYINT DEFAULT 1,
+        active TINYINT DEFAULT 1,
+        last_sync DATETIME NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
 
 // Handle actions
@@ -33,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
         $pass = trim($_POST['imap_pass'] ?? '');
         if ($email && $host && $user && $pass) {
             try {
-                $dbLocal->prepare("INSERT OR REPLACE INTO email_accounts (email, imap_host, imap_port, imap_user, imap_pass) VALUES (?,?,?,?,?)")
+                $dbLocal->prepare("REPLACE INTO email_accounts (email, imap_host, imap_port, imap_user, imap_pass) VALUES (?,?,?,?,?)")
                     ->execute([$email, $host, $port, $user, $pass]);
                 $success = "Account $email hinzugefuegt";
             } catch (Exception $e) { $error = $e->getMessage(); }

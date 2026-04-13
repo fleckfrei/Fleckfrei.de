@@ -11,7 +11,7 @@ $today = date('Y-m-d');
 // Next upcoming job
 $nextJob = one("
     SELECT j.*, s.title as stitle, e.display_name as edisplay, e.profile_pic as eavatar
-    FROM jobs j
+    FROM jobs_calendar j
     LEFT JOIN services s ON j.s_id_fk = s.s_id
     LEFT JOIN employee e ON j.emp_id_fk = e.emp_id
     WHERE j.customer_id_fk = ?
@@ -31,7 +31,7 @@ $unpaid = customerCan('invoices') ? all("
 $totalUnpaid = array_sum(array_column($unpaid, 'remaining_price'));
 
 // Counts
-$upcomingCount = (int) val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk = ? AND j_date >= ? AND status = 1 AND job_status NOT IN ('CANCELLED','COMPLETED')", [$cid, $today]);
+$upcomingCount = (int) val("SELECT COUNT(*) FROM jobs_calendar WHERE customer_id_fk = ? AND j_date >= ? AND status = 1 AND job_status NOT IN ('CANCELLED','COMPLETED')", [$cid, $today]);
 $completedCount = (int) val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk = ? AND job_status = 'COMPLETED' AND status = 1", [$cid]);
 
 // THIS MONTH stats — all-in-one summary
@@ -203,43 +203,160 @@ include __DIR__ . '/../includes/layout-customer.php';
 <!-- ========================================================== -->
 <div x-data="partnerTracker()" x-init="load()" x-show="hasActive" x-cloak class="mb-6">
   <div class="card-elev overflow-hidden">
-    <div class="px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-emerald-50 to-transparent flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-          <span class="text-base">📍</span>
-        </div>
-        <div>
-          <h3 class="font-bold text-gray-900 text-sm">Live — Ihr Partner unterwegs</h3>
-          <div class="text-[10px] text-gray-500 flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-            <span x-text="statusText"></span>
+    <!-- PROMINENTER Status-Banner -->
+    <div class="px-5 py-4 border-b border-gray-100"
+         :class="{
+           'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white': data.is_started,
+           'bg-gradient-to-r from-amber-400 to-amber-500 text-white': data.status === 'CONFIRMED' && !data.is_started,
+           'bg-gradient-to-r from-blue-400 to-blue-500 text-white': data.status === 'PENDING'
+         }">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-full bg-white/25 backdrop-blur flex items-center justify-center flex-shrink-0">
+            <template x-if="data.is_started"><span class="text-2xl">▶</span></template>
+            <template x-if="!data.is_started"><span class="text-2xl">⏳</span></template>
+          </div>
+          <div>
+            <div class="font-extrabold text-base leading-tight"
+                 x-text="data.is_started ? (data.is_flat_rate ? '✓ Ihre Reinigung ist in Arbeit' : '✓ Partner hat angefangen') : (data.status === 'CONFIRMED' ? 'Partner kommt gleich' : 'Termin geplant')"></div>
+            <div class="text-sm font-medium opacity-95 mt-0.5">
+              <!-- Pauschal: nur "läuft seit..." ohne Zeitstempel für Privacy -->
+              <template x-if="data.is_started && data.is_flat_rate">
+                <span>🟢 online · läuft seit <strong x-text="elapsedHuman"></strong></span>
+              </template>
+              <!-- Pro-h: volle Details (Start, Dauer, planmäßig) -->
+              <template x-if="data.is_started && !data.is_flat_rate">
+                <span>
+                  Gestartet um <strong x-text="data.job_started_at"></strong> Uhr · läuft seit <strong x-text="elapsedHuman"></strong>
+                </span>
+              </template>
+              <span x-show="!data.is_started && data.job_time">Geplant: <strong x-text="data.job_time"></strong> Uhr</span>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="text-right">
-        <div class="text-[11px] text-gray-400">ETA</div>
-        <div class="text-base font-extrabold text-emerald-600" x-text="etaText">—</div>
+        <div class="text-right" x-show="etaText && etaText !== '—' && typeof data.distance_km === 'number'">
+          <div class="text-[10px] uppercase opacity-80">ETA</div>
+          <div class="text-xl font-extrabold" x-text="etaText"></div>
+        </div>
       </div>
     </div>
 
-    <!-- Map -->
-    <div id="partnerMap" class="w-full" style="height: 280px; background: #f1f5f9;"></div>
+    <!-- Map (full-width, height 300px, mit Brand-Rahmen) -->
+    <div class="relative">
+      <div id="partnerMap" style="width: 100%; height: 320px; background: linear-gradient(135deg, #E8F5F1 0%, #f5f6f8 100%);"></div>
+      <!-- Overlay mit Live-Badge wenn GPS aktiv -->
+      <div x-show="data.partner_lat && data.partner_lng" class="absolute top-3 left-3 bg-white/95 backdrop-blur rounded-lg px-3 py-1.5 shadow-lg z-[1000] flex items-center gap-1.5 text-xs font-bold text-emerald-700 pointer-events-none">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+        LIVE
+      </div>
+      <div x-show="!data.partner_lat || !data.partner_lng" class="absolute top-3 left-3 bg-white/95 backdrop-blur rounded-lg px-3 py-1.5 shadow-lg z-[1000] flex items-center gap-1.5 text-xs font-semibold text-gray-700 pointer-events-none">
+        📍 GPS wird aktiviert...
+      </div>
+    </div>
 
-    <!-- Info row -->
-    <div class="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap text-xs">
-      <div class="flex items-center gap-2 min-w-0">
-        <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0 font-bold">
-          <template x-if="data.partner_pic"><img :src="'/uploads/' + data.partner_pic" class="w-8 h-8 rounded-full object-cover"/></template>
-          <template x-if="!data.partner_pic"><span x-text="initial"></span></template>
+    <!-- Job-Details: Service, Adresse, Zeit -->
+    <div class="px-5 py-4 border-t border-gray-100 space-y-2.5">
+      <div class="flex items-center gap-2 text-sm">
+        <svg class="w-4 h-4 text-brand flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        <span class="font-semibold text-gray-900" x-text="data.service_title"></span>
+      </div>
+      <div class="flex items-start gap-2 text-sm text-gray-800" x-show="data.service_address">
+        <svg class="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span x-text="data.service_address"></span>
+      </div>
+      <!-- Status row + Entfernung nur wenn definiert -->
+      <div class="flex items-center justify-between gap-3 flex-wrap pt-2 border-t border-gray-100">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center flex-shrink-0">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          </div>
+          <div>
+            <div class="font-bold text-gray-900 text-xs">Ihr Fleckfrei-Partner</div>
+            <div class="text-[11px] font-semibold"
+                 x-bind:class="data.is_started ? 'text-emerald-700' : (data.status === 'CONFIRMED' ? 'text-amber-700' : 'text-gray-700')">
+              <span x-show="data.is_started">✓ arbeitet seit <span x-text="data.job_started_at"></span></span>
+              <span x-show="!data.is_started && data.status === 'CONFIRMED'">⏳ bestätigt · noch nicht gestartet</span>
+              <span x-show="!data.is_started && data.status === 'PENDING'">⏳ in Planung</span>
+            </div>
+          </div>
         </div>
-        <div class="min-w-0">
-          <div class="font-bold text-gray-900 truncate" x-text="data.partner_name || 'Ihr Partner'"></div>
-          <div class="text-[10px] text-gray-500 truncate" x-text="data.service_title"></div>
+        <div class="text-right" x-show="typeof data.distance_km === 'number' && data.distance_km >= 0">
+          <div class="text-[10px] text-gray-600 uppercase tracking-wide">Entfernung</div>
+          <div class="font-bold text-gray-900 text-sm" x-text="data.distance_km + ' km'"></div>
         </div>
       </div>
-      <div class="text-right">
-        <div class="text-[10px] text-gray-400" x-show="data.distance_km !== null">Entfernung</div>
-        <div class="font-semibold text-gray-900" x-text="data.distance_km !== null ? data.distance_km + ' km' : ''"></div>
+    </div>
+
+    <!-- Quick-Actions: Nachricht an Partner, Bewertung, Zahlung -->
+    <div class="border-t border-gray-100 bg-white px-5 py-3">
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <!-- Nachricht an Partner (anonym via Fleckfrei-Chat) -->
+        <a href="/customer/messages.php" class="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-semibold transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          Nachricht an Partner
+        </a>
+        <!-- WhatsApp Direkt (via Fleckfrei-Nummer als Proxy) -->
+        <a :href="'<?= CONTACT_WHATSAPP_URL ?>?text=' + encodeURIComponent('Hallo, zu Job #' + (data.job_id || '') + ' (' + (data.service_title || '') + '): ')" target="_blank"
+           class="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-brand-dark hover:bg-brand text-white rounded-lg text-xs font-semibold transition">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487"/></svg>
+          WhatsApp
+        </a>
+        <!-- Bewerten (wenn Job bald fertig oder fertig) -->
+        <a :href="'/customer/jobs.php?view=' + (data.job_id || '')" class="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-white border-2 border-gray-200 hover:border-brand text-gray-800 hover:text-brand rounded-lg text-xs font-semibold transition col-span-2 sm:col-span-1">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
+          Job-Details
+        </a>
+      </div>
+
+      <!-- Payment + Review Status (erscheint wenn Job fertig) -->
+      <div x-show="data.status === 'COMPLETED'" class="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <div class="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center">
+            <svg class="w-4 h-4 text-amber-600" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-gray-900">Job erledigt · jetzt bewerten</div>
+            <div class="text-[10px] text-gray-600">Helfen Sie anderen Kunden</div>
+          </div>
+        </div>
+        <a :href="'/customer/jobs.php?view=' + data.job_id + '&tab=rating'" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition">⭐ Bewerten</a>
+      </div>
+    </div>
+
+    <!-- Checkliste des Services -->
+    <div x-show="(checklist || []).length > 0" class="border-t border-gray-100 bg-brand-light/30 px-5 py-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs uppercase font-bold text-brand-dark tracking-wide flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span x-text="'Checkliste · ' + (checklist || []).length + ' Punkte'"></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="text-[11px] font-bold text-brand-dark" x-show="(checklist || []).length > 0">
+            <span x-text="checklistDone"></span> / <span x-text="(checklist || []).length"></span> erledigt
+          </div>
+          <a href="/customer/checklist.php" class="text-[10px] font-bold text-white bg-brand hover:bg-brand-dark px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
+            Anpassen
+          </a>
+        </div>
+      </div>
+      <!-- Progress-Bar -->
+      <div class="w-full h-1.5 bg-white rounded-full mb-3 overflow-hidden" x-show="(checklist || []).length > 0">
+        <div class="h-full bg-brand transition-all"
+             :style="'width:' + ((checklist || []).length > 0 ? Math.round(checklistDone * 100 / checklist.length) : 0) + '%'"></div>
+      </div>
+      <div class="space-y-1.5 max-h-44 overflow-y-auto">
+        <template x-for="item in (checklist || [])" :key="item.checklist_id">
+          <div class="flex items-center gap-2 text-xs bg-white rounded-lg px-2 py-1.5">
+            <span class="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 flex-shrink-0"
+                  :class="item.completed == 1 ? 'bg-brand border-brand' : 'border-gray-300 bg-white'">
+              <svg x-show="item.completed == 1" class="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            </span>
+            <span class="flex-1 font-medium" :class="item.completed == 1 ? 'text-gray-500 line-through' : 'text-gray-900'" x-text="item.title"></span>
+            <span x-show="item.priority === 'critical'" class="text-[9px] px-1.5 py-0.5 bg-red-100 text-red-700 rounded font-bold">!</span>
+            <span x-show="item.room" class="text-[10px] text-gray-600 px-1.5 py-0.5 bg-gray-100 rounded" x-text="item.room"></span>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -522,10 +639,29 @@ include __DIR__ . '/../includes/layout-customer.php';
 
 <?php /* Berlin News wurde nach oben verschoben für bessere Host-Übersicht */ ?>
 
-<!-- Quick WA-Booking tile — with name instruction so n8n can auto-match -->
+<!-- Quick WA-Booking tile — Keyword aus services.wa_keyword (Property-basiert) -->
 <?php
-// Pick the best recognizable name for this customer (business → Firmenname, private → Vorname)
-$waDisplayName = trim($customer['surname'] ?? '') ?: trim(explode(' ', $custFullName)[0] ?? $custFullName) ?: 'Ihr Name';
+// Property-Keyword aus Services des Kunden (Admin-konfigurierbar pro Service)
+$waKeyword = null;
+try {
+    // Nimm das Keyword vom zuletzt benutzten aktiven Service
+    $waKeyword = val("SELECT s.wa_keyword FROM services s
+        INNER JOIN jobs j ON j.s_id_fk = s.s_id
+        WHERE j.customer_id_fk = ? AND j.status = 1 AND s.wa_keyword IS NOT NULL AND s.wa_keyword != ''
+        ORDER BY j.j_date DESC LIMIT 1", [$cid]);
+    if (!$waKeyword) {
+        // Fallback: irgendein aktiver Service mit Keyword
+        $waKeyword = val("SELECT wa_keyword FROM services WHERE customer_id_fk=? AND wa_keyword IS NOT NULL AND wa_keyword != '' LIMIT 1", [$cid]);
+    }
+} catch (Exception $e) {}
+$waDisplayName = $waKeyword ?: (trim($customer['surname'] ?? '') ?: trim(explode(' ', $custFullName)[0] ?? $custFullName) ?: 'Ihr Name');
+$waPhonePure = preg_replace('/[^0-9]/', '', defined('CONTACT_WHATSAPP') ? CONTACT_WHATSAPP : '');
+$waPrefilledMsg = $waKeyword
+    ? "Hallo Fleckfrei, ich möchte einen Termin buchen.\nKeyword: {$waKeyword}"
+    : "Hallo Fleckfrei, ich möchte einen Termin buchen.\nName: {$waDisplayName}";
+$waPrefilledUrl = $waPhonePure
+    ? 'https://wa.me/' . $waPhonePure . '?text=' . rawurlencode($waPrefilledMsg)
+    : (defined('CONTACT_WHATSAPP_URL') ? CONTACT_WHATSAPP_URL : '#');
 ?>
 <div class="mt-6 rounded-2xl overflow-hidden border-2 border-brand bg-gradient-to-br from-brand-light via-white to-brand-light shadow-sm">
   <div class="p-5">
@@ -545,10 +681,10 @@ $waDisplayName = trim($customer['surname'] ?? '') ?: trim(explode(' ', $custFull
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         Wichtig — beginnen Sie Ihre Nachricht so:
       </div>
-      <div class="bg-white border border-brand/10 rounded-lg px-3 py-2 font-mono text-sm text-gray-900 flex items-center justify-between gap-2" x-data="{ copied: false }">
-        <span>Name: <strong><?= e($waDisplayName) ?></strong></span>
-        <button @click="navigator.clipboard.writeText('Name: <?= e($waDisplayName) ?>'); copied = true; setTimeout(() => copied = false, 2000)"
-                class="text-[10px] font-semibold text-brand hover:text-brand-dark px-2 py-1 bg-brand/5 rounded transition whitespace-nowrap">
+      <div class="bg-white border border-brand/20 rounded-lg px-3 py-2 font-mono text-sm text-gray-900 flex items-center justify-between gap-2" x-data="{ copied: false }">
+        <span><?= $waKeyword ? 'Keyword' : 'Name' ?>: <strong class="text-brand-dark"><?= e($waDisplayName) ?></strong></span>
+        <button @click="navigator.clipboard.writeText('<?= $waKeyword ? 'Keyword' : 'Name' ?>: <?= e($waDisplayName) ?>'); copied = true; setTimeout(() => copied = false, 2000)"
+                class="text-[10px] font-bold text-white bg-brand hover:bg-brand-dark px-3 py-1.5 rounded transition whitespace-nowrap">
           <span x-show="!copied">Kopieren</span>
           <span x-show="copied" x-cloak>✓ Kopiert</span>
         </button>
@@ -569,7 +705,7 @@ $waDisplayName = trim($customer['surname'] ?? '') ?: trim(explode(' ', $custFull
       </div>
     </div>
 
-    <a href="<?= CONTACT_WHATSAPP_URL ?>" target="_blank" rel="noopener"
+    <a href="<?= e($waPrefilledUrl) ?>" target="_blank" rel="noopener"
        class="w-full flex items-center justify-center gap-2 py-3 bg-brand hover:bg-brand-dark text-white rounded-xl font-bold text-sm transition shadow-lg shadow-brand/20">
       Jetzt WhatsApp öffnen
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
@@ -658,11 +794,23 @@ function partnerTracker() {
     hasActive: false,
     statusText: '',
     etaText: '—',
-    initial: '?',
     map: null,
     partnerMarker: null,
     serviceMarker: null,
     pollTimer: null,
+    tickTimer: null,
+    elapsedSec: 0,
+    elapsedHuman: '—',
+    checklist: [],
+    checklistDone: 0,
+    updateElapsed() {
+      if (!this.data.is_started || !this.data.elapsed_seconds) { this.elapsedHuman = '—'; return; }
+      this.elapsedSec++; // tick
+      const s = this.elapsedSec;
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      this.elapsedHuman = (h > 0 ? h + 'h ' : '') + m + 'min';
+    },
 
     async load() {
       try {
@@ -674,15 +822,40 @@ function partnerTracker() {
         }
         this.data = d;
         this.hasActive = true;
-        this.statusText = d.status === 'RUNNING' ? 'Job läuft gerade' : 'Partner unterwegs';
-        this.etaText = d.eta_min !== undefined ? ('~' + d.eta_min + ' Min') : '—';
-        this.initial = (d.partner_name || '?').charAt(0).toUpperCase();
-        this.$nextTick(() => this.renderMap());
-        // Poll every 30s
+        this.statusText = d.status === 'RUNNING'
+          ? (d.job_started_at ? 'Reinigung läuft seit ' + d.job_started_at : 'Job läuft gerade')
+          : (d.status === 'CONFIRMED' ? 'Partner bestätigt — noch nicht gestartet' : 'Partner eingeplant');
+        this.etaText = (d.eta_min !== undefined && d.eta_min !== null) ? ('~' + d.eta_min + ' Min') : '—';
+        // Live-Ticker starten
+        this.elapsedSec = d.elapsed_seconds || 0;
+        this.updateElapsed(); // initial format
+        if (this.tickTimer) clearInterval(this.tickTimer);
+        if (d.is_started) this.tickTimer = setInterval(() => this.updateElapsed(), 1000);
+        // Checkliste laden
+        if (d.job_id) this.loadChecklist(d.job_id);
+        this.$nextTick(() => {
+          this.renderMap();
+          // Leaflet needs invalidateSize after container shows
+          setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 150);
+          setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 500);
+        });
         if (!this.pollTimer) this.pollTimer = setInterval(() => this.refresh(), 30000);
       } catch(e) {
         this.hasActive = false;
       }
+    },
+
+    async loadChecklist(jobId) {
+      try {
+        const r = await fetch('/api/index.php?action=checklist/for-job&j_id=' + jobId, {
+          headers: { 'X-API-Key': '<?= API_KEY ?>' }
+        });
+        const d = await r.json();
+        if (d.success && d.data?.items) {
+          this.checklist = d.data.items;
+          this.checklistDone = d.data.items.filter(i => i.completed).length;
+        }
+      } catch(e) {}
     },
 
     async refresh() {
@@ -708,39 +881,54 @@ function partnerTracker() {
       }
       var el = document.getElementById('partnerMap');
       if (!el) return;
+      // Sicherstellen dass Container Größe hat
+      el.style.width = '100%';
+      if (!el.style.height) el.style.height = '300px';
 
-      // Center on partner if available, else service, else fallback Berlin
-      var centerLat = this.data.partner_lat || this.data.service_lat || 52.52;
-      var centerLng = this.data.partner_lng || this.data.service_lng || 13.405;
+      // Center priorisiert Service (das Ziel), fallback Berlin
+      var sLat = this.data.service_lat, sLng = this.data.service_lng;
+      var pLat = this.data.partner_lat, pLng = this.data.partner_lng;
+      var centerLat = sLat || pLat || 52.52;
+      var centerLng = sLng || pLng || 13.405;
+      var zoom = (sLat && pLat) ? 13 : 15;  // Näher wenn nur ein Marker
 
-      this.map = L.map('partnerMap', { zoomControl: true, attributionControl: false }).setView([centerLat, centerLng], 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(this.map);
+      this.map = L.map('partnerMap', { zoomControl: true, attributionControl: false, scrollWheelZoom: false }).setView([centerLat, centerLng], zoom);
+      // CartoDB Positron — cleaner, better style
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd' }).addTo(this.map);
 
-      // Service marker (home pin)
-      if (this.data.service_lat && this.data.service_lng) {
+      // Service marker (Fleckfrei-Brand-Pin mit Adresse)
+      if (sLat && sLng) {
         var homeIcon = L.divIcon({
-          html: '<div style="background:#2E7D6B;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:16px;">🏠</div>',
-          iconSize: [32, 32], iconAnchor: [16, 16], className: '',
+          html: '<div style="background:#2E7D6B;border-radius:50% 50% 50% 0;width:36px;height:36px;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 4px 12px rgba(46,125,107,0.5);"><span style="transform:rotate(45deg);font-size:18px;">🏠</span></div>',
+          iconSize: [36, 36], iconAnchor: [18, 36], className: '',
         });
-        this.serviceMarker = L.marker([this.data.service_lat, this.data.service_lng], { icon: homeIcon })
-          .addTo(this.map).bindPopup('Ihr Objekt');
+        this.serviceMarker = L.marker([sLat, sLng], { icon: homeIcon })
+          .addTo(this.map).bindPopup('<strong>' + (this.data.service_title || 'Ihr Objekt') + '</strong><br><small>' + (this.data.service_address || '') + '</small>');
       }
 
-      // Partner marker (pulsing dot)
-      if (this.data.partner_lat && this.data.partner_lng) {
+      // Partner marker (Pulsing dot)
+      if (pLat && pLng) {
         var partnerIcon = L.divIcon({
-          html: '<div style="position:relative;"><div style="background:#10b981;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-size:14px;font-weight:bold;">' + this.initial + '</div><div style="position:absolute;top:-4px;left:-4px;width:40px;height:40px;border-radius:50%;background:rgba(16,185,129,0.3);animation:pulse 2s infinite;"></div></div>',
-          iconSize: [32, 32], iconAnchor: [16, 16], className: '',
+          html: '<div style="position:relative;width:36px;height:36px;"><div style="position:absolute;top:6px;left:6px;width:24px;height:24px;background:#10b981;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div><div style="position:absolute;top:0;left:0;width:36px;height:36px;border-radius:50%;background:rgba(16,185,129,0.35);animation:pulse 1.5s infinite;"></div></div>',
+          iconSize: [36, 36], iconAnchor: [18, 18], className: '',
         });
-        this.partnerMarker = L.marker([this.data.partner_lat, this.data.partner_lng], { icon: partnerIcon })
-          .addTo(this.map).bindPopup(this.data.partner_name || 'Partner');
+        this.partnerMarker = L.marker([pLat, pLng], { icon: partnerIcon })
+          .addTo(this.map).bindPopup('<strong>Ihr Fleckfrei-Partner</strong>' + (this.data.is_started ? '<br><small>✓ arbeitet seit ' + this.data.job_started_at + '</small>' : ''));
 
-        // Fit bounds if both markers present
+        // Fit bounds wenn beide Marker da
         if (this.serviceMarker) {
           var group = L.featureGroup([this.partnerMarker, this.serviceMarker]);
-          this.map.fitBounds(group.getBounds(), { padding: [40, 40] });
+          this.map.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 15 });
+
+          // Route-Linie zwischen Partner und Ziel
+          var routeLine = L.polyline([[pLat, pLng], [sLat, sLng]], {
+            color: '#2E7D6B', weight: 3, opacity: 0.6, dashArray: '8, 8'
+          }).addTo(this.map);
         }
       }
+
+      // Nach 100ms nochmal invalidate (Container-Size)
+      setTimeout(() => { if (this.map) this.map.invalidateSize(); }, 100);
     },
 
     updateMap() {

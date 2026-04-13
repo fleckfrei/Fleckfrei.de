@@ -7,15 +7,16 @@ global $dbLocal;
 // Create tables if not exist
 try {
     $dbLocal->exec("CREATE TABLE IF NOT EXISTS osint_api_keys (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, api_key TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
-        email TEXT, tier TEXT DEFAULT 'free', rate_limit INTEGER DEFAULT 10,
-        daily_limit INTEGER DEFAULT 50, monthly_limit INTEGER DEFAULT 500,
-        active INTEGER DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, last_used DATETIME
-    )");
+        id INT AUTO_INCREMENT PRIMARY KEY, api_key VARCHAR(128) UNIQUE NOT NULL, name VARCHAR(255) NOT NULL,
+        email VARCHAR(255), tier VARCHAR(32) DEFAULT 'free', rate_limit INT DEFAULT 10,
+        daily_limit INT DEFAULT 50, monthly_limit INT DEFAULT 500,
+        active TINYINT DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, last_used DATETIME NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $dbLocal->exec("CREATE TABLE IF NOT EXISTS osint_api_usage (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, api_key_id INTEGER, action TEXT, target TEXT,
-        ip TEXT, response_time_ms INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
+        id INT AUTO_INCREMENT PRIMARY KEY, api_key_id INT, action VARCHAR(100), target VARCHAR(255),
+        ip VARCHAR(64), response_time_ms INT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_key (api_key_id), INDEX idx_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 } catch (Exception $e) {}
 
 // Handle actions
