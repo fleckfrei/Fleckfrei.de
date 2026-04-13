@@ -19,7 +19,7 @@ jobs:
             xargs -P4 -I{} php -l {} | grep -v "No syntax errors" || true
           # Fail on actual errors
           find . -name '*.php' -not -path './vendor/*' -not -path './backups/*' -not -path './node_modules/*' | \
-            xargs -P4 -I{} php -l {} 2>&1 | grep -i "error" && exit 1 || exit 0
+            xargs -P4 -I{} php -l {} 2>&1 | grep -iE "parse error|syntax error|fatal" && exit 1 || exit 0
 
   deploy:
     needs: lint
