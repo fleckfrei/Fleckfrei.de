@@ -12,22 +12,6 @@ header('Content-Type: application/json');
 $cid = me()['id'];
 
 try {
-    global $dbLocal;
-    // History-Tabelle anlegen (einmalig)
-    $dbLocal->exec("CREATE TABLE IF NOT EXISTS consent_history (
-        ch_id INT AUTO_INCREMENT PRIMARY KEY,
-        customer_id_fk INT NOT NULL,
-        channel ENUM('email','whatsapp','phone','sms') NOT NULL,
-        granted TINYINT(1) NOT NULL,
-        source VARCHAR(50) DEFAULT 'booking',
-        ip_address VARCHAR(45) DEFAULT NULL,
-        user_agent VARCHAR(500) DEFAULT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_customer (customer_id_fk),
-        INDEX idx_channel (channel),
-        INDEX idx_created (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
     $body = json_decode(file_get_contents('php://input'), true) ?: [];
     $email = !empty($body['consent_email']) ? 1 : 0;
     $wa = !empty($body['consent_whatsapp']) ? 1 : 0;
@@ -51,8 +35,8 @@ try {
     ];
     foreach ($channels as $ch => [$new, $prev]) {
         if ($new !== $prev) {
-            $dbLocal->prepare("INSERT INTO consent_history (customer_id_fk, channel, granted, source, ip_address, user_agent) VALUES (?,?,?,?,?,?)")
-                ->execute([$cid, $ch, $new, $source, $ip, $ua]);
+            q("INSERT INTO consent_history (customer_id_fk, channel, old_value, new_value, source, ip, user_agent, changed_by) VALUES (?,?,?,?,?,?,?,?)",
+              [$cid, $ch, $prev, $new, $source, $ip, $ua, 'customer:' . $cid]);
             audit('consent_change', $ch, $cid, ($new ? 'GRANTED' : 'REVOKED') . " via $source");
         }
     }

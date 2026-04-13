@@ -242,7 +242,7 @@ const PricingEngine = {
     }
 
     // Step 2: Frequency discount
-    const freqDiscount = this.frequencyDiscounts[frequency] || 0;
+    const freqDiscount = this._getFrequencyDiscount(frequency);
     if (freqDiscount > 0) {
       const freqAmount = result.basePrice * freqDiscount;
       result.discounts.push({
@@ -294,7 +294,7 @@ const PricingEngine = {
 
     // Step 7: Add-ons
     selectedAddons.forEach(key => {
-      const addon = this.addons[key];
+      const addon = this._resolveAddon(key);
       if (addon) {
         result.addonsList.push({ label: addon.label, amount: addon.price, type: addon.type });
         if (addon.type === 'perVisit' || addon.type === 'onetime') {
@@ -313,7 +313,48 @@ const PricingEngine = {
   // ============================================================
   // PRIVATE HELPERS
   // ============================================================
+  _apiData() {
+    const d = typeof window !== 'undefined' ? window.__flkPrices : null;
+    return (d && d.success && d.base && d.tiers) ? d : null;
+  },
+
+  _calculateBaseFromAPI(api, type, sqm, numProperties) {
+    // Map engine customer_type → API keys
+    const baseKeyMap  = { private: 'private', office: 'business', str: 'airbnb' };
+    const tierKeyMap  = { private: 'private', office: 'private',  str: 'str' };
+    const baseKey = baseKeyMap[type]  || type;
+    const tierKey = tierKeyMap[type]  || type;
+    const baseRow = api.base[baseKey] || api.base[type] || api.base.all;
+    if (!baseRow) return null;
+    const tiers = api.tiers.filter(t => t.customer_type === tierKey);
+    if (!tiers.length) return null;
+    const tier = tiers.find(t => sqm <= +t.max_sqm) || tiers[tiers.length - 1];
+    let hourly = +baseRow.base_hourly_netto || 0;
+    const comp = api.competitive || {};
+    if (comp.mode && comp.competitor_avg > 0) {
+      const cap = comp.competitor_avg * (1 + (comp.premium_pct || 0) / 100);
+      if (hourly > cap) hourly = cap;
+    }
+    const hours = +tier.billed_hours_min || +baseRow.min_billable_hours || 2;
+    let price = hourly * hours;
+    if (comp.new_customer_discount_pct > 0) {
+      price *= (1 - comp.new_customer_discount_pct / 100);
+    }
+    if (type === 'str' && numProperties > 1) {
+      const mpd = [...this.rates.str.volumeDiscount].reverse()
+        .find(d => numProperties >= d.minProperties);
+      if (mpd && mpd.discount > 0) price *= (1 - mpd.discount);
+    }
+    const floor = (api.min_prices && api.min_prices[type]) || 0;
+    return Math.max(price, floor);
+  },
+
   _calculateBase(type, sqm, rooms, numProperties) {
+    const api = this._apiData();
+    if (api) {
+      const apiPrice = this._calculateBaseFromAPI(api, type, sqm, numProperties);
+      if (apiPrice !== null) return apiPrice;
+    }
     switch (type) {
       case 'private': {
         const rate = this.rates.private;
@@ -328,7 +369,6 @@ const PricingEngine = {
       case 'str': {
         const tier = this.rates.str.tiers.find(t => sqm <= t.maxSqm);
         let price = tier ? tier.price : 135.00;
-        // Multi-property discount
         const mpd = [...this.rates.str.volumeDiscount]
           .reverse()
           .find(d => numProperties >= d.minProperties);
@@ -340,6 +380,58 @@ const PricingEngine = {
       default:
         return 58.29;
     }
+  },
+
+  _getFrequencyDiscount(frequency) {
+    const api = this._apiData();
+    if (api && api.frequency_discounts) {
+      const map = {
+        'einmalig': 'einmalig',
+        'woechentlich': 'woechentlich',
+        '2-woechentlich': '2wochen',
+        'monatlich': 'monatlich',
+      };
+      const key = map[frequency];
+      if (key && api.frequency_discounts[key] != null) {
+        return +api.frequency_discounts[key];
+      }
+    }
+    return this.frequencyDiscounts[frequency] || 0;
+  },
+
+  _resolveAddon(key) {
+    const local = this.addons[key];
+    const api = this._apiData();
+    if (api && api.addons && api.addons.length) {
+      const nk = key.toLowerCase();
+      const found = api.addons.find(a => {
+        const n = (a.name || '').toLowerCase();
+        if (nk === 'pflegemittel' && n.includes('reinigungsmittel')) return true;
+        if (nk === 'waesche' && n.includes('wäsch')) return true;
+        if (nk === 'expressslot' && n.includes('express')) return true;
+        if (nk === 'fotodoku' && n.includes('foto')) return true;
+        if (nk === 'schluesselbox' && (n.includes('schlüssel') || n.includes('schluessel'))) return true;
+        if (nk === 'waeschetransport' && n.includes('transport')) return true;
+        return n.includes(nk);
+      });
+      if (found) {
+        const typeMap = {
+          'per_hour': 'perVisit',
+          'percentage': 'perVisit',
+          'one_time': 'onetime',
+          'onetime': 'onetime',
+          'monthly': 'monthly',
+          'per_kg': 'perKg',
+        };
+        return {
+          label: (found.icon ? found.icon + ' ' : '') + found.name,
+          price: +found.price,
+          type: typeMap[found.pricing_type] || (local && local.type) || 'perVisit',
+          description: found.description || (local && local.description) || ''
+        };
+      }
+    }
+    return local || null;
   },
 
   _getLoyaltyTier(pastBookings) {

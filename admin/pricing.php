@@ -82,6 +82,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         q("DELETE FROM pricing_rules WHERE pr_id=?", [(int)($_POST['pr_id'] ?? 0)]);
         header('Location: /admin/pricing.php?saved=1#rules'); exit;
     }
+
+    if ($act === 'save_tier') {
+        $ptId = (int)($_POST['pt_id'] ?? 0);
+        $fields = [
+            $_POST['customer_type'] ?? 'private',
+            (int)($_POST['max_sqm'] ?? 0),
+            (float)($_POST['partner_hours_min'] ?? 0),
+            (float)($_POST['partner_hours_max'] ?? 0),
+            (float)($_POST['billed_hours_min'] ?? 0),
+            (float)($_POST['billed_hours_max'] ?? 0),
+            trim($_POST['notes'] ?? ''),
+            (int)($_POST['sort_order'] ?? 0),
+            !empty($_POST['is_active']) ? 1 : 0,
+        ];
+        if ($ptId > 0) {
+            $fields[] = $ptId;
+            q("UPDATE pricing_tiers SET customer_type=?, max_sqm=?, partner_hours_min=?, partner_hours_max=?, billed_hours_min=?, billed_hours_max=?, notes=?, sort_order=?, is_active=? WHERE pt_id=?", $fields);
+            audit('update', 'pricing_tiers', $ptId, 'Tier geändert');
+        } else {
+            q("INSERT INTO pricing_tiers (customer_type, max_sqm, partner_hours_min, partner_hours_max, billed_hours_min, billed_hours_max, notes, sort_order, is_active) VALUES (?,?,?,?,?,?,?,?,?)", $fields);
+            audit('create', 'pricing_tiers', 0, 'Neuer Tier');
+        }
+        header('Location: /admin/pricing.php?saved=1#tiers'); exit;
+    }
+    if ($act === 'delete_tier') {
+        q("DELETE FROM pricing_tiers WHERE pt_id=?", [(int)($_POST['pt_id'] ?? 0)]);
+        header('Location: /admin/pricing.php?saved=1#tiers'); exit;
+    }
+    if ($act === 'save_competitive') {
+        q("UPDATE settings SET competitive_mode=?, competitive_premium_pct=?, new_customer_discount_pct=?, discount_active=?, discount_weekly=?, discount_biweekly=?, discount_monthly=?",
+          [!empty($_POST['competitive_mode']) ? 1 : 0,
+           (float)($_POST['competitive_premium_pct'] ?? 5),
+           (float)($_POST['new_customer_discount_pct'] ?? 10),
+           !empty($_POST['discount_active']) ? 1 : 0,
+           (float)($_POST['discount_weekly'] ?? 7),
+           (float)($_POST['discount_biweekly'] ?? 5),
+           (float)($_POST['discount_monthly'] ?? 3)]);
+        audit('update', 'settings', 0, 'Competitive/Frequenz-Pricing geändert');
+        header('Location: /admin/pricing.php?saved=1#competitive'); exit;
+    }
 }
 
 // Load pricing rules für Anzeige
@@ -101,6 +141,9 @@ $avgPlatform = !empty($platformPrices) ? round(array_sum($platformPrices) / coun
 $avgCompany = !empty($companyPrices) ? round(array_sum($companyPrices) / count($companyPrices), 2) : null;
 $avgAirbnb = !empty($airbnbPrices) ? round(array_sum($airbnbPrices) / count($airbnbPrices), 2) : null;
 $fleckfreiRate = (float)($configs[0]['base_hourly_netto'] ?? 24.29);
+
+$tiers = all("SELECT * FROM pricing_tiers ORDER BY customer_type, sort_order, max_sqm");
+$settings = one("SELECT competitive_mode, competitive_premium_pct, new_customer_discount_pct, discount_active, discount_weekly, discount_biweekly, discount_monthly FROM settings LIMIT 1") ?: [];
 
 include __DIR__ . '/../includes/layout.php';
 ?>
@@ -469,6 +512,156 @@ function editRule(r) {
   document.getElementById('ruleModal').classList.remove('hidden');
 }
 </script>
+<!-- ============ Competitive + Frequenz Toggles ============ -->
+<div id="competitive" class="bg-white rounded-xl border p-5 mt-6">
+  <h3 class="font-semibold mb-4 flex items-center gap-2">⚔️ Competitive Pricing & Frequenz-Rabatte</h3>
+  <p class="text-xs text-amber-700 mb-3 bg-amber-50 px-3 py-2 rounded">⚠ Wirkt NUR auf neue Kunden/Buchungen. Bestehende bleiben unberührt.</p>
+  <form method="POST" class="space-y-4">
+    <?= csrfField() ?>
+    <input type="hidden" name="action" value="save_competitive"/>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <label class="flex items-center gap-2 p-3 border rounded-lg">
+        <input type="checkbox" name="competitive_mode" value="1" <?= !empty($settings['competitive_mode']) ? 'checked' : '' ?> class="rounded"/>
+        <div><div class="text-sm font-medium">Competitive-Cap</div><div class="text-xs text-gray-500">Stundensatz gedeckelt auf Markt-Avg × (1+Premium)</div></div>
+      </label>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Competitive Premium %</label>
+        <input type="number" step="0.1" name="competitive_premium_pct" value="<?= e((float)($settings['competitive_premium_pct'] ?? 5)) ?>" class="w-full px-3 py-2 border rounded-lg"/>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Neukunden-Rabatt %</label>
+        <input type="number" step="0.1" name="new_customer_discount_pct" value="<?= e((float)($settings['new_customer_discount_pct'] ?? 10)) ?>" class="w-full px-3 py-2 border rounded-lg"/>
+      </div>
+      <label class="flex items-center gap-2 p-3 border rounded-lg">
+        <input type="checkbox" name="discount_active" value="1" <?= !empty($settings['discount_active']) ? 'checked' : '' ?> class="rounded"/>
+        <div><div class="text-sm font-medium">Frequenz-Rabatte an</div></div>
+      </label>
+    </div>
+    <div class="grid grid-cols-3 gap-3 pt-2 border-t">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Wöchentlich %</label>
+        <input type="number" step="0.1" name="discount_weekly" value="<?= e((float)($settings['discount_weekly'] ?? 7)) ?>" class="w-full px-3 py-2 border rounded-lg"/>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">14-täglich %</label>
+        <input type="number" step="0.1" name="discount_biweekly" value="<?= e((float)($settings['discount_biweekly'] ?? 5)) ?>" class="w-full px-3 py-2 border rounded-lg"/>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Monatlich %</label>
+        <input type="number" step="0.1" name="discount_monthly" value="<?= e((float)($settings['discount_monthly'] ?? 3)) ?>" class="w-full px-3 py-2 border rounded-lg"/>
+      </div>
+    </div>
+    <button class="px-4 py-2 bg-brand text-white rounded-lg font-semibold">Speichern</button>
+  </form>
+</div>
+
+<!-- ============ Pricing-Tiers (Wohnungsgrößen → Stunden) ============ -->
+<div id="tiers" class="bg-white rounded-xl border p-5 mt-6">
+  <div class="flex items-center justify-between mb-4">
+    <h3 class="font-semibold flex items-center gap-2">📐 Pricing-Tiers (qm → Partner-/Billed-Stunden)</h3>
+    <button type="button" onclick="editTier({pt_id:0,customer_type:'private',is_active:1,sort_order:0})" class="px-3 py-1.5 bg-brand text-white rounded-lg text-sm">+ Neuer Tier</button>
+  </div>
+  <p class="text-xs text-gray-500 mb-3">Quelle für Booking-Modal-Berechnung via <code>/api/prices-public.php</code></p>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+      <tr>
+        <th class="px-3 py-2 text-left">Typ</th>
+        <th class="px-3 py-2 text-right">≤ qm</th>
+        <th class="px-3 py-2 text-right">Partner h (min–max)</th>
+        <th class="px-3 py-2 text-right">Billed h (min–max)</th>
+        <th class="px-3 py-2 text-left">Notes</th>
+        <th class="px-3 py-2 text-center">Aktiv</th>
+        <th class="px-3 py-2 text-right">Aktion</th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php foreach ($tiers as $t): ?>
+      <tr class="border-t hover:bg-gray-50">
+        <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 bg-gray-100 rounded"><?= e($t['customer_type']) ?></span></td>
+        <td class="px-3 py-2 text-right font-semibold"><?= (int)$t['max_sqm'] ?></td>
+        <td class="px-3 py-2 text-right text-xs"><?= number_format((float)$t['partner_hours_min'],2,',','.') ?> – <?= number_format((float)$t['partner_hours_max'],2,',','.') ?></td>
+        <td class="px-3 py-2 text-right text-xs"><?= number_format((float)$t['billed_hours_min'],2,',','.') ?> – <?= number_format((float)$t['billed_hours_max'],2,',','.') ?></td>
+        <td class="px-3 py-2 text-xs text-gray-500"><?= e($t['notes']) ?></td>
+        <td class="px-3 py-2 text-center"><?= $t['is_active'] ? '✓' : '✗' ?></td>
+        <td class="px-3 py-2 text-right">
+          <button onclick='editTier(<?= json_encode($t, JSON_HEX_APOS) ?>)' class="text-brand hover:underline text-xs">Edit</button>
+          <form method="POST" class="inline" onsubmit="return confirm('Tier wirklich löschen?')">
+            <?= csrfField() ?><input type="hidden" name="action" value="delete_tier"/><input type="hidden" name="pt_id" value="<?= $t['pt_id'] ?>"/>
+            <button class="text-red-500 hover:underline text-xs ml-2">Del</button>
+          </form>
+        </td>
+      </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>
+
+<!-- Tier Edit Modal -->
+<div id="tierModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="bg-white rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+    <h3 class="text-lg font-semibold mb-4" id="tierModalTitle">Tier bearbeiten</h3>
+    <form method="POST" class="space-y-3" id="tierForm">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="save_tier"/>
+      <input type="hidden" name="pt_id" id="t_pt_id"/>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Kundentyp *</label>
+          <select name="customer_type" id="t_customer_type" class="w-full px-3 py-2 border rounded-lg">
+            <option value="private">Private</option><option value="str">STR/Host</option><option value="office">Office</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">≤ max qm *</label>
+          <input type="number" name="max_sqm" id="t_max_sqm" required class="w-full px-3 py-2 border rounded-lg"/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3 pt-2 border-t">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Partner h min</label>
+          <input type="number" step="0.25" name="partner_hours_min" id="t_partner_hours_min" class="w-full px-3 py-2 border rounded-lg"/>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Partner h max</label>
+          <input type="number" step="0.25" name="partner_hours_max" id="t_partner_hours_max" class="w-full px-3 py-2 border rounded-lg"/>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Billed h min</label>
+          <input type="number" step="0.25" name="billed_hours_min" id="t_billed_hours_min" class="w-full px-3 py-2 border rounded-lg"/>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Billed h max</label>
+          <input type="number" step="0.25" name="billed_hours_max" id="t_billed_hours_max" class="w-full px-3 py-2 border rounded-lg"/>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Notes</label>
+        <input name="notes" id="t_notes" class="w-full px-3 py-2 border rounded-lg" placeholder="z.B. Studio, 2-Zimmer"/>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Sortierung</label>
+          <input type="number" name="sort_order" id="t_sort_order" value="0" class="w-full px-3 py-2 border rounded-lg"/>
+        </div>
+        <label class="flex items-center gap-2 text-sm pt-5"><input type="checkbox" name="is_active" id="t_is_active" value="1" class="rounded"/> Aktiv</label>
+      </div>
+      <div class="flex gap-2 pt-3 border-t">
+        <button type="submit" class="flex-1 px-4 py-2 bg-brand text-white rounded-lg font-semibold">Speichern</button>
+        <button type="button" onclick="document.getElementById('tierModal').classList.add('hidden')" class="px-4 py-2 bg-gray-200 rounded-lg">Abbrechen</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function editTier(t) {
+  const ids = ['pt_id','customer_type','max_sqm','partner_hours_min','partner_hours_max','billed_hours_min','billed_hours_max','notes','sort_order'];
+  ids.forEach(k => { const el = document.getElementById('t_'+k); if (el) el.value = t[k] ?? ''; });
+  document.getElementById('t_is_active').checked = !!parseInt(t.is_active || 0);
+  document.getElementById('tierModalTitle').textContent = t.pt_id ? ('Tier #'+t.pt_id+' bearbeiten') : 'Neuer Tier';
+  document.getElementById('tierModal').classList.remove('hidden');
+}
+</script>
+
 <?php
 $addons = all("SELECT * FROM optional_products ORDER BY sort_order, name");
 ?>

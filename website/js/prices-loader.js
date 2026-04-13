@@ -21,6 +21,17 @@
       }
     }
 
+    // 1b) Update service-card "ab X EUR" amounts (landing cards)
+    if (d.min_prices) {
+      const map2 = { private: private, str: str, office: office };
+      for (const [type, sel] of Object.entries(map2)) {
+        const el = document.querySelector(`.service-card__amount[data-type="${sel}"]`);
+        if (el && d.min_prices[type]) {
+          el.textContent = "ab " + d.min_prices[type].toFixed(2).replace(".", ",") + " EUR";
+        }
+      }
+    }
+
     // 2) Update Add-on labels (Pflegemittel, Wäsche, etc.)
     if (d.addons && d.addons.length) {
       document.querySelectorAll('.book__check').forEach((label) => {

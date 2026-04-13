@@ -6,7 +6,6 @@ require_once __DIR__ . '/../includes/auth.php';
 requireAdmin();
 $title = 'DSGVO Consent'; $page = 'consent-log';
 
-global $dbLocal;
 // Stats
 $stats = one("SELECT
     COUNT(*) AS total_customers,
@@ -21,9 +20,10 @@ $stats = one("SELECT
 $historyAvailable = false;
 $recent = [];
 try {
-    $recent = all("SELECT ch.*, c.name as cname FROM consent_history ch
+    $recent = all("SELECT ch.*, ch.new_value AS granted, ch.ip AS ip_address, ch.changed_at AS created_at, c.name as cname
+                   FROM consent_history ch
                    LEFT JOIN customer c ON ch.customer_id_fk=c.customer_id
-                   ORDER BY ch.created_at DESC LIMIT 50");
+                   ORDER BY ch.changed_at DESC LIMIT 50");
     $historyAvailable = true;
 } catch (Exception $e) {}
 
