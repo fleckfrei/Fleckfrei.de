@@ -15,11 +15,15 @@ jobs:
           php-version: '8.2'
       - name: PHP Syntax Check
         run: |
-          find . -name '*.php' -not -path './vendor/*' -not -path './backups/*' -not -path './node_modules/*' | \
-            xargs -P4 -I{} php -l {} | grep -v "No syntax errors" || true
-          # Fail on actual errors
-          find . -name '*.php' -not -path './vendor/*' -not -path './backups/*' -not -path './node_modules/*' | \
-            xargs -P4 -I{} php -l {} 2>&1 | grep -iE "parse error|syntax error|fatal" && exit 1 || exit 0
+          FAILED=0
+          while IFS= read -r f; do
+            if ! php -l "$f" > /dev/null 2>&1; then
+              echo "::error file=$f::PHP syntax error"
+              php -l "$f"
+              FAILED=1
+            fi
+          done < <(find . -name '*.php' -not -path './vendor/*' -not -path './backups/*' -not -path './node_modules/*')
+          exit $FAILED
 
   deploy:
     needs: lint
