@@ -10,7 +10,7 @@ require_once __DIR__ . '/../includes/config.php';
 $clientId = val("SELECT config_value FROM app_config WHERE config_key='google_client_id'") ?: '';
 $clientSecret = val("SELECT config_value FROM app_config WHERE config_key='google_client_secret'") ?: '';
 // Use same redirect URI as OSI OAuth (already registered in Google Console)
-$redirectUri = 'https://app.fleckfrei.de/api/google-callback.php';
+$redirectUri = 'https://app.fleckfrei.de/api/google-login.php';
 
 $code = $_GET['code'] ?? '';
 $error = $_GET['error'] ?? '';
