@@ -10,7 +10,7 @@ require_once __DIR__ . '/includes/config.php';
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Kostenlose Umsatz-Analyse für Vermieter · Fleckfrei</title>
-<meta name="description" content="Revenue-Report für deine Ferien-/STR-Wohnung — AI-Analyse mit Marktvergleich & ROI. Bekommst in 30 Sekunden per Email."/>
+<meta name="description" content="Revenue-Report für Ihre Ferien-/STR-Wohnung — AI-Analyse mit Marktvergleich & ROI. Erhalten Sie den Report in 30 Sekunden per Email."/>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
@@ -36,8 +36,8 @@ body{font-family:'Inter',sans-serif}
 <section class="gradient-header text-white py-14 px-4">
   <div class="max-w-4xl mx-auto text-center">
     <div class="inline-block text-xs px-3 py-1 bg-white/20 rounded-full font-semibold mb-4">💸 Kostenlose Umsatz-Analyse · Report per Email</div>
-    <h1 class="text-3xl md:text-5xl font-bold mb-4 leading-tight">Wie viel Umsatz verlierst du gerade durch schlechte Reinigung?</h1>
-    <p class="text-lg text-white/90 max-w-2xl mx-auto">AI-Analyse für Vermieter von Ferien-/Kurzzeit-Wohnungen. Konkrete Zahlen, Markt-Benchmark, ROI. Report kommt direkt in dein Postfach.</p>
+    <h1 class="text-3xl md:text-5xl font-bold mb-4 leading-tight">Wie viel Umsatz verlieren Sie gerade durch schlechte Reinigung?</h1>
+    <p class="text-lg text-white/90 max-w-2xl mx-auto">AI-Analyse für Vermieter von Ferien-/Kurzzeit-Wohnungen. Konkrete Zahlen, Markt-Benchmark, ROI. Report kommt direkt in Ihr Postfach.</p>
   </div>
 </section>
 
@@ -51,11 +51,11 @@ body{font-family:'Inter',sans-serif}
 
 <section class="max-w-3xl mx-auto px-4 py-10">
   <div class="bg-white rounded-2xl shadow-xl border p-6 mb-8">
-    <h2 class="font-bold text-xl mb-4">Hol dir deinen persönlichen Revenue-Report</h2>
+    <h2 class="font-bold text-xl mb-4">Holen Sie sich Ihren persönlichen Revenue-Report</h2>
     <form id="checkForm" class="space-y-4">
       <!-- Listing: URL oder Text -->
       <div>
-        <label class="block text-sm font-semibold mb-1">📍 Link oder Beschreibung deiner Wohnung *</label>
+        <label class="block text-sm font-semibold mb-1">📍 Link oder Beschreibung Ihrer Wohnung *</label>
         <input type="url" id="fUrl" placeholder="Link zur Inserate-Seite einfügen..." class="w-full px-4 py-3 border rounded-lg focus:border-brand focus:ring-2 focus:ring-brand/20"/>
         <details class="mt-2"><summary class="text-xs text-gray-500 cursor-pointer hover:text-brand">Kein Link? Beschreibung einfügen ↓</summary>
           <textarea id="fText" rows="6" placeholder="Beschreibung + Gästebewertungen hier reinkopieren..." class="mt-2 w-full px-4 py-3 border rounded-lg focus:border-brand focus:ring-2 focus:ring-brand/20 font-mono text-sm"></textarea>
@@ -65,11 +65,11 @@ body{font-family:'Inter',sans-serif}
       <!-- Kontakt -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t">
         <div>
-          <label class="block text-sm font-semibold mb-1">Dein Name</label>
+          <label class="block text-sm font-semibold mb-1">Ihr Name</label>
           <input name="name" class="w-full px-4 py-3 border rounded-lg"/>
         </div>
         <div>
-          <label class="block text-sm font-semibold mb-1">Deine Email *</label>
+          <label class="block text-sm font-semibold mb-1">Ihre Email *</label>
           <input name="email" type="email" required class="w-full px-4 py-3 border rounded-lg"/>
         </div>
       </div>
@@ -94,7 +94,7 @@ body{font-family:'Inter',sans-serif}
         </label>
       </div>
 
-      <button type="submit" id="submitBtn" class="w-full py-5 bg-brand text-white rounded-xl font-black text-lg hover:bg-brand-dark transition pulse-cta shadow-lg">📊 REPORT AN MICH SENDEN →</button>
+      <button type="submit" id="submitBtn" class="w-full py-5 bg-brand text-white rounded-xl font-black text-lg hover:bg-brand-dark transition pulse-cta shadow-lg">📊 REPORT ZUSENDEN →</button>
       <p class="text-xs text-gray-500 text-center">Report im Browser + per Email · keine Registrierung · DSGVO-konform</p>
     </form>
 
@@ -144,16 +144,16 @@ function renderDossier(data) {
 
   let html = '';
   // Email confirmation on top
-  html += `<div class="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-5 text-emerald-900"><div class="flex items-start gap-3"><div class="text-3xl">✅</div><div><div class="font-bold text-lg">Report ist unterwegs!</div><div class="text-sm">Wir haben dir den kompletten Report auch per Email geschickt${data.email_sent===false?' (falls Email nicht ankommt: Spam-Ordner prüfen)':''}. Schau unten für die Schnell-Ansicht.</div></div></div></div>`;
+  html += `<div class="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-5 text-emerald-900"><div class="flex items-start gap-3"><div class="text-3xl">✅</div><div><div class="font-bold text-lg">Report ist unterwegs!</div><div class="text-sm">Wir haben Ihnen den kompletten Report auch per Email geschickt${data.email_sent===false?' (falls Email nicht ankommt: Spam-Ordner prüfen)':''}. Unten sehen Sie die Vorschau.</div></div></div></div>`;
 
   // ROI Hero
-  html += `<div class="bg-gradient-to-br from-red-50 to-amber-50 border-2 border-red-200 rounded-2xl shadow-lg p-8 text-center"><div class="text-sm font-semibold text-red-700 mb-2">💸 Dein geschätzter jährlicher Verlust:</div><div class="text-6xl font-black text-red-600 mb-2">${ri.lost_revenue_eur_per_year||'?'}€</div><div class="text-sm text-gray-600">ROI Fleckfrei: ${ri.fleckfrei_roi_ratio||'?'}</div></div>`;
+  html += `<div class="bg-gradient-to-br from-red-50 to-amber-50 border-2 border-red-200 rounded-2xl shadow-lg p-8 text-center"><div class="text-sm font-semibold text-red-700 mb-2">💸 Ihr geschätzter jährlicher Verlust:</div><div class="text-6xl font-black text-red-600 mb-2">${ri.lost_revenue_eur_per_year||'?'}€</div><div class="text-sm text-gray-600">ROI Fleckfrei: ${ri.fleckfrei_roi_ratio||'?'}</div></div>`;
 
   // Summary
   html += card('🎯 Executive Summary', `<p class="mb-4">${d.summary_de||'-'}</p><div class="p-3 rounded-lg ${risk>=7?'bg-red-50':risk>=4?'bg-amber-50':'bg-emerald-50'} border"><strong>Risk: ${risk}/10</strong> — ${risk>=7?'⚠️ Kritisch':risk>=4?'⚡ Handlung nötig':'✓ Stabil'}</div>`);
 
   // Listing
-  html += card('🏠 Deine Wohnung', `<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center"><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">Typ</div><div class="font-semibold">${la.apartment_type||'-'}</div></div><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">qm</div><div class="font-semibold">${la.estimated_sqm||'?'}</div></div><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">Gäste</div><div class="font-semibold">${la.guests||'?'}</div></div><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">€/Nacht est.</div><div class="font-semibold">${la.estimated_price_per_night_eur||'?'}€</div></div></div>`);
+  html += card('🏠 Ihre Wohnung', `<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center"><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">Typ</div><div class="font-semibold">${la.apartment_type||'-'}</div></div><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">qm</div><div class="font-semibold">${la.estimated_sqm||'?'}</div></div><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">Gäste</div><div class="font-semibold">${la.guests||'?'}</div></div><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">€/Nacht est.</div><div class="font-semibold">${la.estimated_price_per_night_eur||'?'}€</div></div></div>`);
 
   // Market
   if (market.avg_rating) {
@@ -167,7 +167,7 @@ function renderDossier(data) {
   html += card('💼 Business-Case', `<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-3"><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">pro Turnover</div><div class="font-bold">${bc.fleckfrei_cost_per_turnover_eur||'?'}€</div></div><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">pro Monat</div><div class="font-bold">${bc.fleckfrei_cost_per_month_estimate_eur||'?'}€</div></div><div class="p-3 bg-amber-50 rounded"><div class="text-xs text-gray-500">Break-even</div><div class="font-bold">${bc.break_even_bookings_per_month||'?'}/Mo</div></div><div class="p-3 bg-emerald-50 rounded"><div class="text-xs text-gray-500">12-Mon Netto</div><div class="font-bold text-emerald-700">+${bc['12_month_net_gain_eur']||'?'}€</div></div></div><p class="text-sm">${bc.summary_de||''}</p>`);
 
   // Final CTA
-  html += `<div class="bg-gradient-to-br from-brand to-brand-dark text-white rounded-2xl shadow-xl p-8 text-center"><div class="text-sm font-bold opacity-80 mb-2">🚀 NÄCHSTER SCHRITT</div><h3 class="text-2xl md:text-3xl font-black mb-3">Wir rufen dich binnen 24h an</h3><p class="opacity-90 mb-5">Du hast den Report + wir melden uns mit einem individuellen Angebot. Kein Druck, keine Abo-Falle.</p><a href="mailto:info@fleckfrei.de?subject=Angebot%20anfordern" class="inline-block px-8 py-4 bg-white text-brand rounded-xl font-bold text-lg hover:bg-gray-100 shadow-xl">💬 Noch heute Angebot anfordern →</a></div>`;
+  html += `<div class="bg-gradient-to-br from-brand to-brand-dark text-white rounded-2xl shadow-xl p-8 text-center"><div class="text-sm font-bold opacity-80 mb-2">🚀 NÄCHSTER SCHRITT</div><h3 class="text-2xl md:text-3xl font-black mb-3">Wir rufen Sie binnen 24h an</h3><p class="opacity-90 mb-5">Sie haben den Report und wir melden uns mit einem individuellen Angebot. Kein Druck. Keine Abo-Falle.</p><a href="mailto:info@fleckfrei.de?subject=Angebot%20anfordern" class="inline-block px-8 py-4 bg-white text-brand rounded-xl font-bold text-lg hover:bg-gray-100 shadow-xl">💬 Jetzt Angebot anfordern →</a></div>`;
 
   result.innerHTML = html;
   result.classList.remove('hidden');
@@ -197,14 +197,14 @@ form.addEventListener('submit', async (e) => {
     const d = await r.json();
     if (!d.success) throw new Error(d.error || 'Fehler');
     renderDossier(d);
-    status.innerHTML = `<div class="text-emerald-700 text-sm">✅ Report ${d.email_sent?'per Email gesendet':'(Email-Versand fehlgeschlagen, aber unten siehst du alles)'}</div>`;
+    status.innerHTML = `<div class="text-emerald-700 text-sm">✅ Report ${d.email_sent?'per Email gesendet':'(Email-Versand fehlgeschlagen, aber unten sehen Sie alles)'}</div>`;
     btn.innerHTML = '✓ Report erhalten';
     btn.disabled = true;
     if (window.plausible) plausible('check-lead');
     window.scrollTo({top: result.offsetTop - 80, behavior:'smooth'});
   } catch (err) {
     status.innerHTML = '<div class="text-red-600 text-sm">❌ '+err.message+'</div>';
-    btn.disabled = false; btn.innerHTML = '📊 REPORT AN MICH SENDEN →';
+    btn.disabled = false; btn.innerHTML = '📊 REPORT ZUSENDEN →';
   }
 });
 

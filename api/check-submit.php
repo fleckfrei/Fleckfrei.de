@@ -126,10 +126,10 @@ body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;pad
 ul{padding-left:18px;margin:8px 0}
 .risk-'.($riskScore>=7?'high':($riskScore>=4?'mid':'low')).'{background:'.($riskScore>=7?'#fef2f2':($riskScore>=4?'#fef3c7':'#ecfdf5')).';border-left:4px solid '.($riskScore>=7?'#dc2626':($riskScore>=4?'#f59e0b':'#10b981')).';padding:12px;margin:12px 0;border-radius:6px}
 </style></head><body><div class="wrap">
-<div class="hdr"><h1>Dein Fleckfrei Revenue-Report</h1><p style="margin:8px 0 0 0;opacity:.9">'.htmlspecialchars($title).'</p></div>
-<div class="hero"><div style="color:#b91c1c;font-size:13px;font-weight:600">💸 Dein geschätzter jährlicher Verlust:</div><div class="big">'.number_format($lostYear,0,',','.').'€</div><div style="color:#64748b;font-size:13px">Fleckfrei-ROI: '.$roi.'</div></div>
+<div class="hdr"><h1>Ihr Fleckfrei Revenue-Report</h1><p style="margin:8px 0 0 0;opacity:.9">'.htmlspecialchars($title).'</p></div>
+<div class="hero"><div style="color:#b91c1c;font-size:13px;font-weight:600">💸 Ihr geschätzter jährlicher Verlust:</div><div class="big">'.number_format($lostYear,0,',','.').'€</div><div style="color:#64748b;font-size:13px">Fleckfrei-ROI: '.$roi.'</div></div>
 <div class="sec"><h2>🎯 Executive Summary</h2><p>'.htmlspecialchars($ds['summary_de'] ?? '').'</p><div class="risk-'.($riskScore>=7?'high':($riskScore>=4?'mid':'low')).'"><strong>Risk-Score: '.$riskScore.'/10</strong> — '.($riskScore>=7?'Kritisch, sofortiges Handeln nötig':($riskScore>=4?'Handlungsbedarf':'Stabil')).'</div></div>
-<div class="sec"><h2>🏠 Deine Wohnung</h2><div class="grid"><div class="cell"><div class="v">'.htmlspecialchars($la['apartment_type'] ?? '-').'</div><div class="l">Typ</div></div><div class="cell"><div class="v">'.htmlspecialchars((string)($la['estimated_sqm'] ?? '?')).'</div><div class="l">qm</div></div><div class="cell"><div class="v">'.htmlspecialchars((string)($la['guests'] ?? '?')).'</div><div class="l">Gäste</div></div><div class="cell"><div class="v">'.htmlspecialchars((string)($la['estimated_price_per_night_eur'] ?? '?')).'€</div><div class="l">€/Nacht est.</div></div></div></div>';
+<div class="sec"><h2>🏠 Ihre Wohnung</h2><div class="grid"><div class="cell"><div class="v">'.htmlspecialchars($la['apartment_type'] ?? '-').'</div><div class="l">Typ</div></div><div class="cell"><div class="v">'.htmlspecialchars((string)($la['estimated_sqm'] ?? '?')).'</div><div class="l">qm</div></div><div class="cell"><div class="v">'.htmlspecialchars((string)($la['guests'] ?? '?')).'</div><div class="l">Gäste</div></div><div class="cell"><div class="v">'.htmlspecialchars((string)($la['estimated_price_per_night_eur'] ?? '?')).'€</div><div class="l">€/Nacht est.</div></div></div></div>';
 
 if (!empty($market['avg_rating'])) {
     $emailHtml .= '<div class="sec"><h2>📊 Berlin-Markt</h2><div class="grid"><div class="cell"><div class="v">'.$market['avg_rating'].'/5</div><div class="l">Ø Rating</div></div><div class="cell"><div class="v">€'.($market['avg_price_eur'] ?? '?').'</div><div class="l">Ø Preis/N</div></div><div class="cell"><div class="v">'.($market['median_reviews'] ?? '?').'</div><div class="l">Median Reviews</div></div><div class="cell"><div class="v">'.htmlspecialchars($mp['rating_benchmark_needed'] ?? '?').'</div><div class="l">Top-20% braucht</div></div></div></div>';
@@ -155,7 +155,7 @@ $emailHtml .= '<a class="cta" href="mailto:info@fleckfrei.de?subject=Angebot%20a
 $emailHtml .= '<div style="padding:20px 24px;font-size:11px;color:#64748b;text-align:center">© Fleckfrei · <a href="https://fleckfrei.de">fleckfrei.de</a> · <a href="https://fleckfrei.de/impressum.html">Impressum</a> · <a href="https://fleckfrei.de/datenschutz.html">Datenschutz</a></div></div></body></html>';
 
 // Send email
-$subject = "📊 Dein Fleckfrei Revenue-Report — " . mb_substr($title, 0, 60);
+$subject = "📊 Ihr Fleckfrei Revenue-Report — " . mb_substr($title, 0, 60);
 $headers = "MIME-Version: 1.0\r\n"
          . "Content-Type: text/html; charset=UTF-8\r\n"
          . "From: Fleckfrei <no-reply@fleckfrei.de>\r\n"
