@@ -110,6 +110,30 @@ function renderDossier(data) {
     result.innerHTML = card('⚠️ Parse-Fehler', `<pre class="text-xs bg-gray-50 p-3 rounded whitespace-pre-wrap">${(d.raw||'').replace(/</g,'&lt;')}</pre>`);
     result.classList.remove('hidden'); return;
   }
+
+  // Blocked-platform warning banner (for non-Airbnb URLs)
+  let blockedBanner = '';
+  if (data.scrape_mode === 'blocked' || data.reviews_captured === 0) {
+    const pl = (data.platform || 'diese Plattform').toUpperCase();
+    blockedBanner = `
+    <div class="bg-amber-50 border-2 border-amber-400 rounded-2xl p-5 mb-6">
+      <div class="flex items-start gap-3">
+        <div class="text-3xl">⚠️</div>
+        <div class="flex-1">
+          <h3 class="font-bold text-amber-900 mb-1">${pl} blockt unseren Server</h3>
+          <p class="text-sm text-amber-800 mb-3">Die Analyse unten basiert nur auf der URL, <strong>nicht auf deinen echten Reviews</strong>. Das Dossier wird viel präziser, wenn du die Listing-Beschreibung + Reviews einmal kopierst und hier einfügst.</p>
+          <div class="text-xs bg-white rounded-lg p-3 mb-3 text-gray-700">
+            <strong>So geht's (30 Sekunden):</strong><br>
+            1. Öffne deine Listing-Seite bei ${pl}<br>
+            2. Scroll zu Beschreibung + Reviews<br>
+            3. <kbd class="px-1 bg-gray-100 rounded border">Cmd+A</kbd> alles markieren → <kbd class="px-1 bg-gray-100 rounded border">Cmd+C</kbd> kopieren<br>
+            4. Klick unten Button → <kbd class="px-1 bg-gray-100 rounded border">Cmd+V</kbd> einfügen
+          </div>
+          <button onclick="switchToTextMode()" class="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold text-sm hover:bg-amber-700">📝 Jetzt Text einfügen →</button>
+        </div>
+      </div>
+    </div>`;
+  }
   const la = d.listing_audit || {};
   const mp = d.market_position || {};
   const rf = d.review_forensics || {};
@@ -224,9 +248,15 @@ function renderDossier(data) {
        <div class="p-3 bg-emerald-50 border-l-4 border-emerald-500 rounded"><div class="text-xs text-emerald-700 font-bold mb-1">📈 KPIs tracken</div>${list(ap.kpis_to_track)}</div>
      </div>`);
 
-  result.innerHTML = html;
+  result.innerHTML = blockedBanner + html;
   result.classList.remove('hidden');
   leadSection.classList.remove('hidden');
+}
+
+function switchToTextMode() {
+  document.getElementById('tabText').click();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+  setTimeout(() => document.getElementById('aaText').focus(), 400);
 }
 
 document.getElementById('tabUrl').onclick = () => {
