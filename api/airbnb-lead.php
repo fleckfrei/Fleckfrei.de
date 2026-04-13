@@ -9,11 +9,20 @@ header('Content-Type: application/json; charset=utf-8');
 $body = json_decode(file_get_contents('php://input'), true) ?: [];
 $name = trim($body['name'] ?? '');
 $email = trim($body['email'] ?? '');
+$phone = trim($body['phone'] ?? '');
+$consentContact = !empty($body['consent_contact']);
+$consentPrivacy = !empty($body['consent_privacy']);
+$consentMarketing = !empty($body['consent_marketing']);
 $analysis = $body['analysis'] ?? null;
 
 if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => 'Gültige Email erforderlich']);
+    exit;
+}
+if (!$consentContact || !$consentPrivacy) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Pflicht-Einverständnisse (Kontakt + Datenschutz) fehlen']);
     exit;
 }
 
@@ -25,7 +34,11 @@ try {
         al_id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255),
         email VARCHAR(255) NOT NULL,
+        phone VARCHAR(50) NULL,
         analysis_json LONGTEXT,
+        consent_contact TINYINT(1) DEFAULT 0,
+        consent_privacy TINYINT(1) DEFAULT 0,
+        consent_marketing TINYINT(1) DEFAULT 0,
         ip VARCHAR(45),
         user_agent VARCHAR(255),
         status ENUM('new','contacted','booked','rejected') DEFAULT 'new',
@@ -34,20 +47,28 @@ try {
         INDEX idx_status (status),
         INDEX idx_created (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Add columns if table pre-existed
+    foreach (['phone VARCHAR(50) NULL','consent_contact TINYINT(1) DEFAULT 0','consent_privacy TINYINT(1) DEFAULT 0','consent_marketing TINYINT(1) DEFAULT 0'] as $col) {
+        try { q("ALTER TABLE airbnb_leads ADD COLUMN $col"); } catch (Exception $e) {}
+    }
 
-    q("INSERT INTO airbnb_leads (name, email, analysis_json, ip, user_agent) VALUES (?,?,?,?,?)",
-      [$name, $email, json_encode($analysis), $ip, $ua]);
+    q("INSERT INTO airbnb_leads (name, email, phone, analysis_json, consent_contact, consent_privacy, consent_marketing, ip, user_agent) VALUES (?,?,?,?,?,?,?,?,?)",
+      [$name, $email, $phone, json_encode($analysis), (int)$consentContact, (int)$consentPrivacy, (int)$consentMarketing, $ip, $ua]);
     $leadId = (int) lastInsertId();
+
+    // Consent snapshot already stored in airbnb_leads columns (customer_id_fk not yet assigned)
 
     $plan = $analysis['plan'] ?? [];
     $title = $analysis['meta']['title'] ?? '(ohne Titel)';
-    $msg = "🆕 <b>Airbnb-Check Lead</b>\n\n"
+    $msg = "🆕 <b>Check-Lead</b>\n\n"
          . "👤 " . ($name ?: '(ohne Name)') . "\n"
          . "📧 " . htmlspecialchars($email) . "\n"
+         . ($phone ? "📱 " . htmlspecialchars($phone) . "\n" : '')
          . "🏠 " . htmlspecialchars($title) . "\n"
          . "📐 " . ($plan['apartment_type'] ?? '?') . " · " . ($plan['estimated_sqm'] ?? '?') . "qm\n"
-         . "⏱ " . ($plan['recommended_hours'] ?? '?') . "h empfohlen\n\n"
-         . "→ <a href=\"https://app.fleckfrei.de/admin/leads.php\">Admin öffnen</a>";
+         . "⏱ " . ($plan['recommended_hours'] ?? '?') . "h empfohlen\n"
+         . "✉️ Marketing-OK: " . ($consentMarketing ? 'JA' : 'nein') . "\n\n"
+         . "→ <a href=\"https://app.fleckfrei.de/admin/airbnb-analyzer.php\">Admin öffnen</a>";
 
     if (function_exists('telegramNotify')) telegramNotify($msg);
 

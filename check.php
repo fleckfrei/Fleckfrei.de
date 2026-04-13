@@ -87,8 +87,25 @@ body{font-family:'Inter',sans-serif}
       <input name="name" placeholder="Name" class="w-full px-4 py-3 rounded-lg text-gray-900"/>
       <input name="email" type="email" required placeholder="Email-Adresse *" class="w-full px-4 py-3 rounded-lg text-gray-900"/>
       <input name="phone" placeholder="Handy (optional — schnellere Rückmeldung)" class="w-full px-4 py-3 rounded-lg text-gray-900"/>
+
+      <!-- DSGVO Consent Checkboxes -->
+      <div class="bg-white/10 rounded-lg p-3 space-y-2 text-left">
+        <label class="flex items-start gap-2 text-xs cursor-pointer">
+          <input type="checkbox" name="consent_contact" required class="mt-0.5 shrink-0 rounded"/>
+          <span>Ich bin einverstanden, dass Fleckfrei mich zur Angebotserstellung per <strong>Email / Telefon</strong> kontaktiert.*</span>
+        </label>
+        <label class="flex items-start gap-2 text-xs cursor-pointer">
+          <input type="checkbox" name="consent_privacy" required class="mt-0.5 shrink-0 rounded"/>
+          <span>Ich habe die <a href="https://fleckfrei.de/datenschutz.html" target="_blank" class="underline">Datenschutzerklärung</a> gelesen und akzeptiere sie.*</span>
+        </label>
+        <label class="flex items-start gap-2 text-xs cursor-pointer">
+          <input type="checkbox" name="consent_marketing" class="mt-0.5 shrink-0 rounded"/>
+          <span>Ich bin einverstanden, dass Fleckfrei mir gelegentlich Angebote, News oder Tipps per Email sendet (kann jederzeit widerrufen werden). <span class="text-white/60">optional</span></span>
+        </label>
+      </div>
+
       <button class="w-full py-4 bg-white text-brand rounded-lg font-bold text-lg hover:bg-gray-100 transition">💬 Mein kostenloses Angebot anfordern →</button>
-      <p class="text-xs text-white/70 text-center">Rückmeldung binnen 24h · DSGVO-konform · Keine Abo-Falle</p>
+      <p class="text-xs text-white/70 text-center">* Pflichtfeld · Rückmeldung binnen 24h · Widerruf jederzeit möglich</p>
     </form>
     <div id="leadStatus" class="text-sm mt-4 text-center"></div>
   </div>
@@ -113,8 +130,19 @@ body{font-family:'Inter',sans-serif}
   </div>
 </section>
 
-<footer class="text-center py-8 text-xs text-gray-500">
-  © <?= date('Y') ?> Fleckfrei · <a href="https://fleckfrei.de" class="underline">fleckfrei.de</a> · <a href="https://fleckfrei.de/impressum.html" class="underline">Impressum</a> · <a href="https://fleckfrei.de/datenschutz.html" class="underline">Datenschutz</a>
+<!-- DSGVO Info Section -->
+<section class="max-w-4xl mx-auto px-4 py-6">
+  <div class="bg-white rounded-xl border p-5 text-xs text-gray-600 space-y-2">
+    <h4 class="font-bold text-sm text-gray-800">🔒 Deine Daten bei uns</h4>
+    <p>Bei Einsendung des Formulars speichern wir <strong>Name, Email und (optional) Handynummer</strong> sowie die Ergebnisse der Analyse ausschließlich zum Zweck der Angebotserstellung. Rechtsgrundlage: Art. 6(1)(b) DSGVO (vorvertragliche Maßnahmen).</p>
+    <p>Wir geben deine Daten <strong>nicht an Dritte</strong> weiter. Du kannst jederzeit Auskunft, Löschung oder Widerruf verlangen: <a href="mailto:info@fleckfrei.de" class="underline">info@fleckfrei.de</a>.</p>
+    <p>Diese Seite nutzt <strong>Plausible Analytics</strong> — ein cookieloses, DSGVO-konformes Analyse-Tool. Es werden <strong>keine persönlichen Daten, keine IPs, keine Cookies</strong> gespeichert (<a href="https://plausible.io/data-policy" target="_blank" class="underline">Datenpolicy Plausible</a>).</p>
+    <p>Die URL-/Text-Analyse läuft über unseren Server + Groq (EU-Hosted, US-Firma). Inhalte werden <strong>max. 24h</strong> gecacht, dann gelöscht.</p>
+  </div>
+</section>
+
+<footer class="text-center py-8 text-xs text-gray-500 border-t">
+  © <?= date('Y') ?> Fleckfrei · <a href="https://fleckfrei.de" class="underline">fleckfrei.de</a> · <a href="https://fleckfrei.de/impressum.html" class="underline">Impressum</a> · <a href="https://fleckfrei.de/datenschutz.html" class="underline">Datenschutz</a> · <a href="https://fleckfrei.de/agb.html" class="underline">AGB</a>
 </footer>
 
 <script>
@@ -310,7 +338,16 @@ document.getElementById('leadFormInner').addEventListener('submit', async (e) =>
   const leadStatus = document.getElementById('leadStatus');
   leadStatus.textContent = '⏳ Sende...';
   try {
-    const r = await fetch('/api/airbnb-lead.php', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name:data.get('name'), email:data.get('email'), phone:data.get('phone'), analysis:lastAnalysis})});
+    const payload = {
+      name: data.get('name'),
+      email: data.get('email'),
+      phone: data.get('phone'),
+      consent_contact: !!data.get('consent_contact'),
+      consent_privacy: !!data.get('consent_privacy'),
+      consent_marketing: !!data.get('consent_marketing'),
+      analysis: lastAnalysis
+    };
+    const r = await fetch('/api/airbnb-lead.php', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     const d = await r.json();
     if (!d.success) throw new Error(d.error || 'Fehler');
     leadStatus.innerHTML = '<div class="text-2xl mb-1">✅</div><div class="font-bold">Danke! Wir melden uns binnen 24h.</div>';
