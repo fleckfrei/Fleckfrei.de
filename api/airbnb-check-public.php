@@ -75,14 +75,14 @@ function fetchMarketData(string $location = 'Berlin'): array {
     if (!$html || $code >= 400) return [];
 
     $listings = [];
-    // Airbnb EU-response: "€\xc2\xa0NNN total" (NBSP between € and digits!)
+    // Airbnb EU: supports "€ NNN", "€\xc2\xa0NNN", "NNN €" (DE), etc.
     preg_match_all('~"avgRatingA11yLabel":"([^"]+)"~', $html, $ratingMatches);
-    preg_match_all('~"discountedPrice":"€[\s\xc2\xa0]*([\d.,]+)"~u', $html, $discountedMatches);
+    // Match "discountedPrice":"490 €" OR "discountedPrice":"€ 490" OR NBSP variants
+    preg_match_all('~"discountedPrice":"(?:€[\s\xc2\xa0]*)?([\d.,]+)(?:[\s\xc2\xa0]*€)?"~u', $html, $discountedMatches);
     if (empty($discountedMatches[1])) {
-        // Fallback: match "price":"€ NNN" or similar
-        preg_match_all('~"(?:price|discountedPrice|totalPrice)":"€[\s\xa0\xc2]*([\d.,]+)"~u', $html, $discountedMatches);
+        preg_match_all('~"(?:price|totalPrice)":"(?:€[\s\xc2\xa0]*)?([\d.,]+)(?:[\s\xc2\xa0]*€)?"~u', $html, $discountedMatches);
     }
-    preg_match_all('~"accessibilityLabel":"€[\s\xc2\xa0]*([\d.,]+)\s+total[^"]*"~u', $html, $priceMatches);
+    preg_match_all('~"accessibilityLabel":"(?:€[\s\xc2\xa0]*)?([\d.,]+)[\s\xc2\xa0]*€[^"]*(?:total|Gesamtpreis|insgesamt)[^"]*"~ui', $html, $priceMatches);
     preg_match_all('~"localizedStringWithTranslationPreference":"([^"]{5,200})"~', $html, $nameMatches);
 
     // Assume default search window = 5 nights unless we see otherwise
@@ -94,6 +94,9 @@ function fetchMarketData(string $location = 'Berlin'): array {
         if (preg_match('~([\d.,]+)\s+out of 5\s*average rating,?\s*([\d.,]+)\s+reviews~i', $ratingLabel, $rm)) {
             $rating = (float) str_replace(',', '.', $rm[1]);
             $reviews = (int) str_replace(',', '', $rm[2]);
+        } elseif (preg_match('~Bewertung:\s*([\d.,]+)\s*von\s*5,?\s*([\d.,]+)\s+Bewertungen~iu', $ratingLabel, $rm)) {
+            $rating = (float) str_replace(',', '.', $rm[1]);
+            $reviews = (int) str_replace(['.',','], '', $rm[2]);
         }
         $priceTotal = null;
         if (isset($discountedMatches[1][$i])) $priceTotal = (float) str_replace(',', '', $discountedMatches[1][$i]);
