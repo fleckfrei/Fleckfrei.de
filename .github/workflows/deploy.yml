@@ -55,7 +55,7 @@ jobs:
       - name: Post-deploy health check
         run: |
           sleep 3
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://app.fleckfrei.de/api/health.php)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://app.fleckfrei.de/api/health.php?key=flk_health_2026_c9a3f1e7d4b2)
           if [ "$STATUS" != "200" ]; then
             echo "Health check failed: HTTP $STATUS"
             exit 1
