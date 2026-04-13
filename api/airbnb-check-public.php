@@ -33,10 +33,32 @@ if (!$url && !$pastedText) {
     echo json_encode(['success' => false, 'error' => 'URL oder Text erforderlich']);
     exit;
 }
-if ($url && !preg_match('~^https?://(www\.|de\.)?airbnb\.(com|de)/(rooms|h)/~i', $url)) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'error' => 'Ungültiger Airbnb-Link']);
-    exit;
+
+// Detect STR platform
+function detectPlatform(string $url): ?string {
+    $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
+    if (str_contains($host, 'airbnb.'))           return 'airbnb';
+    if (str_contains($host, 'booking.'))          return 'booking';
+    if (str_contains($host, 'vrbo.'))             return 'vrbo';
+    if (str_contains($host, 'agoda.'))            return 'agoda';
+    if (str_contains($host, 'fewo-direkt.'))      return 'fewo-direkt';
+    if (str_contains($host, 'expedia.'))          return 'expedia';
+    if (str_contains($host, 'hotels.com'))        return 'hotels-com';
+    if (str_contains($host, 'hometogo.'))         return 'hometogo';
+    if (str_contains($host, 'tripadvisor.'))      return 'tripadvisor';
+    if (str_contains($host, 'holidu.'))           return 'holidu';
+    if (str_contains($host, 'trivago.'))          return 'trivago';
+    return null;
+}
+
+$platform = null;
+if ($url) {
+    $platform = detectPlatform($url);
+    if (!$platform) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Unbekannte Plattform. Unterstützt: Airbnb, Booking.com, VRBO, Agoda, FeWo-direkt, Expedia, Hotels.com, HomeToGo, TripAdvisor, Holidu, Trivago. Oder nutze den Text-Modus.']);
+        exit;
+    }
 }
 
 // ============================================================
@@ -109,7 +131,11 @@ $market = fetchMarketData('Berlin');
 // 2) LISTING SCRAPE (URL-mode)
 // ============================================================
 $meta = []; $reviews = []; $hints = []; $scrapeMode = 'none'; $listingId = null;
-if ($url && preg_match('~/rooms/(\d+)~', $url, $m)) $listingId = $m[1];
+if ($url) {
+    if (preg_match('~/rooms/(\d+)~', $url, $m)) $listingId = $m[1];
+    elseif (preg_match('~/hotel/[a-z]{2}/([^.?/]+)~', $url, $m)) $listingId = $m[1]; // booking.com
+    elseif (preg_match('~/home/(\d+)~', $url, $m)) $listingId = $m[1]; // vrbo
+}
 
 if ($pastedText) {
     $meta['title'] = mb_substr(explode("\n", trim($pastedText))[0], 0, 200);
@@ -118,18 +144,46 @@ if ($pastedText) {
 } elseif ($url) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_FOLLOWLOCATION=>true, CURLOPT_TIMEOUT=>20,
-        CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0']);
+        CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0',
+        CURLOPT_HTTPHEADER => ['Accept-Language: de-DE,de;q=0.9,en;q=0.8']]);
     $html = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
     if ($html && $code < 400) {
+        // Universal OG tags
         if (preg_match('~<meta property="og:title" content="([^"]+)"~i', $html, $m)) $meta['title'] = html_entity_decode($m[1]);
         if (preg_match('~<meta property="og:description" content="([^"]+)"~i', $html, $m)) $meta['description'] = html_entity_decode($m[1]);
-        preg_match_all('~"comments":"([^"]{40,400})"~', $html, $rm);
+        if (preg_match('~<meta property="og:image" content="([^"]+)"~i', $html, $m)) $meta['image'] = $m[1];
+        if (!$meta['title'] && preg_match('~<title>([^<]+)</title>~i', $html, $m)) $meta['title'] = trim(html_entity_decode($m[1]));
+
+        // Platform-specific review extraction
+        if ($platform === 'airbnb') {
+            preg_match_all('~"comments":"([^"]{40,400})"~', $html, $rm);
+        } elseif ($platform === 'booking') {
+            // Booking.com: reviews in data-testid="review-card" or rawText fields
+            preg_match_all('~"negativeText":"([^"]{30,300})"~', $html, $neg);
+            preg_match_all('~"positiveText":"([^"]{30,300})"~', $html, $pos);
+            $rm = [[]];
+            foreach ($neg[1] ?? [] as $n) $rm[1][] = '[NEGATIVE] ' . $n;
+            foreach ($pos[1] ?? [] as $p) $rm[1][] = '[POSITIVE] ' . $p;
+        } elseif ($platform === 'vrbo' || $platform === 'fewo-direkt') {
+            preg_match_all('~"reviewText":"([^"]{40,400})"~', $html, $rm);
+        } elseif ($platform === 'agoda') {
+            preg_match_all('~"reviewComment":"([^"]{40,400})"~', $html, $rm);
+        } else {
+            // Generic: try multiple patterns
+            preg_match_all('~"(?:review|comment|text|reviewText|description)":"([^"]{60,400})"~', $html, $rm);
+        }
         foreach (array_slice($rm[1] ?? [], 0, 10) as $r) $reviews[] = mb_substr(stripcslashes($r), 0, 300);
+
+        // Extract rating+review-count universally
+        if (preg_match('~"aggregateRating"[^}]*"ratingValue"[^"0-9]*(\d+[.,]?\d*)[^}]*"reviewCount"[^0-9]*(\d+)~', $html, $ar)) {
+            $meta['rating'] = (float) str_replace(',', '.', $ar[1]);
+            $meta['review_count'] = (int) $ar[2];
+        }
         $scrapeMode = (empty($meta['title']) && empty($meta['description'])) ? 'blocked' : 'scraped';
     }
     if ($scrapeMode !== 'scraped') {
-        $meta['title'] = $meta['title'] ?: ('Airbnb Listing #' . $listingId);
-        $meta['description'] = $meta['description'] ?: "Airbnb blockiert Server-Fetch dieser Listing-ID. Nutze den Text-Modus und kopiere die Listing-Beschreibung für präzisere Analyse.";
+        $meta['title'] = $meta['title'] ?: (ucfirst($platform) . ' Listing ' . ($listingId ?: ''));
+        $meta['description'] = $meta['description'] ?: ($platform . " blockiert Server-Fetch. Nutze den Text-Modus und kopiere Listing-Beschreibung + Reviews für präzisere Analyse.");
     }
 }
 
@@ -149,14 +203,18 @@ $marketCtx = ($market && !empty($market['avg_rating'])) ? sprintf(
     $market['median_reviews'] ?? '?'
 ) : "Berlin-Marktdaten (Live) nicht verfügbar — arbeite mit Schätzungen.";
 
+$platformLabel = $platform ? strtoupper($platform) : 'STR (Text-Input)';
+$existingRating = !empty($meta['rating']) ? sprintf("AKTUELL: %.2f/5 aus %d Reviews (Plattform-Angabe)", $meta['rating'], $meta['review_count'] ?? 0) : '';
+
 $prompt = <<<PROMPT
-Du bist Senior-Reinigungs-Consultant für Airbnb-Hosts in Berlin. Deine Aufgabe: ein PROFESSIONELLES BUSINESS-DOSSIER für den Host erstellen, auf Basis seines Inserats + Live-Marktdaten. Ziel: den Host davon überzeugen, dass professionelle Reinigung (Fleckfrei) Pflicht ist, nicht Luxus. Nutze konkrete Zahlen, keine Floskeln.
+Du bist Senior-Reinigungs-Consultant für Short-Term-Rental-Hosts (Airbnb/Booking.com/VRBO/Agoda etc.) in Berlin. Deine Aufgabe: ein PROFESSIONELLES BUSINESS-DOSSIER für den Host erstellen, auf Basis seines Inserats + Live-Marktdaten. Ziel: den Host davon überzeugen, dass professionelle Reinigung (Fleckfrei) Pflicht ist, nicht Luxus. Nutze konkrete Zahlen, keine Floskeln. Die Marktdaten kommen von Airbnb — nutze sie als Benchmark auch für andere Plattformen (Booking/VRBO haben meist höhere Preise + striktere Review-Kultur).
 
 $marketCtx
 
-INSERAT DES HOSTS:
+INSERAT DES HOSTS (Plattform: $platformLabel):
 TITEL: {$meta['title']}
 BESCHREIBUNG: {$meta['description']}
+$existingRating
 REVIEWS (Auszüge): {$reviewsText}
 
 Antworte NUR als valides JSON (keine Kommentare, keine Markdown-Fences):
@@ -260,6 +318,7 @@ try {
 echo json_encode([
     'success' => true,
     'url' => $url,
+    'platform' => $platform,
     'listing_id' => $listingId,
     'scrape_mode' => $scrapeMode,
     'reviews_captured' => count($reviews),

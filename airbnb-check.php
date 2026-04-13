@@ -10,8 +10,8 @@ $title = 'Airbnb Business-Dossier · kostenlos · Fleckfrei';
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title><?= htmlspecialchars($title) ?></title>
-<meta name="description" content="Business-Dossier für dein Airbnb — Marktvergleich, Review-Forensik, Revenue-Impact, Cleaning-SWOT, 12-Monat-ROI. Kostenlos, 30 Sekunden."/>
+<title>STR Business-Dossier · kostenlos · Fleckfrei</title>
+<meta name="description" content="Business-Dossier für deine Short-Term-Rental (Airbnb, Booking, VRBO, Agoda) — Marktvergleich, Review-Forensik, Revenue-Impact, Cleaning-SWOT, 12-Monat-ROI. Kostenlos, 30 Sekunden."/>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -33,19 +33,20 @@ tailwind.config = { theme: { extend: { colors: { brand: '#2E7D6B', 'brand-dark':
   <div class="max-w-4xl mx-auto text-center">
     <div class="inline-block text-xs px-3 py-1 bg-white/20 rounded-full font-semibold mb-4">🧠 AI-gestütztes Business-Dossier · kostenlos</div>
     <h1 class="text-3xl md:text-5xl font-bold mb-4 leading-tight">Was kostet dich eine schlechte Reinigung wirklich?</h1>
-    <p class="text-lg text-white/90 max-w-2xl mx-auto">Airbnb-Link rein → Live-Marktvergleich · Review-Forensik · Revenue-Verlust-Rechnung · 12-Monat-ROI. In 30 Sekunden.</p>
+    <p class="text-lg text-white/90 max-w-2xl mx-auto">Link deiner Unterkunft (Airbnb, Booking.com, VRBO, Agoda, FeWo-direkt...) → Live-Marktvergleich · Review-Forensik · Revenue-Verlust-Rechnung · 12-Monat-ROI. In 30 Sekunden.</p>
+    <div class="mt-4 text-xs text-white/70">✓ Airbnb · ✓ Booking.com · ✓ VRBO · ✓ Agoda · ✓ FeWo-direkt · ✓ Expedia · ✓ HomeToGo</div>
   </div>
 </section>
 
 <section class="max-w-4xl mx-auto px-4 -mt-8">
   <div class="bg-white rounded-2xl shadow-xl border p-6 mb-8">
     <div class="flex gap-2 mb-4">
-      <button type="button" id="tabUrl"  class="px-4 py-2 rounded-lg text-sm font-semibold bg-brand text-white">🔗 Airbnb-URL</button>
+      <button type="button" id="tabUrl"  class="px-4 py-2 rounded-lg text-sm font-semibold bg-brand text-white">🔗 Listing-URL</button>
       <button type="button" id="tabText" class="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-700">📝 Beschreibung einfügen</button>
     </div>
     <form id="aaForm">
       <div id="modeUrl" class="flex flex-col sm:flex-row gap-2">
-        <input type="url" id="aaUrl" placeholder="https://www.airbnb.de/rooms/12345678" class="flex-1 px-4 py-3 border rounded-lg focus:border-brand focus:ring-2 focus:ring-brand/20"/>
+        <input type="url" id="aaUrl" placeholder="https://www.airbnb.de/rooms/… oder booking.com/vrbo/agoda/…" class="flex-1 px-4 py-3 border rounded-lg focus:border-brand focus:ring-2 focus:ring-brand/20"/>
         <button type="submit" class="px-6 py-3 bg-brand text-white rounded-lg font-semibold hover:bg-brand-dark transition whitespace-nowrap">🔍 Dossier generieren</button>
       </div>
       <div id="modeText" class="hidden">
@@ -124,8 +125,9 @@ function renderDossier(data) {
 
   let html = '';
 
-  // Executive Summary + Risk
-  html += card(`🎯 Executive Summary`,
+  // Executive Summary + Risk + Platform
+  const platformBadge = data.platform ? `<span class="ml-auto text-xs font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded-full">📍 ${data.platform.toUpperCase()}</span>` : '';
+  html += card(`🎯 Executive Summary ${platformBadge}`,
     `<p class="text-gray-700 mb-4">${d.summary_de || '-'}</p>
      <div class="flex items-center gap-3 p-3 rounded-lg ${riskBg} border">
        <div class="text-3xl font-bold">${risk}/10</div>
