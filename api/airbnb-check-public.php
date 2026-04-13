@@ -69,14 +69,9 @@ function fetchMarketData(string $location = 'Berlin'): array {
     if (file_exists($cache) && (time() - filemtime($cache)) < 21600) {
         return json_decode(@file_get_contents($cache), true) ?: [];
     }
-    $url = 'https://www.airbnb.com/s/' . urlencode($location) . '/homes?adults=2';
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 25,
-        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0 Safari/537.36',
-        CURLOPT_HTTPHEADER => ['Accept-Language: en-US,en;q=0.9,de;q=0.8'],
-    ]);
-    $html = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    $searchUrl = 'https://www.airbnb.com/s/' . urlencode($location) . '/homes?adults=2';
+    $r = fetchWithFallback($searchUrl);
+    $html = $r['html'] ?? ''; $code = $r['code'] ?? 0;
     if (!$html || $code >= 400) return [];
 
     $listings = [];
@@ -128,6 +123,66 @@ function fetchMarketData(string $location = 'Berlin'): array {
 $market = fetchMarketData('Berlin');
 
 // ============================================================
+// PROXY ROTATION — residential IPs to bypass anti-bot
+// ============================================================
+$PROXY_POOL = [
+    'http://14a9a56c11929:275dc8b9cc@80.96.36.156:12323',   // RO
+    'http://14ae2d3d95c2d:fb9d8dfc5e@88.223.20.2:12323',    // DE
+    'http://14af0579ea9f8:d3d0ae255e@178.92.252.24:12323',  // ?
+];
+
+function fetchViaProxy(string $url, string $proxy, int $timeout = 25): array {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_TIMEOUT => $timeout,
+        CURLOPT_PROXY => $proxy,
+        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36',
+        CURLOPT_HTTPHEADER => [
+            'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language: de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Cache-Control: no-cache',
+            'Sec-Fetch-Dest: document',
+            'Sec-Fetch-Mode: navigate',
+            'Sec-Fetch-Site: none',
+            'Upgrade-Insecure-Requests: 1',
+        ],
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+    ]);
+    $html = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ['html' => $html, 'code' => $code];
+}
+
+function fetchWithFallback(string $url): array {
+    global $PROXY_POOL;
+    // Try direct first
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_FOLLOWLOCATION=>true, CURLOPT_TIMEOUT=>15,
+        CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0',
+        CURLOPT_HTTPHEADER=>['Accept-Language: de-DE,de;q=0.9,en;q=0.8']]);
+    $html = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    // Accept direct only if it looks substantial + has OG tags
+    if ($html && $code < 400 && strlen($html) > 20000 && str_contains($html, 'og:title')) {
+        return ['html' => $html, 'code' => $code, 'via' => 'direct'];
+    }
+    // Try proxies in order
+    $proxies = $PROXY_POOL;
+    shuffle($proxies);
+    foreach ($proxies as $i => $proxy) {
+        $res = fetchViaProxy($url, $proxy, 25);
+        if ($res['html'] && $res['code'] < 400 && strlen($res['html']) > 10000 && str_contains($res['html'], 'og:')) {
+            return $res + ['via' => 'proxy_' . $i];
+        }
+    }
+    // Return last attempt (even if poor) for graceful degradation
+    return $res ?? ['html' => $html, 'code' => $code, 'via' => 'failed'];
+}
+
+// ============================================================
 // 2) LISTING SCRAPE (URL-mode)
 // ============================================================
 $meta = []; $reviews = []; $hints = []; $scrapeMode = 'none'; $listingId = null;
@@ -142,11 +197,8 @@ if ($pastedText) {
     $meta['description'] = mb_substr($pastedText, 0, 6000);
     $scrapeMode = 'text';
 } elseif ($url) {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_FOLLOWLOCATION=>true, CURLOPT_TIMEOUT=>20,
-        CURLOPT_USERAGENT=>'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/122.0',
-        CURLOPT_HTTPHEADER => ['Accept-Language: de-DE,de;q=0.9,en;q=0.8']]);
-    $html = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    $res = fetchWithFallback($url);
+    $html = $res['html'] ?? ''; $code = $res['code'] ?? 0; $scrapeVia = $res['via'] ?? 'unknown';
     if ($html && $code < 400) {
         // Universal OG tags
         if (preg_match('~<meta property="og:title" content="([^"]+)"~i', $html, $m)) $meta['title'] = html_entity_decode($m[1]);
@@ -321,6 +373,7 @@ echo json_encode([
     'platform' => $platform,
     'listing_id' => $listingId,
     'scrape_mode' => $scrapeMode,
+    'scrape_via' => $scrapeVia ?? null,
     'reviews_captured' => count($reviews),
     'meta' => $meta,
     'market' => $market,
