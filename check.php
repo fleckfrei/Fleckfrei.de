@@ -63,8 +63,9 @@ body{font-family:'Inter',sans-serif}
     <form id="aaForm">
       <div id="modeUrl" class="flex flex-col sm:flex-row gap-2">
         <input type="url" id="aaUrl" placeholder="Link deiner Inserate-Seite" class="flex-1 px-4 py-3 border rounded-lg focus:border-brand focus:ring-2 focus:ring-brand/20"/>
-        <button type="submit" class="px-6 py-3 bg-brand text-white rounded-lg font-bold hover:bg-brand-dark transition whitespace-nowrap pulse-cta">🔍 Gratis Analyse →</button>
+        <button type="submit" class="px-6 py-4 bg-brand text-white rounded-lg font-black text-base hover:bg-brand-dark transition whitespace-nowrap pulse-cta shadow-lg">🔍 ANALYSIEREN →</button>
       </div>
+      <div id="urlHint" class="hidden mt-2 text-xs text-amber-700 bg-amber-50 rounded p-2">👉 URL eingefügt — jetzt auf „ANALYSIEREN" klicken oder <kbd>Enter</kbd> drücken!</div>
       <div id="modeText" class="hidden">
         <textarea id="aaText" rows="10" placeholder="Beschreibung + Gästebewertungen hier reinkopieren (je mehr Text, desto präziser)..." class="w-full px-4 py-3 border rounded-lg focus:border-brand focus:ring-2 focus:ring-brand/20 font-mono text-sm"></textarea>
         <button type="submit" class="mt-2 px-6 py-3 bg-brand text-white rounded-lg font-bold hover:bg-brand-dark transition pulse-cta">🔍 Gratis Analyse →</button>
@@ -99,8 +100,8 @@ body{font-family:'Inter',sans-serif}
           <span>Ich habe die <a href="https://fleckfrei.de/datenschutz.html" target="_blank" class="underline">Datenschutzerklärung</a> gelesen und akzeptiere sie.*</span>
         </label>
         <label class="flex items-start gap-2 text-xs cursor-pointer">
-          <input type="checkbox" name="consent_marketing" class="mt-0.5 shrink-0 rounded"/>
-          <span>Ich bin einverstanden, dass Fleckfrei mir gelegentlich Angebote, News oder Tipps per Email sendet (kann jederzeit widerrufen werden). <span class="text-white/60">optional</span></span>
+          <input type="checkbox" name="consent_marketing" checked class="mt-0.5 shrink-0 rounded"/>
+          <span>Ich bin einverstanden, dass Fleckfrei mir gelegentlich Angebote, News oder Tipps per Email sendet. Widerruf jederzeit möglich.</span>
         </label>
       </div>
 
@@ -297,6 +298,14 @@ function scrollToLead() {
   leadSection.scrollIntoView({behavior:'smooth', block:'center'});
   setTimeout(()=>leadSection.querySelector('input[name="email"]').focus(), 600);
 }
+
+// Show hint when URL pasted but not submitted yet
+const urlInput = document.getElementById('aaUrl');
+const urlHint = document.getElementById('urlHint');
+urlInput.addEventListener('input', () => {
+  if (urlInput.value.length > 20 && urlInput.value.startsWith('http')) urlHint.classList.remove('hidden');
+  else urlHint.classList.add('hidden');
+});
 
 document.getElementById('tabUrl').onclick = () => {
   mode = 'url';
