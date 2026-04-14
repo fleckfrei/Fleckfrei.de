@@ -126,7 +126,7 @@ require_once __DIR__ . '/includes/config.php';
         <div x-show="form.service===s.name" class="service__check"><svg width="14" height="14" fill="none" stroke="#fff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></div>
         <div style="font-weight:700;font-size:1.05rem" x-text="s.name"></div>
         <div style="color:var(--text-muted);font-size:.85rem;margin-top:.25rem" x-text="s.desc"></div>
-        <div class="service__price" x-text="'ab ' + s.price + ' EUR/h'"></div>
+        <div class="service__price" x-text="'ab ' + (s.startingPrice || s.price).toFixed(2).replace('.',',') + ' €'"></div>
         <div class="service__tag" x-text="s.tag"></div>
       </div>
     </template>
@@ -139,7 +139,7 @@ require_once __DIR__ . '/includes/config.php';
   <p class="section__sub">Teilen Sie uns Ihren Wunschtermin und die Adresse mit.</p>
   <!-- Selected service pill -->
   <div style="display:flex;align-items:center;justify-content:space-between;background:var(--brand-light);border-radius:var(--radius-pill);padding:.6rem 1rem;margin-bottom:1.5rem">
-    <span style="font-weight:700;font-size:.9rem" x-text="form.service + ' — ' + form.price_per_hour + ' EUR/h'"></span>
+    <span style="font-weight:700;font-size:.9rem" x-text="form.service + ' · ab ' + (form.starting_price || 0).toFixed(2).replace('.',',') + ' €'"></span>
     <button @click="step=0" style="font-size:.8rem;color:var(--brand);font-weight:700;background:none;border:none;cursor:pointer">Aendern</button>
   </div>
   <div class="card" style="display:flex;flex-direction:column;gap:1rem">
@@ -246,9 +246,9 @@ function bookingForm() {
         }));
       } catch(e) { console.warn("prices-public fetch failed", e); }
     },
-    form:{service:'',price_per_hour:0,name:'',phone:'',email:'',address:'',date:'',time:'09:00',hours:'3',frequency:'once',notes:''},
+    form:{service:'',price_per_hour:0,starting_price:0,name:'',phone:'',email:'',address:'',date:'',time:'09:00',hours:'3',frequency:'once',notes:''},
     get minDate(){var d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)},
-    get totalPrice(){return(this.form.price_per_hour*parseInt(this.form.hours)).toFixed(2)},
+    get totalPrice(){const h=parseInt(this.form.hours)||2;const extra=Math.max(0,h-2);return(this.form.starting_price+(this.form.price_per_hour*extra)).toFixed(2);},
     get totalBrutto(){return(this.totalPrice*1.19).toFixed(2)},
     get freqLabel(){return{once:'Einmalig',weekly:'Jede Woche',biweekly:'Alle 2 Wochen',monthly:'Monatlich'}[this.form.frequency]},
     get canNext(){
@@ -268,7 +268,7 @@ function bookingForm() {
         if (name) { var s = this.services.find(function(x){return x.name===name}); if (s) this.selectService(s); }
       }
     },
-    selectService(s){this.form.service=s.name;this.form.price_per_hour=s.price;this.step=1},
+    selectService(s){this.form.service=s.name;this.form.price_per_hour=s.price;this.form.starting_price=parseFloat(s.startingPrice||s.price);this.step=1},
     nextStep(){if(this.canNext)this.step++},
     async submitBooking(method){
       this.paying=true;
