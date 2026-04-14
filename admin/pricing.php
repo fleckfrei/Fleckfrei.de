@@ -165,6 +165,22 @@ include __DIR__ . '/../includes/layout.php';
 <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">Gespeichert.</div>
 <?php endif; ?>
 
+<!-- Quick-Nav Banner -->
+<div class="bg-gradient-to-r from-brand to-brand-dark text-white rounded-xl p-5 mb-6">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h2 class="font-bold text-xl mb-1">💰 Pricing — alle Hebel an einem Ort</h2>
+      <p class="text-sm text-white/80">Sprung zu den 4 Sektionen — scroll runter für Add-Ons, Tiers, Rules.</p>
+    </div>
+    <div class="flex gap-2 flex-wrap">
+      <a href="#website" class="px-4 py-2 bg-white text-brand rounded-lg font-semibold text-sm hover:bg-white/90">🌐 Website ab-Preise</a>
+      <a href="#competitive" class="px-4 py-2 bg-white/20 border border-white text-white rounded-lg text-sm hover:bg-white/30">⚔️ Competitive</a>
+      <a href="#tiers" class="px-4 py-2 bg-white/20 border border-white text-white rounded-lg text-sm hover:bg-white/30">📐 Tiers</a>
+      <a href="#addons" class="px-4 py-2 bg-white/20 border border-white text-white rounded-lg text-sm hover:bg-white/30">🧴 Add-Ons</a>
+    </div>
+  </div>
+</div>
+
 <div class="mb-6">
   <h1 class="text-2xl font-bold text-gray-900">Preis-Strategie</h1>
   <p class="text-sm text-gray-500 mt-1">Pauschal-Pricing, Partner-Provision und Markt-Wettbewerb.</p>
