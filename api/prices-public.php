@@ -55,6 +55,17 @@ try {
         }
     }
 
+    // Website-Overrides aus settings (Admin kann direkt eingeben)
+    $wsOverride = one("SELECT website_price_private_override, website_price_str_override, website_price_office_override, website_title_home_care, website_title_str, website_title_office FROM settings LIMIT 1") ?: [];
+    if (!empty($wsOverride["website_price_private_override"])) $minPrices["private"] = (float)$wsOverride["website_price_private_override"];
+    if (!empty($wsOverride["website_price_str_override"]))     $minPrices["str"] = (float)$wsOverride["website_price_str_override"];
+    if (!empty($wsOverride["website_price_office_override"]))  $minPrices["office"] = (float)$wsOverride["website_price_office_override"];
+    $titles = [
+        "home_care" => $wsOverride["website_title_home_care"] ?? "Home Care",
+        "str"       => $wsOverride["website_title_str"] ?? "Short-Term Rental",
+        "office"    => $wsOverride["website_title_office"] ?? "Business & Office",
+    ];
+
     echo json_encode([
         'success' => true,
         'updated_at' => date('c'),
@@ -82,5 +93,16 @@ try {
     ], JSON_UNESCAPED_UNICODE);
 } catch (Exception $e) {
     http_response_code(500);
+    // Website-Overrides aus settings (Admin kann direkt eingeben)
+    $wsOverride = one("SELECT website_price_private_override, website_price_str_override, website_price_office_override, website_title_home_care, website_title_str, website_title_office FROM settings LIMIT 1") ?: [];
+    if (!empty($wsOverride["website_price_private_override"])) $minPrices["private"] = (float)$wsOverride["website_price_private_override"];
+    if (!empty($wsOverride["website_price_str_override"]))     $minPrices["str"] = (float)$wsOverride["website_price_str_override"];
+    if (!empty($wsOverride["website_price_office_override"]))  $minPrices["office"] = (float)$wsOverride["website_price_office_override"];
+    $titles = [
+        "home_care" => $wsOverride["website_title_home_care"] ?? "Home Care",
+        "str"       => $wsOverride["website_title_str"] ?? "Short-Term Rental",
+        "office"    => $wsOverride["website_title_office"] ?? "Business & Office",
+    ];
+
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
