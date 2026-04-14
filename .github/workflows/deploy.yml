@@ -54,6 +54,7 @@ jobs:
             --exclude='includes/llm-keys.php' \
             --exclude='includes/google-keys.php' \
             --exclude='includes/paypal-keys.php' \
+            --exclude='includes/telegram-keys.php' \
             -e "ssh -i ~/.ssh/deploy_key -p 65002" \
             ./ u860899303@62.72.37.195:/home/u860899303/domains/app.fleckfrei.de/public_html/
 

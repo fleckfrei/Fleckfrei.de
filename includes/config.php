@@ -89,6 +89,9 @@ if (file_exists($_stripeSecrets)) { require_once $_stripeSecrets; }
 // LLM API keys — gitignored, manually deployed
 $_llmKeys = __DIR__ . '/llm-keys.php';
 if (file_exists($_llmKeys)) { require_once $_llmKeys; }
+
+$_telegramKeys = __DIR__ . "/telegram-keys.php";
+if (file_exists($_telegramKeys)) { require_once $_telegramKeys; }
 if (!defined('STRIPE_PK')) define('STRIPE_PK', '');
 if (!defined('STRIPE_SK')) define('STRIPE_SK', '');
 define('FEATURE_STRIPE', !empty(STRIPE_SK));

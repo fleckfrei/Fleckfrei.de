@@ -75,7 +75,7 @@ if (shouldRun('email_sync', 10)) {
                 if ($count > 0) {
                     $tgMsg = "📩 <b>{$count} neue Email(s)</b>\n\n";
                     $tgMsg .= "<a href=\"https://app." . SITE_DOMAIN . "/admin/email-inbox.php\">Email Inbox öffnen</a>";
-                    $ch = curl_init('https://api.telegram.org/bot' . (defined('TELEGRAM_BOT') ? TELEGRAM_BOT : '***REDACTED***') . '/sendMessage');
+                    $ch = curl_init('https://api.telegram.org/bot' . (defined('TELEGRAM_BOT') ? TELEGRAM_BOT : '" . (defined("TELEGRAM_BOT_TOKEN") ? TELEGRAM_BOT_TOKEN : "") . "') . '/sendMessage');
                     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>1, CURLOPT_POST=>1,
                         CURLOPT_POSTFIELDS=>http_build_query(['chat_id'=>'6904792507', 'text'=>$tgMsg, 'parse_mode'=>'HTML'])]);
                     curl_exec($ch); curl_close($ch);
