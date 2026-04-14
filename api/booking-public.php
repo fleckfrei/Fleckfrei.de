@@ -65,7 +65,15 @@ $date = $body['date'];
 $time = $body['time'];
 $hours = max(2, (float)$body['hours']);
 $frequency = $body['frequency'] ?? 'once';
+$weekdays = is_array($body['weekdays'] ?? null) ? array_map('intval', $body['weekdays']) : [];
+$intervalWeeks = max(2, (int)($body['interval_weeks'] ?? 2));
 $notes = trim($body['notes'] ?? '');
+if ($frequency !== 'once') {
+    $notes .= "\n[Recurring: $frequency"
+           . ($frequency === 'nweekly' ? ", every $intervalWeeks weeks" : '')
+           . ($weekdays ? ', weekdays: ' . implode(',', $weekdays) : '')
+           . ']';
+}
 $extras = is_array($body['extras'] ?? null) ? $body['extras'] : [];
 
 $ip = $_SERVER['REMOTE_ADDR'] ?? null;

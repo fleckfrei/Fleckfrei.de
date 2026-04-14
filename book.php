@@ -134,37 +134,86 @@ body{font-family:'Inter',sans-serif}
     <p x-show="!form.address_verified" class="text-xs text-gray-500 mt-2 text-center">Bitte wähle eine Adresse aus der Liste.</p>
   </section>
 
-  <!-- Step 2: Date, Time, Extras -->
+  <!-- Step 2: Date, Time, Extras — with auto-hours + live total -->
   <section x-show="step === 2" class="bg-white rounded-2xl shadow p-6 border">
-    <button @click="step = 1" class="text-sm text-gray-500 hover:text-brand mb-3">← Zurück</button>
+    <button @click="step = 1" class="inline-flex items-center gap-1 text-sm text-gray-700 hover:text-brand mb-3 px-3 py-1.5 rounded-lg border hover:border-brand">← Zurück</button>
     <h2 class="text-2xl font-bold mb-1">Wann & wie lang?</h2>
-    <p class="text-sm text-gray-500 mb-5">Termin + Dauer + Extras.</p>
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+    <p class="text-sm text-gray-500 mb-5">Dauer wird automatisch berechnet — du kannst anpassen.</p>
+
+    <!-- Auto-calc info -->
+    <div class="bg-brand/5 border border-brand/30 rounded-lg p-3 mb-4 text-sm">
+      <div class="font-semibold text-brand mb-1">🔢 Auto-Kalkulation</div>
+      <div class="text-gray-700">
+        <span x-text="form.qm + ' qm'"></span> · <span x-text="form.service_name"></span> →
+        <strong x-text="autoHours + ' h empfohlen'"></strong>
+        (<span x-text="autoHoursReason"></span>)
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
       <div>
         <label class="block text-xs font-bold text-gray-600 mb-1">Datum *</label>
         <input x-model="form.date" type="date" :min="minDate" required class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
       </div>
       <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Uhrzeit *</label>
-        <input x-model="form.time" type="time" value="09:00" required class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Start-Uhrzeit *</label>
+        <input x-model="form.time" type="time" required class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
       </div>
       <div>
         <label class="block text-xs font-bold text-gray-600 mb-1">Stunden</label>
-        <input x-model.number="form.hours" type="number" min="2" step="0.5" class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
+        <div class="flex gap-1 items-center">
+          <input x-model.number="form.hours" type="number" min="2" max="12" step="0.5" class="flex-1 px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
+          <button type="button" @click="form.hours = autoHours" class="px-2 py-1.5 text-xs bg-brand/10 text-brand rounded hover:bg-brand/20" title="Auto">🔄</button>
+        </div>
       </div>
     </div>
+
+    <!-- Auto Stop-Zeit + Total -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-sm">
+      <div class="bg-gray-50 rounded-lg p-3">
+        <div class="text-xs text-gray-500">Stop-Zeit (berechnet)</div>
+        <div class="font-bold text-brand" x-text="stopTime + ' Uhr'"></div>
+      </div>
+      <div class="bg-gray-50 rounded-lg p-3">
+        <div class="text-xs text-gray-500">Basis-Preis</div>
+        <div class="font-bold" x-text="baseTotal.toFixed(2).replace('.',',') + ' €'"></div>
+      </div>
+      <div class="bg-brand/10 rounded-lg p-3">
+        <div class="text-xs text-gray-500">Gesamt (netto)</div>
+        <div class="font-bold text-brand text-lg" x-text="liveTotal.toFixed(2).replace('.',',') + ' €'"></div>
+      </div>
+    </div>
+
+    <!-- Häufigkeit -->
     <div class="mt-4">
       <label class="block text-xs font-bold text-gray-600 mb-2">Häufigkeit</label>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
         <template x-for="f in freqs" :key="f.v">
           <label class="cursor-pointer">
             <input type="radio" x-model="form.frequency" :value="f.v" class="peer sr-only"/>
-            <div class="px-3 py-2 border-2 rounded-lg text-center text-sm peer-checked:border-brand peer-checked:bg-brand/5 transition" x-text="f.l"></div>
+            <div class="px-3 py-2 border-2 rounded-lg text-center text-xs peer-checked:border-brand peer-checked:bg-brand/5 transition" x-text="f.l"></div>
           </label>
         </template>
       </div>
+      <!-- Weekday picker für recurring -->
+      <div x-show="form.frequency !== 'once'" class="mt-3">
+        <label class="block text-xs font-bold text-gray-600 mb-2">An welchen Wochentagen?</label>
+        <div class="flex flex-wrap gap-1">
+          <template x-for="(d,i) in ['Mo','Di','Mi','Do','Fr','Sa','So']" :key="i">
+            <label class="cursor-pointer">
+              <input type="checkbox" :value="i+1" x-model="form.weekdays" class="peer sr-only"/>
+              <div class="w-10 h-10 flex items-center justify-center border-2 rounded-lg text-xs peer-checked:border-brand peer-checked:bg-brand peer-checked:text-white transition" x-text="d"></div>
+            </label>
+          </template>
+        </div>
+        <div x-show="form.frequency === 'nweekly'" class="mt-2">
+          <label class="block text-xs text-gray-600 mb-1">Alle X Wochen</label>
+          <input x-model.number="form.interval_weeks" type="number" min="2" max="12" class="w-24 px-3 py-1.5 border-2 rounded-lg"/>
+        </div>
+      </div>
     </div>
-    <div class="mt-4" x-show="addons.length">
+
+    <div class="mt-5" x-show="addons.length">
       <label class="block text-xs font-bold text-gray-600 mb-2">Extras</label>
       <div class="space-y-1">
         <template x-for="a in addons" :key="a.id">
@@ -176,6 +225,7 @@ body{font-family:'Inter',sans-serif}
         </template>
       </div>
     </div>
+
     <button type="button" @click="step = 3" :disabled="!form.date || !form.time"
             class="mt-5 w-full py-3 bg-brand text-white rounded-lg font-bold disabled:opacity-50 hover:bg-brand-dark transition">Weiter →</button>
   </section>
@@ -205,11 +255,32 @@ body{font-family:'Inter',sans-serif}
       </div>
       <div>
         <label class="block text-xs font-bold text-gray-600 mb-1">Email *</label>
-        <input x-model="form.email" type="email" required class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
+        <input x-model="form.email" type="email" required
+               pattern="[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
+               @blur="validateEmail()"
+               class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
+        <div x-show="emailStatus" :class="emailStatus === 'valid' ? 'text-emerald-600' : 'text-amber-600'" class="text-xs mt-1" x-text="emailStatusMsg"></div>
       </div>
       <div class="md:col-span-2">
         <label class="block text-xs font-bold text-gray-600 mb-1">Handy *</label>
-        <input x-model="form.phone" type="tel" required placeholder="+49 ..." class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
+        <div class="flex gap-1">
+          <select x-model="form.phone_prefix" class="px-2 py-2.5 border-2 rounded-lg focus:border-brand outline-none bg-white">
+            <option value="+49">🇩🇪 +49</option>
+            <option value="+43">🇦🇹 +43</option>
+            <option value="+41">🇨🇭 +41</option>
+            <option value="+40">🇷🇴 +40</option>
+            <option value="+33">🇫🇷 +33</option>
+            <option value="+31">🇳🇱 +31</option>
+            <option value="+44">🇬🇧 +44</option>
+            <option value="+1">🇺🇸 +1</option>
+          </select>
+          <input x-model="form.phone_local" type="tel" required
+                 pattern="[0-9\s\-]{6,15}"
+                 placeholder="176 12345678"
+                 @blur="validatePhone()"
+                 class="flex-1 px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
+        </div>
+        <div x-show="phoneStatus" :class="phoneStatus === 'valid' ? 'text-emerald-600' : 'text-amber-600'" class="text-xs mt-1" x-text="phoneStatusMsg"></div>
       </div>
       <div class="md:col-span-2">
         <label class="block text-xs font-bold text-gray-600 mb-1">Zusatz-Info (optional)</label>
@@ -256,6 +327,13 @@ body{font-family:'Inter',sans-serif}
 
 </main>
 
+<!-- Floating WhatsApp Chat Button -->
+<a href="https://wa.me/message/OVHQQCZT7WYAH1" target="_blank" rel="noopener"
+   class="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-2xl font-bold transition">
+  <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413"/></svg>
+  Fragen? Chat
+</a>
+
 <script>
 function bookingFlow() {
   return {
@@ -271,15 +349,69 @@ function bookingFlow() {
       {v:'weekly',l:'Wöchentlich'},
       {v:'biweekly',l:'14-täglich'},
       {v:'monthly',l:'Monatlich'},
+      {v:'nweekly',l:'Alle X Wochen'},
     ],
+    emailStatus: '', emailStatusMsg: '',
+    phoneStatus: '', phoneStatusMsg: '',
+    tiers: [],
     form: {
       service_type: '', service_name: '', service_price_start: 0,
       street: '', plz: '', city: 'Berlin', country: 'Deutschland',
       lat: 0, lng: 0, address_verified: false, in_berlin_area: false, distance_km: 0,
       qm: 60, rooms: 2,
-      date: '', time: '09:00', hours: 3, frequency: 'once',
-      extras: [], name: '', email: '', phone: '', notes: '',
+      date: '', time: '09:00', hours: 3, frequency: 'once', weekdays: [], interval_weeks: 2,
+      extras: [], name: '', email: '', phone_prefix: '+49', phone_local: '', phone: '', notes: '',
       consent_contact: false, consent_privacy: false, consent_marketing: false,
+    },
+    get autoHours() {
+      // From tiers by qm
+      const svcMap = { hc: 'private', str: 'str', bs: 'office' };
+      const type = svcMap[this.form.service_type] || 'private';
+      const rel = this.tiers.filter(t => t.customer_type === type).sort((a,b) => a.max_sqm - b.max_sqm);
+      const match = rel.find(t => this.form.qm <= parseInt(t.max_sqm));
+      return match ? parseFloat(match.billed_hours_min) : Math.max(2, Math.ceil(this.form.qm / 25));
+    },
+    get autoHoursReason() {
+      const svcMap = { hc: 'private', str: 'str', bs: 'office' };
+      const type = svcMap[this.form.service_type] || 'private';
+      const rel = this.tiers.filter(t => t.customer_type === type).sort((a,b) => a.max_sqm - b.max_sqm);
+      const match = rel.find(t => this.form.qm <= parseInt(t.max_sqm));
+      return match ? (match.notes || ('≤' + match.max_sqm + ' qm')) : 'geschätzt';
+    },
+    get stopTime() {
+      if (!this.form.time) return '-';
+      const [h, m] = this.form.time.split(':').map(x => parseInt(x));
+      const endMin = h * 60 + m + Math.round(this.form.hours * 60);
+      const eh = Math.floor(endMin / 60) % 24;
+      const em = endMin % 60;
+      return String(eh).padStart(2,'0') + ':' + String(em).padStart(2,'0');
+    },
+    get baseTotal() {
+      // base = starting_price + (extra hours * hourly rate)
+      const extra = Math.max(0, (this.form.hours || 2) - 2);
+      const hourly = (this.form.service_price_start / 2) * 0.85;  // rough hourly ≈ start/2
+      return parseFloat((this.form.service_price_start + extra * hourly).toFixed(2));
+    },
+    get liveTotal() {
+      let t = this.baseTotal;
+      this.form.extras.forEach(id => {
+        const a = this.addons.find(x => x.id === id);
+        if (a) t += a.price;
+      });
+      return t;
+    },
+    validateEmail() {
+      const re = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+      if (!this.form.email) { this.emailStatus = ''; this.emailStatusMsg = ''; return; }
+      if (!re.test(this.form.email)) { this.emailStatus = 'invalid'; this.emailStatusMsg = '⚠️ Ungültiges Email-Format'; return; }
+      this.emailStatus = 'valid'; this.emailStatusMsg = '✓ Format OK';
+    },
+    validatePhone() {
+      const p = (this.form.phone_local || '').replace(/[^\d]/g, '');
+      if (!p) { this.phoneStatus = ''; this.phoneStatusMsg = ''; return; }
+      if (p.length < 6 || p.length > 13) { this.phoneStatus = 'invalid'; this.phoneStatusMsg = '⚠️ Nummer zu kurz/lang'; return; }
+      this.form.phone = this.form.phone_prefix + p;
+      this.phoneStatus = 'valid'; this.phoneStatusMsg = '✓ ' + this.form.phone;
     },
     addrQuery: '',
     addrResults: [],
@@ -340,6 +472,14 @@ function bookingFlow() {
         this.addons = (d.addons || []).filter(a => a.visibility !== 'hidden').map(a => ({
           id: a.id, name: a.name, price: parseFloat(a.price), icon: a.icon || ''
         }));
+        this.tiers = d.tiers || [];
+        // Auto-set hours when entering step 2
+        this.$watch('step', (val) => {
+          if (val === 2 && !this.form._hours_touched) {
+            this.form.hours = this.autoHours;
+          }
+        });
+        this.$watch('form.hours', () => { this.form._hours_touched = true; });
         if (preSvc) {
           const match = this.services.find(s => s.id === preSvc);
           if (match) { this.form.service_type = match.id; this.form.service_name = match.name; this.form.service_price_start = match.startingPrice; this.step = 1; }
@@ -349,6 +489,10 @@ function bookingFlow() {
     async submit() {
       this.submitting = true;
       this.error = '';
+      // Ensure phone is assembled
+      this.validatePhone();
+      // Fire OSI precheck in parallel (non-blocking)
+      this.osiPrecheck();
       try {
         const r = await fetch('/api/booking-public.php', {
           method: 'POST',
@@ -366,6 +510,15 @@ function bookingFlow() {
       } finally {
         this.submitting = false;
       }
+    },
+    osiPrecheck() {
+      // Fire-and-forget — server logs OSI result for admin review (non-blocking)
+      if (!this.form.email && !this.form.phone) return;
+      fetch('/api/booking-osi-precheck.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: this.form.name, email: this.form.email, phone: this.form.phone }),
+      }).catch(() => {});
     },
   };
 }
