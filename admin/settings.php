@@ -5,8 +5,8 @@ $title = 'Einstellungen'; $page = 'settings';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action']??'') === 'update_settings') {
     if (!verifyCsrf()) { header('Location: /admin/settings.php'); exit; }
-    $fields = ['first_name','last_name','company','phone','email','website','invoice_prefix','invoice_number','bank','bic','iban','USt_IdNr','business_number','fiscal_number','invoice_text','street','number','postal_code','city','country','note_for_email','email_booking','email_job_start','email_job_complete','email_invoice','email_reminder','discount_weekly','discount_biweekly','discount_monthly','discount_active'];
-    $checkboxes = ['email_booking','email_job_start','email_job_complete','email_invoice','email_reminder','discount_active'];
+    $fields = ['first_name','last_name','company','phone','email','website','invoice_prefix','invoice_number','bank','bic','iban','USt_IdNr','business_number','fiscal_number','invoice_text','street','number','postal_code','city','country','note_for_email','email_master_enabled','email_booking','email_job_start','email_job_complete','email_invoice','email_reminder','discount_weekly','discount_biweekly','discount_monthly','discount_active'];
+    $checkboxes = ['email_master_enabled','email_booking','email_job_start','email_job_complete','email_invoice','email_reminder','discount_active'];
     $sets = []; $params = [];
     foreach ($fields as $f) { $sets[] = "$f=?"; $params[] = in_array($f, $checkboxes) ? (isset($_POST[$f]) ? '1' : '0') : ($_POST[$f] ?? ''); }
 
@@ -131,9 +131,25 @@ include __DIR__ . '/../includes/layout.php';
   <!-- Email & Benachrichtigungen -->
   <div class="bg-white rounded-xl border p-5">
     <h3 class="font-semibold mb-4">E-Mail Benachrichtigungen</h3>
+
+    <!-- MASTER-TOGGLE (Kill-Switch) -->
+    <div class="mb-4 p-4 rounded-xl border-2 <?= ($s['email_master_enabled']??1) ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-300' ?>">
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" name="email_master_enabled" value="1" <?= ($s['email_master_enabled']??1) ? 'checked' : '' ?> class="rounded w-5 h-5"/>
+        <div class="flex-1">
+          <div class="font-bold <?= ($s['email_master_enabled']??1) ? 'text-green-900' : 'text-red-900' ?>">
+            <?= ($s['email_master_enabled']??1) ? '📧 Automatische Emails AKTIV' : '🛑 Alle automatischen Emails GESTOPPT' ?>
+          </div>
+          <div class="text-xs <?= ($s['email_master_enabled']??1) ? 'text-green-700' : 'text-red-700' ?>">
+            Master-Kill-Switch. Wenn aus, sendet das System <b>keine einzige Email</b> automatisch — egal welche Einzel-Toggles unten stehen.
+          </div>
+        </div>
+      </label>
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div class="space-y-3">
-        <p class="text-sm text-gray-500">Automatische E-Mails werden gesendet bei:</p>
+        <p class="text-sm text-gray-500">Einzel-Events (nur wenn Master an):</p>
         <label class="flex items-center gap-3"><input type="checkbox" name="email_booking" value="1" <?= ($s['email_booking']??1) ? 'checked' : '' ?> class="rounded"/> <span class="text-sm">Neue Buchung (Bestätigung)</span></label>
         <label class="flex items-center gap-3"><input type="checkbox" name="email_job_start" value="1" <?= ($s['email_job_start']??1) ? 'checked' : '' ?> class="rounded"/> <span class="text-sm">Job gestartet</span></label>
         <label class="flex items-center gap-3"><input type="checkbox" name="email_job_complete" value="1" <?= ($s['email_job_complete']??1) ? 'checked' : '' ?> class="rounded"/> <span class="text-sm">Job abgeschlossen</span></label>

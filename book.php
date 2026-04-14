@@ -467,6 +467,22 @@ function bookingFlow() {
       if (!this.form.email) { this.emailStatus = ''; this.emailStatusMsg = ''; return; }
       if (!re.test(this.form.email)) { this.emailStatus = 'invalid'; this.emailStatusMsg = '⚠️ Ungültiges Email-Format'; return; }
       this.emailStatus = 'valid'; this.emailStatusMsg = '✓ Format OK';
+      // Returning customer — autofill address + name from DB
+      fetch('/api/customer-lookup.php?email=' + encodeURIComponent(this.form.email))
+        .then(r => r.json())
+        .then(d => {
+          if (!d || !d.found) return;
+          if (!this.form.name && d.name) this.form.name = d.name;
+          if (!this.form.street && d.street) this.form.street = (d.street + (d.number ? ' ' + d.number : '')).trim();
+          if (!this.form.plz && d.plz) this.form.plz = d.plz;
+          if (!this.form.city && d.city) this.form.city = d.city;
+          if (d.country && (!this.form.country || this.form.country === 'Deutschland')) this.form.country = d.country;
+          if (this.form.street && this.form.plz && this.form.city) {
+            this.addrQuery = this.form.street + ', ' + this.form.plz + ' ' + this.form.city;
+          }
+          this.emailStatusMsg = '✓ Willkommen zurück — Adresse übernommen';
+        })
+        .catch(() => {});
     },
     validatePhone() {
       const p = (this.form.phone_local || '').replace(/[^\d]/g, '');

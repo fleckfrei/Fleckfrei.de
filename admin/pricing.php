@@ -9,9 +9,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($act === 'update_config') {
         $pcId = (int)($_POST['pc_id'] ?? 0);
-        q("UPDATE pricing_config SET base_hourly_netto=?, min_billable_hours=?, partner_commission_pct=?, tax_percentage=?, market_price_reference=? WHERE pc_id=?",
-          [(float)$_POST['base_hourly_netto'], (float)$_POST['min_billable_hours'], (float)$_POST['partner_commission_pct'], (float)$_POST['tax_percentage'], $_POST['market_price_reference'] !== '' ? (float)$_POST['market_price_reference'] : null, $pcId]);
-        audit('update', 'pricing_config', $pcId, 'Preis-Config aktualisiert');
+        $minP = ($_POST['price_min_netto'] ?? '') !== '' ? (float)$_POST['price_min_netto'] : null;
+        $maxP = ($_POST['price_max_netto'] ?? '') !== '' ? (float)$_POST['price_max_netto'] : null;
+        q("UPDATE pricing_config SET base_hourly_netto=?, min_billable_hours=?, partner_commission_pct=?, tax_percentage=?, market_price_reference=?, price_min_netto=?, price_max_netto=? WHERE pc_id=?",
+          [(float)$_POST['base_hourly_netto'], (float)$_POST['min_billable_hours'], (float)$_POST['partner_commission_pct'], (float)$_POST['tax_percentage'], $_POST['market_price_reference'] !== '' ? (float)$_POST['market_price_reference'] : null, $minP, $maxP, $pcId]);
+        audit('update', 'pricing_config', $pcId, 'Preis-Config aktualisiert (inkl. min/max range)');
         header('Location: /admin/pricing.php?saved=1'); exit;
     }
 
@@ -111,6 +113,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /admin/pricing.php?saved=1#tiers'); exit;
     }
     if ($act === 'save_website_prices') {
+        // Hours per card + display modes (website / booking / invoice) per customer type
+        $hrs = fn($v) => max(1, min(12, (int)$v));
+        $mode = fn($v) => in_array($v, ['brutto','netto'], true) ? $v : 'netto';
+        try {
+            q("UPDATE settings SET
+                website_hours_home_care=?, website_hours_str=?, website_hours_office=?,
+                display_website_private=?, display_website_str=?, display_website_office=?,
+                display_booking_private=?, display_booking_str=?, display_booking_office=?,
+                display_invoice_private=?, display_invoice_str=?, display_invoice_office=?", [
+                $hrs($_POST['website_hours_home_care'] ?? 2),
+                $hrs($_POST['website_hours_str'] ?? 2),
+                $hrs($_POST['website_hours_office'] ?? 2),
+                $mode($_POST['display_website_private'] ?? 'brutto'),
+                $mode($_POST['display_website_str'] ?? 'netto'),
+                $mode($_POST['display_website_office'] ?? 'netto'),
+                $mode($_POST['display_booking_private'] ?? 'brutto'),
+                $mode($_POST['display_booking_str'] ?? 'netto'),
+                $mode($_POST['display_booking_office'] ?? 'netto'),
+                $mode($_POST['display_invoice_private'] ?? 'netto'),
+                $mode($_POST['display_invoice_str'] ?? 'netto'),
+                $mode($_POST['display_invoice_office'] ?? 'netto'),
+            ]);
+        } catch (Exception $e) {}
+
         // Normalize decimal — accept "12,34" (DE) and "12.34" (EN)
         $parsePrice = fn($v) => (string)$v === '' ? null : (float) str_replace([' ', ','], ['', '.'], trim((string)$v));
         q("UPDATE settings SET website_price_private_override=?, website_price_str_override=?, website_price_office_override=?, website_title_home_care=?, website_title_str=?, website_title_office=?",
@@ -158,7 +184,14 @@ $avgAirbnb = !empty($airbnbPrices) ? round(array_sum($airbnbPrices) / count($air
 $fleckfreiRate = (float)($configs[0]['base_hourly_netto'] ?? 24.29);
 
 $tiers = all("SELECT * FROM pricing_tiers ORDER BY customer_type, sort_order, max_sqm");
-$settings = one("SELECT competitive_mode, competitive_premium_pct, new_customer_discount_pct, discount_active, discount_weekly, discount_biweekly, discount_monthly, website_price_private_override, website_price_str_override, website_price_office_override, website_title_home_care, website_title_str, website_title_office FROM settings LIMIT 1") ?: [];
+$settings = one("SELECT competitive_mode, competitive_premium_pct, new_customer_discount_pct, discount_active, discount_weekly, discount_biweekly, discount_monthly,
+    website_price_private_override, website_price_str_override, website_price_office_override,
+    website_title_home_care, website_title_str, website_title_office,
+    website_hours_home_care, website_hours_str, website_hours_office,
+    display_website_private, display_website_str, display_website_office,
+    display_booking_private, display_booking_str, display_booking_office,
+    display_invoice_private, display_invoice_str, display_invoice_office
+    FROM settings LIMIT 1") ?: [];
 
 include __DIR__ . '/../includes/layout.php';
 ?>
@@ -190,13 +223,55 @@ include __DIR__ . '/../includes/layout.php';
 
 <!-- Market overview -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  <div class="bg-white rounded-xl border p-5 ring-2 ring-brand/20">
-    <div class="text-xs font-semibold text-brand uppercase tracking-wider mb-1">Fleckfrei</div>
-    <div class="text-3xl font-bold text-brand"><?= number_format($fleckfreiRate, 2, ',', '.') ?> €</div>
-    <div class="text-xs text-gray-500 mt-1">netto / Stunde</div>
-    <div class="text-xs font-semibold mt-2 <?= $fleckfreiRate <= $avgCompetitor ? 'text-green-600' : 'text-red-600' ?>">
-      <?= $avgCompetitor ? ($fleckfreiRate <= $avgCompetitor ? '✓ unter Markt-Ø' : '⚠ über Markt-Ø') : '' ?>
+  <?php
+    // Primary Fleckfrei-config: prefer 'all', fallback to first entry
+    $ffCfg = null;
+    foreach ($configs as $cc) if ($cc['customer_type'] === 'all') { $ffCfg = $cc; break; }
+    if (!$ffCfg) $ffCfg = $configs[0] ?? null;
+  ?>
+  <div class="bg-white rounded-xl border p-5 ring-2 ring-brand/20" x-data="{editing:false}">
+    <div class="flex items-center justify-between mb-1">
+      <div class="text-xs font-semibold text-brand uppercase tracking-wider">Fleckfrei</div>
+      <button type="button" @click="editing=!editing" class="text-xs text-gray-400 hover:text-brand" x-text="editing ? '✕' : '✏️'"></button>
     </div>
+    <div x-show="!editing">
+      <div class="text-3xl font-bold text-brand"><?= number_format($fleckfreiRate, 2, ',', '.') ?> €</div>
+      <div class="text-xs text-gray-500 mt-1">netto / Stunde · <code class="text-[10px]"><?= e($ffCfg['customer_type'] ?? 'all') ?></code></div>
+      <div class="text-xs font-semibold mt-2 <?= $fleckfreiRate <= $avgCompetitor ? 'text-green-600' : 'text-red-600' ?>">
+        <?= $avgCompetitor ? ($fleckfreiRate <= $avgCompetitor ? '✓ unter Markt-Ø' : '⚠ über Markt-Ø') : '' ?>
+      </div>
+    </div>
+    <form x-show="editing" method="POST" class="space-y-2 mt-1">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="update_config"/>
+      <input type="hidden" name="pc_id" value="<?= (int)($ffCfg['pc_id'] ?? 0) ?>"/>
+      <input type="hidden" name="min_billable_hours" value="<?= e($ffCfg['min_billable_hours'] ?? 2) ?>"/>
+      <input type="hidden" name="partner_commission_pct" value="<?= e($ffCfg['partner_commission_pct'] ?? 15) ?>"/>
+      <input type="hidden" name="tax_percentage" value="<?= e($ffCfg['tax_percentage'] ?? 19) ?>"/>
+      <input type="hidden" name="market_price_reference" value="<?= e($ffCfg['market_price_reference'] ?? '') ?>"/>
+      <label class="block text-[10px] text-gray-500">Basis-Stundensatz (€ netto)</label>
+      <input type="number" step="0.01" name="base_hourly_netto" value="<?= e($ffCfg['base_hourly_netto'] ?? $fleckfreiRate) ?>" autofocus class="w-full px-2 py-1.5 border-2 border-brand rounded text-lg font-bold text-brand"/>
+      <div class="grid grid-cols-2 gap-1 mt-1">
+        <div>
+          <label class="block text-[10px] text-gray-500">Min Ø netto</label>
+          <input type="number" step="0.01" name="price_min_netto" value="<?= e($ffCfg['price_min_netto'] ?? '') ?>" placeholder="z.B. 20,00" class="w-full px-2 py-1.5 border rounded text-sm"/>
+        </div>
+        <div>
+          <label class="block text-[10px] text-gray-500">Max Ø netto</label>
+          <input type="number" step="0.01" name="price_max_netto" value="<?= e($ffCfg['price_max_netto'] ?? '') ?>" placeholder="z.B. 35,00" class="w-full px-2 py-1.5 border rounded text-sm"/>
+        </div>
+      </div>
+      <div class="flex gap-1 mt-2">
+        <button type="submit" class="flex-1 px-2 py-1.5 bg-brand text-white rounded text-xs font-semibold">💾 Speichern</button>
+        <button type="button" @click="editing=false" class="px-2 py-1.5 border rounded text-xs">Abbr.</button>
+      </div>
+    </form>
+    <?php if (!empty($ffCfg['price_min_netto']) && !empty($ffCfg['price_max_netto'])): ?>
+    <div x-show="!editing" class="mt-2 pt-2 border-t text-[11px] text-gray-500 flex items-center justify-between">
+      <span>Dyn. Bereich (Neukunde):</span>
+      <span class="font-mono"><?= number_format($ffCfg['price_min_netto'],2,',','.') ?> – <?= number_format($ffCfg['price_max_netto'],2,',','.') ?> €</span>
+    </div>
+    <?php endif; ?>
   </div>
   <div class="bg-white rounded-xl border p-5">
     <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Günstigster</div>
@@ -294,13 +369,21 @@ include __DIR__ . '/../includes/layout.php';
         <svg class="w-4 h-4 text-gray-400 group-open:rotate-180 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
       </summary>
       <div class="p-5 border-t bg-gray-50">
-        <form method="POST" class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <form method="POST" class="grid grid-cols-2 lg:grid-cols-7 gap-3">
           <?= csrfField() ?>
           <input type="hidden" name="action" value="update_config"/>
           <input type="hidden" name="pc_id" value="<?= (int)$c['pc_id'] ?>"/>
           <div>
             <label class="block text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-1">Basis €/h netto</label>
             <input type="number" step="0.01" name="base_hourly_netto" value="<?= e($c['base_hourly_netto']) ?>" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-brand uppercase tracking-wider mb-1">Min €/h netto</label>
+            <input type="number" step="0.01" name="price_min_netto" value="<?= e($c['price_min_netto'] ?? '') ?>" placeholder="Neukunde-Lowball" class="w-full px-3 py-2 border-2 border-brand/30 rounded-lg text-sm"/>
+          </div>
+          <div>
+            <label class="block text-[10px] font-semibold text-brand uppercase tracking-wider mb-1">Max €/h netto</label>
+            <input type="number" step="0.01" name="price_max_netto" value="<?= e($c['price_max_netto'] ?? '') ?>" placeholder="Peak/Premium" class="w-full px-3 py-2 border-2 border-brand/30 rounded-lg text-sm"/>
           </div>
           <div>
             <label class="block text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-1">Mindest-Std</label>
@@ -315,10 +398,10 @@ include __DIR__ . '/../includes/layout.php';
             <input type="number" step="0.01" name="tax_percentage" value="<?= e($c['tax_percentage']) ?>" class="w-full px-3 py-2 border rounded-lg text-sm"/>
           </div>
           <div>
-            <label class="block text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-1">Markt-Referenz</label>
+            <label class="block text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-1">Markt-Ref</label>
             <input type="number" step="0.01" name="market_price_reference" value="<?= e($c['market_price_reference'] ?? '') ?>" placeholder="auto" class="w-full px-3 py-2 border rounded-lg text-sm"/>
           </div>
-          <div class="col-span-2 lg:col-span-5 flex items-end justify-between gap-3 pt-2">
+          <div class="col-span-2 lg:col-span-7 flex items-end justify-between gap-3 pt-2">
             <div class="text-xs text-gray-600 space-y-0.5">
               <div>📊 <strong>Kunde sieht:</strong> <?= number_format($flatPrice, 2, ',', '.') ?> € netto / <?= number_format($flatBrutto, 2, ',', '.') ?> € brutto</div>
               <div>👤 <strong>Partner bekommt:</strong> <?= number_format($partnerShare, 2, ',', '.') ?> € / Std (= <?= number_format(100 - $c['partner_commission_pct'], 2, ',', '.') ?>%)</div>
@@ -551,30 +634,58 @@ function editRule(r) {
     <?= csrfField() ?>
     <input type="hidden" name="action" value="save_website_prices"/>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="border rounded-lg p-3">
-        <div class="text-xs text-gray-500 mb-2">01 · 🏠 Home Care (private)</div>
+      <?php
+      $cards = [
+        ['key'=>'private',  'suffix'=>'home_care', 'icon'=>'🏠', 'label'=>'Home Care · private', 'hilight'=>false],
+        ['key'=>'str',      'suffix'=>'str',       'icon'=>'🏨', 'label'=>'Short-Term Rental ★', 'hilight'=>true],
+        ['key'=>'office',   'suffix'=>'office',    'icon'=>'🏢', 'label'=>'Business & Office',    'hilight'=>false],
+      ];
+      foreach ($cards as $i => $c):
+        $k = $c['key']; $s = $c['suffix'];
+        $priceVal = $settings["website_price_{$k}_override"] ?? null;
+        $hoursVal = (int)($settings["website_hours_$s"] ?? 2);
+        $dWeb = $settings["display_website_$k"]  ?? ($k==='private' ? 'brutto' : 'netto');
+        $dBook= $settings["display_booking_$k"]  ?? ($k==='private' ? 'brutto' : 'netto');
+        $dInv = $settings["display_invoice_$k"]  ?? 'netto';
+        $cls = $c['hilight'] ? 'border-2 border-brand bg-brand/5' : 'border';
+        $num = str_pad($i+1, 2, '0', STR_PAD_LEFT);
+      ?>
+      <div class="<?= $cls ?> rounded-lg p-3">
+        <div class="text-xs <?= $c['hilight']?'text-brand font-semibold':'text-gray-500' ?> mb-2"><?= $num ?> · <?= $c['icon'] ?> <?= e($c['label']) ?></div>
+
         <label class="block text-xs mb-1">Card-Titel</label>
-        <input name="website_title_home_care" value="<?= e($settings['website_title_home_care'] ?? 'Home Care') ?>" class="w-full px-3 py-2 border rounded mb-2 text-sm"/>
-        <label class="block text-xs mb-1">„ab XX EUR" Preis</label>
-        <input type="text" inputmode="decimal" pattern="[0-9.,]*" name="website_price_private_override" value="<?= $settings['website_price_private_override'] !== null ? e($settings['website_price_private_override']) : '' ?>" placeholder="auto" class="w-full px-3 py-2 border rounded font-mono text-sm"/>
-        <p class="text-xs text-gray-400 mt-1">leer = auto aus Tiers</p>
+        <input name="website_title_<?= $s ?>" value="<?= e($settings["website_title_$s"] ?? ucfirst(str_replace('_',' ',$s))) ?>" class="w-full px-2 py-1.5 border rounded mb-2 text-sm"/>
+
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <div>
+            <label class="block text-xs mb-1">„ab XX EUR" Preis</label>
+            <input type="text" inputmode="decimal" pattern="[0-9.,]*" name="website_price_<?= $k ?>_override" value="<?= $priceVal !== null ? e($priceVal) : '' ?>" placeholder="auto" class="w-full px-2 py-1.5 border rounded font-mono text-sm"/>
+          </div>
+          <div>
+            <label class="block text-xs mb-1">pro … Stunden</label>
+            <select name="website_hours_<?= $s ?>" class="w-full px-2 py-1.5 border rounded text-sm">
+              <?php foreach ([1,2,3,4,5,6,8] as $h): ?>
+                <option value="<?= $h ?>" <?= $h===$hoursVal?'selected':'' ?>><?= $h ?> h</option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+        <p class="text-[10px] text-gray-400 mb-2">Preis leer = auto. Stunden = Basis für Card-Preis.</p>
+
+        <div class="space-y-1.5 pt-2 border-t text-xs">
+          <div class="text-gray-500 font-semibold mb-1">Anzeige als:</div>
+          <?php foreach ([['website','🌐 Website',$dWeb],['booking','📋 Booking-Formular',$dBook],['invoice','💶 Rechnung',$dInv]] as [$scope,$lbl,$cur]): ?>
+            <label class="flex items-center justify-between gap-2">
+              <span class="text-gray-600"><?= e($lbl) ?></span>
+              <select name="display_<?= $scope ?>_<?= $k ?>" class="px-2 py-1 border rounded text-xs bg-white">
+                <option value="brutto" <?= $cur==='brutto'?'selected':'' ?>>Brutto</option>
+                <option value="netto"  <?= $cur==='netto'?'selected':'' ?>>Netto</option>
+              </select>
+            </label>
+          <?php endforeach; ?>
+        </div>
       </div>
-      <div class="border-2 border-brand rounded-lg p-3 bg-brand/5">
-        <div class="text-xs text-brand font-semibold mb-2">02 · 🏨 Short-Term Rental ★ Meistgebucht</div>
-        <label class="block text-xs mb-1">Card-Titel</label>
-        <input name="website_title_str" value="<?= e($settings['website_title_str'] ?? 'Short-Term Rental') ?>" class="w-full px-3 py-2 border rounded mb-2 text-sm"/>
-        <label class="block text-xs mb-1">„ab XX EUR" Preis</label>
-        <input type="text" inputmode="decimal" pattern="[0-9.,]*" name="website_price_str_override" value="<?= $settings['website_price_str_override'] !== null ? e($settings['website_price_str_override']) : '' ?>" placeholder="auto" class="w-full px-3 py-2 border rounded font-mono text-sm"/>
-        <p class="text-xs text-gray-400 mt-1">leer = auto aus Tiers</p>
-      </div>
-      <div class="border rounded-lg p-3">
-        <div class="text-xs text-gray-500 mb-2">03 · 🏢 Business & Office</div>
-        <label class="block text-xs mb-1">Card-Titel</label>
-        <input name="website_title_office" value="<?= e($settings['website_title_office'] ?? 'Business & Office') ?>" class="w-full px-3 py-2 border rounded mb-2 text-sm"/>
-        <label class="block text-xs mb-1">„ab XX EUR" Preis</label>
-        <input type="text" inputmode="decimal" pattern="[0-9.,]*" name="website_price_office_override" value="<?= $settings['website_price_office_override'] !== null ? e($settings['website_price_office_override']) : '' ?>" placeholder="auto" class="w-full px-3 py-2 border rounded font-mono text-sm"/>
-        <p class="text-xs text-gray-400 mt-1">leer = auto aus Tiers</p>
-      </div>
+      <?php endforeach; ?>
     </div>
     <button class="px-4 py-2 bg-brand text-white rounded-lg font-semibold">Website-Preise speichern</button>
     <p class="text-xs text-gray-500">⚡ Änderungen sind in <strong>~15 Sekunden live</strong> auf <a href="https://fleckfrei.de" target="_blank" class="underline">fleckfrei.de</a> (kein Cache, JS-Auto-Poll). Komma oder Punkt erlaubt (0,02 oder 0.02).</p>

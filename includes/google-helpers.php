@@ -4,14 +4,23 @@
  * Uses OAuth tokens stored in settings table
  */
 
-// Loaded from google-keys.php (gitignored)
+// Loaded from google-keys.php (gitignored) OR from app_config DB table
 if (file_exists(__DIR__.'/google-keys.php')) require_once __DIR__.'/google-keys.php';
+if (!defined('GOOG_CLIENT_ID') || !defined('GOOG_CLIENT_SECRET')) {
+    try {
+        $_ggId  = val("SELECT config_value FROM app_config WHERE config_key='google_client_id'");
+        $_ggSec = val("SELECT config_value FROM app_config WHERE config_key='google_client_secret'");
+        if ($_ggId  && !defined('GOOG_CLIENT_ID'))     define('GOOG_CLIENT_ID',     $_ggId);
+        if ($_ggSec && !defined('GOOG_CLIENT_SECRET')) define('GOOG_CLIENT_SECRET', $_ggSec);
+    } catch (Exception $e) {}
+}
 
 /**
  * Get valid Google access token (auto-refreshes if expired)
  */
 function google_token(): ?string {
-    $raw = val("SELECT config_value FROM app_config WHERE config_key='google_oauth_tokens'");
+    try { $raw = val("SELECT config_value FROM app_config WHERE config_key='google_oauth_tokens'"); }
+    catch (Exception $e) { return null; }
     if (!$raw) return null;
     $tokens = json_decode($raw, true);
     if (!$tokens || empty($tokens['access_token'])) return null;
@@ -19,7 +28,8 @@ function google_token(): ?string {
     // Check if expired
     if (time() >= ($tokens['expires_at'] ?? 0) - 60) {
         if (empty($tokens['refresh_token'])) return null;
-        // Refresh
+        // Refresh — requires OAuth keys. If not defined (google-keys.php missing), bail gracefully.
+        if (!defined('GOOG_CLIENT_ID') || !defined('GOOG_CLIENT_SECRET')) return null;
         $ch = curl_init('https://oauth2.googleapis.com/token');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,

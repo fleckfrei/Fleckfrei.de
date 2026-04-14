@@ -4,8 +4,34 @@
  * HTML-Emails mit White-Label aus config.php
  */
 
-function sendEmail($to, $subject, $bodyHtml, $replyTo = null) {
+/**
+ * Master-Kill-Switch für automatische Emails.
+ * Vor jedem automatischen sendMail()-Call aufrufen.
+ * $event: '' (generisch) | 'booking' | 'job_start' | 'job_complete' | 'invoice' | 'reminder'
+ */
+function shouldSendEmail(string $event = ''): bool {
+    static $cache = null;
+    if ($cache === null) {
+        try {
+            $s = one("SELECT email_master_enabled, email_booking, email_job_start, email_job_complete, email_invoice, email_reminder FROM settings LIMIT 1") ?: [];
+        } catch (Exception $e) { $s = []; }
+        $cache = $s;
+    }
+    if (empty($cache)) return true;                              // Default: allow (fallback)
+    if ((int)($cache['email_master_enabled'] ?? 1) !== 1) return false;  // Master aus → nichts raus
+    if ($event === '') return true;
+    $key = 'email_' . $event;
+    return isset($cache[$key]) ? (int)$cache[$key] === 1 : true;
+}
+
+
+function sendEmail($to, $subject, $bodyHtml, $replyTo = null, $eventKey = '') {
     if (empty($to)) return false;
+    // Master-Kill-Switch — respektiert den globalen Admin-Toggle + Event-Flag
+    if (!shouldSendEmail($eventKey)) {
+        try { if (function_exists('q')) q("INSERT INTO audit_log (event, entity_type, description, actor_type, created_at) VALUES ('email_blocked','system',?,'admin',NOW())", ['email blocked by master-switch: ' . mb_strimwidth((string)$subject, 0, 100, '…')]); } catch (Exception $e) {}
+        return false;
+    }
 
     $from = SITE . ' <noreply@' . SITE_DOMAIN . '>';
     $headers = [
@@ -118,7 +144,7 @@ function notifyBookingConfirmation($jobId) {
     <p style='color:#6b7280'>Bei Fragen erreichen Sie uns per WhatsApp oder E-Mail.</p>";
 
     $html = emailTemplate('Buchungsbestätigung', $content, 'Meine Buchungen', 'https://app.' . SITE_DOMAIN . '/customer/');
-    return sendEmail($job['cemail'], SITE . ' — Buchungsbestätigung #' . $jobId, $html);
+    return sendEmail($job['cemail'], SITE . ' — Buchungsbestätigung #' . $jobId, $html, null, 'booking');
 }
 
 function notifyJobStarted($jobId) {
@@ -141,7 +167,7 @@ function notifyJobStarted($jobId) {
       <tr><td style='padding:8px 0;color:#6b7280'>Gestartet:</td><td style='padding:8px 0;font-weight:600'>$date um $time Uhr</td></tr>
     </table>";
 
-    return sendEmail($job['cemail'], SITE . ' — Job gestartet', emailTemplate('Job gestartet', $content));
+    return sendEmail($job['cemail'], SITE . ' — Job gestartet', emailTemplate('Job gestartet', $content), null, 'job_start');
 }
 
 function notifyJobCompleted($jobId) {
@@ -185,7 +211,7 @@ function notifyJobCompleted($jobId) {
     }
     $content .= $photoGallery;
 
-    return sendEmail($job['cemail'], SITE . ' — Job abgeschlossen', emailTemplate('Job abgeschlossen', $content, 'Bewertung abgeben', 'https://wa.me/' . CONTACT_WA));
+    return sendEmail($job['cemail'], SITE . ' — Job abgeschlossen', emailTemplate('Job abgeschlossen', $content, 'Bewertung abgeben', 'https://wa.me/' . CONTACT_WA), null, 'job_complete');
 }
 
 function notifyInvoiceCreated($invoiceId) {
@@ -208,7 +234,7 @@ function notifyInvoiceCreated($invoiceId) {
     <p style='color:#6b7280'>Sie können die Rechnung im Kundenportal einsehen und herunterladen.</p>";
 
     $html = emailTemplate('Neue Rechnung', $content, 'Rechnung ansehen', 'https://app.' . SITE_DOMAIN . '/customer/invoices.php');
-    return sendEmail($inv['cemail'], SITE . ' — Rechnung ' . $inv['invoice_number'], $html);
+    return sendEmail($inv['cemail'], SITE . ' — Rechnung ' . $inv['invoice_number'], $html, null, 'invoice');
 }
 
 function notifyJobReminder($jobId) {
@@ -232,7 +258,7 @@ function notifyJobReminder($jobId) {
     </table>
     <p style='color:#6b7280'>Bitte stellen Sie sicher, dass alles vorbereitet ist.</p>";
 
-    return sendEmail($job['cemail'], SITE . ' — Erinnerung: Termin morgen', emailTemplate('Termin-Erinnerung', $content));
+    return sendEmail($job['cemail'], SITE . ' — Erinnerung: Termin morgen', emailTemplate('Termin-Erinnerung', $content), null, 'reminder');
 }
 
 function notifyWelcome($customerId) {

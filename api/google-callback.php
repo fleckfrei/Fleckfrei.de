@@ -23,8 +23,8 @@ if (!$code) {
     // Step 1: Redirect to Google OAuth
     $scopes = implode(' ', [
         'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/drive.readonly',
-        'https://www.googleapis.com/auth/spreadsheets.readonly',
+        'https://www.googleapis.com/auth/drive',           // read+write Drive
+        'https://www.googleapis.com/auth/spreadsheets',    // read+write Sheets (DB → Sheet push)
         'https://www.googleapis.com/auth/contacts.readonly',
     ]);
     $url = 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query([

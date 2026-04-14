@@ -80,25 +80,40 @@ $ip = $_SERVER['REMOTE_ADDR'] ?? null;
 $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
 
 try {
-    // Coupon: validate + compute discount
+    // Voucher: validate + compute discount (unified vouchers table)
     $couponCode = strtoupper(trim($body['coupon_code'] ?? ''));
     $discount = 0;
+    $voucherId = null;
     if ($couponCode) {
-        $c = one("SELECT * FROM coupons WHERE code=? AND is_active=1", [$couponCode]);
-        if ($c) {
-            // Simple re-validation
+        $v = one("SELECT * FROM vouchers WHERE code=? AND active=1", [$couponCode]);
+        if ($v) {
             $today = date('Y-m-d');
-            $ok = (!$c['valid_from'] || $c['valid_from'] <= $today)
-               && (!$c['valid_until'] || $c['valid_until'] >= $today)
-               && ($c['usage_limit'] == 0 || $c['usage_count'] < $c['usage_limit']);
+            $typeMap = ['private' => 'private', 'str' => 'host', 'host' => 'host', 'office' => 'b2b', 'b2b' => 'b2b'];
+            $custMapped = $typeMap[$customerType] ?? '';
+            $subtotal = (float)($body['subtotal'] ?? 0);
+
+            $ok = (!$v['valid_from']  || $v['valid_from']  <= $today)
+               && (!$v['valid_until'] || $v['valid_until'] >= $today)
+               && ($v['max_uses'] == 0 || $v['used_count'] < $v['max_uses'])
+               && ($v['customer_type'] === '' || $custMapped === '' || $v['customer_type'] === $custMapped)
+               && ((float)$v['min_amount'] <= 0 || $subtotal >= (float)$v['min_amount']);
+
+            if ($ok && (int)$v['max_per_customer'] > 0 && $email !== '') {
+                $usedByEmail = (int)val("SELECT COUNT(*) FROM voucher_redemptions WHERE voucher_id_fk=? AND customer_email=?", [$v['v_id'], strtolower($email)]);
+                if ($usedByEmail >= (int)$v['max_per_customer']) $ok = false;
+            }
+
             if ($ok) {
-                // Assume price from form
-                $subtotal = (float)($body['subtotal'] ?? 0);
-                if ($c['discount_type'] === 'percent') $discount = round($subtotal * ($c['discount_value'] / 100), 2);
-                elseif ($c['discount_type'] === 'fixed') $discount = (float)$c['discount_value'];
+                switch ($v['type']) {
+                    case 'percent': $discount = round($subtotal * ((float)$v['value'] / 100), 2); break;
+                    case 'fixed':   $discount = min((float)$v['value'], $subtotal); break;
+                    case 'free':    $discount = $subtotal; break;
+                    case 'target':  $discount = max(0, round($subtotal - (float)$v['value'], 2)); break;
+                    case 'hourly_target': $discount = max(0, round($subtotal - ((float)$v['value'] * max(1, (float)$hours)), 2)); break;
+                }
                 $discount = min($discount, $subtotal);
-                // Usage-count inkrementieren
-                q("UPDATE coupons SET usage_count = usage_count + 1 WHERE co_id=?", [$c['co_id']]);
+                $voucherId = (int)$v['v_id'];
+                q("UPDATE vouchers SET used_count = used_count + 1 WHERE v_id=?", [$voucherId]);
             }
         }
     }
@@ -147,12 +162,53 @@ try {
     // 3) Create job
     $optionalProdStr = implode(',', array_map('intval', $extras));
     $jobTime = substr($time, 0, 5) . ':00';
+    $doorbellName  = trim($body['doorbell_name'] ?? '');
+    $floor         = trim($body['floor'] ?? '');
+    $travelTickets = max(0, (int)($body['travel_tickets'] ?? 0));
+    $travelTicketPrice = max(0, (float)($body['travel_ticket_price'] ?? 0));
+    $roomsSel      = is_array($body['rooms_selected'] ?? null) ? json_encode(array_values(array_map('intval', $body['rooms_selected']))) : null;
+    $tasksSel      = is_array($body['tasks_selected'] ?? null) ? json_encode(array_values(array_map('intval', $body['tasks_selected']))) : null;
+    $isTrial       = !empty($body['is_trial']) ? 1 : 0;
+
+    // Travel-Block ermitteln: Voucher > Customer premium
+    $travelBlock = null;
+    if (!empty($v) && !empty($v['block_until_time'])) $travelBlock = $v['block_until_time'];
+    if (!$travelBlock) {
+        try {
+            $cust = one("SELECT is_premium, travel_block_until FROM customer WHERE customer_id=?", [$customerId]);
+            if ($cust && (int)$cust['is_premium'] === 1 && !empty($cust['travel_block_until'])) $travelBlock = $cust['travel_block_until'];
+        } catch (Exception $e) {}
+    }
+    $selectedServiceId = (int)($body['service_id'] ?? 0);
+    // Verify service belongs to customer (security)
+    if ($selectedServiceId > 0) {
+        $sOwn = val("SELECT s_id FROM services WHERE s_id=? AND customer_id_fk=? AND status=1", [$selectedServiceId, $customerId]);
+        if (!$sOwn) $selectedServiceId = 0;
+    }
     q("INSERT INTO jobs (customer_id_fk, j_date, j_time, j_hours, job_for, s_id_fk,
          address, optional_products, emp_message, no_people, no_children, no_pets, code_door,
+         doorbell_name, floor, rooms_selected, tasks_selected, is_trial, travel_block_until,
+         travel_tickets, travel_ticket_price,
          status, platform, job_status, coupon_code, discount_applied, created_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?, '', ?, 0, 0, '', 1, 'Website', 'NEW', ?, ?, NOW())",
-      [$customerId, $date, $jobTime, $hours, $customerType, $addressStr, $optionalProdStr, $rooms + $beds, $couponCode ?: null, $discount]);
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, 0, 0, '', ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Website', 'NEW', ?, ?, NOW())",
+      [$customerId, $date, $jobTime, $hours, $customerType, $selectedServiceId, $addressStr, $optionalProdStr, $rooms + $beds, $doorbellName ?: null, $floor ?: null, $roomsSel, $tasksSel, $isTrial, $travelBlock, $travelTickets, $travelTicketPrice, $couponCode ?: null, $discount]);
     $jobId = (int) lastInsertId();
+
+    // Prebooking-Token: mark as used
+    $pbToken = trim($body['pb_token'] ?? '');
+    if ($pbToken) {
+        try {
+            q("UPDATE prebooking_links SET used_at=NOW(), created_job_id=? WHERE token=? AND used_at IS NULL", [$jobId, $pbToken]);
+        } catch (Exception $e) {}
+    }
+
+    // Log voucher redemption (links to booking + customer)
+    if ($voucherId && $discount > 0) {
+        try {
+            q("INSERT INTO voucher_redemptions (voucher_id_fk, customer_email, customer_id_fk, booking_id_fk, discount_amount) VALUES (?,?,?,?,?)",
+              [$voucherId, strtolower($email), $customerId, $jobId, $discount]);
+        } catch (Exception $e) {}
+    }
 
     // 4) Consent history
     try {
@@ -193,7 +249,9 @@ try {
              . "From: Fleckfrei <no-reply@fleckfrei.de>\r\n"
              . "Reply-To: info@fleckfrei.de\r\n"
              . "Bcc: info@fleckfrei.de\r\n";
-    @mail($email, $subject, $html, $headers);
+    if (!function_exists('shouldSendEmail') || shouldSendEmail('booking')) {
+        @mail($email, $subject, $html, $headers);
+    }
 
     // 6) Telegram notify to admin
     if (function_exists('telegramNotify')) {

@@ -1,13 +1,33 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+
+// Public-access via ?u=SLUG-ID — vorabgeschrieben für Prebook-Kunden
+$publicU = trim($_GET['u'] ?? '');
+if ($publicU && empty($_SESSION['uid'])) {
+    $cidPub = null;
+    if (preg_match('/^(.*)-(\d+)$/', $publicU, $m)) {
+        $slugTry = $m[1]; $cidTry = (int)$m[2];
+        $pub = one("SELECT customer_id, name, email FROM customer WHERE customer_id=? AND personal_slug=? AND status=1 LIMIT 1", [$cidTry, $slugTry]);
+    } else {
+        $pub = one("SELECT customer_id, name, email FROM customer WHERE personal_slug=? AND status=1 LIMIT 1", [$publicU]);
+    }
+    if (!empty($pub)) {
+        $_SESSION['uid']   = (int)$pub['customer_id'];
+        $_SESSION['utype'] = 'customer';
+        $_SESSION['uname'] = $pub['name'];
+        $_SESSION['uemail']= $pub['email'];
+        $_SESSION['public_slug_access'] = true; // Flag: nur read-only, keine Edits
+    }
+}
 requireCustomer();
 $title = 'Meine Services'; $page = 'services';
 $cid = me()['id'];
 $customer = one("SELECT * FROM customer WHERE customer_id=?", [$cid]);
 
-// Host-only page
+// Host-only page — Non-Host-Kunden zeigen wir direkt ihr Dashboard (mit public-slug query falls gesetzt)
 if (!in_array($customer['customer_type'] ?? '', ['Airbnb', 'Host', 'Booking', 'Short-Term Rental'], true)) {
-    header('Location: /customer/'); exit;
+    $q = !empty($_SESSION['public_slug_access']) && !empty($publicU) ? ('?u=' . urlencode($publicU)) : '';
+    header('Location: /customer/' . $q); exit;
 }
 
 // POST: create / update (NO delete — customer can't delete services)

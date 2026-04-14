@@ -154,6 +154,14 @@ if (shouldRun('gotham_daily', 1440)) {
     curl_close($ch);
 }
 
+// === TASK 9: Sheet↔DB Sync (every 60min) — Zero-Data-Loss UPSERT ===
+if (shouldRun('sheet_sync', 60)) {
+    try {
+        require_once __DIR__ . '/../includes/sync-engine.php';
+        sync_run_all();
+    } catch (Exception $e) { /* log only */ error_log('sheet_sync cron: '.$e->getMessage()); }
+}
+
 // === TASK 8: Upload-Cleanup (every 24h) — Dateien > 30 Tage archivieren ===
 if (shouldRun('upload_cleanup', 1440)) {
     $url = 'https://app.' . SITE_DOMAIN . '/api/cleanup-uploads.php?key=' . API_KEY;

@@ -234,3 +234,38 @@ try {
         ");
     }
 } catch (Exception $e) {}
+
+// Vouchers / Gutscheine
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS vouchers (
+        v_id INT AUTO_INCREMENT PRIMARY KEY,
+        code VARCHAR(50) NOT NULL,
+        description VARCHAR(255) DEFAULT '',
+        type ENUM('percent','fixed','free') NOT NULL DEFAULT 'percent',
+        value DECIMAL(10,2) NOT NULL DEFAULT 0,
+        min_amount DECIMAL(10,2) DEFAULT 0,
+        valid_from DATE DEFAULT NULL,
+        valid_until DATE DEFAULT NULL,
+        max_uses INT DEFAULT 0,
+        max_per_customer INT DEFAULT 1,
+        used_count INT DEFAULT 0,
+        customer_type VARCHAR(20) DEFAULT '',
+        active TINYINT DEFAULT 1,
+        created_by VARCHAR(100) DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY idx_code (code),
+        INDEX idx_active (active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $db->exec("CREATE TABLE IF NOT EXISTS voucher_redemptions (
+        vr_id INT AUTO_INCREMENT PRIMARY KEY,
+        voucher_id_fk INT NOT NULL,
+        customer_email VARCHAR(255) DEFAULT '',
+        customer_id_fk INT DEFAULT NULL,
+        booking_id_fk INT DEFAULT NULL,
+        invoice_id_fk INT DEFAULT NULL,
+        discount_amount DECIMAL(10,2) DEFAULT 0,
+        redeemed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_voucher (voucher_id_fk),
+        INDEX idx_email (customer_email)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Exception $e) {}

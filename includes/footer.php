@@ -18,6 +18,21 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <?php if (!empty($script)): ?><script><?= $script ?></script><?php endif; ?>
 <script>
+// Global Search for admin topbar
+function globalSearch(){
+  return {
+    q: '', open: false, loading: false, results: [],
+    search(){
+      const q = this.q.trim();
+      if (q.length < 2) { this.results = []; this.open = false; return; }
+      this.loading = true; this.open = true;
+      fetch('/api/search.php?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(d => { this.results = d.results || []; this.loading = false; })
+        .catch(() => { this.loading = false; this.results = []; });
+    }
+  };
+}
 // Auto-cron ping (triggers iCal + Smoobu sync in background)
 new Image().src='/api/cron.php?t='+Date.now();
 // PWA Service Worker

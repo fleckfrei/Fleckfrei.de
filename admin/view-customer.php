@@ -37,12 +37,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $permsJson = json_encode($perms);
         $pw = !empty($_POST['password']) ? password_hash($_POST['password'], PASSWORD_BCRYPT, ['cost' => 12]) : null;
+        $isPremium   = !empty($_POST['is_premium']) ? 1 : 0;
+        $travelBlock = trim($_POST['travel_block_until'] ?? '') ?: null;
+        $district    = trim($_POST['district'] ?? '') ?: null;
         if ($pw) {
-            q("UPDATE customer SET name=?,surname=?,email=?,phone=?,customer_type=?,status=?,notes=?,password=?,email_permissions=? WHERE customer_id=?",
-              [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['customer_type'],$_POST['status'],$_POST['notes']??'',$pw,$permsJson,$cid]);
+            q("UPDATE customer SET name=?,surname=?,email=?,phone=?,customer_type=?,status=?,notes=?,password=?,email_permissions=?,is_premium=?,travel_block_until=?,district=? WHERE customer_id=?",
+              [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['customer_type'],$_POST['status'],$_POST['notes']??'',$pw,$permsJson,$isPremium,$travelBlock,$district,$cid]);
         } else {
-            q("UPDATE customer SET name=?,surname=?,email=?,phone=?,customer_type=?,status=?,notes=?,email_permissions=? WHERE customer_id=?",
-              [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['customer_type'],$_POST['status'],$_POST['notes']??'',$permsJson,$cid]);
+            q("UPDATE customer SET name=?,surname=?,email=?,phone=?,customer_type=?,status=?,notes=?,email_permissions=?,is_premium=?,travel_block_until=?,district=? WHERE customer_id=?",
+              [$_POST['name'],$_POST['surname']??'',$_POST['email'],$_POST['phone']??'',$_POST['customer_type'],$_POST['status'],$_POST['notes']??'',$permsJson,$isPremium,$travelBlock,$district,$cid]);
         }
         audit('update', 'customer', $cid, 'Stammdaten bearbeitet');
         header("Location: /admin/view-customer.php?id=$cid&saved=1"); exit;
@@ -302,7 +305,54 @@ if ($emailDomain) {
   <?php endforeach; ?>
 </div>
 
-<?php if ($tab === 'info'): ?>
+<?php if ($tab === 'info'):
+  // Personal-Link für diesen Kunden — Lazy-Generate wenn slug fehlt
+  if (empty($c['personal_slug'])) {
+      $sanitize = fn($r) => trim(preg_replace('/[^a-z0-9]+/', '-', strtolower(str_replace(['ä','ö','ü','ß','é'], ['ae','oe','ue','ss','e'], $r))), '-');
+      $base = $sanitize(($c['name'] ?? '') . ' ' . ($c['surname'] ?? ''));
+      if (strlen($base) < 3) $base = 'k' . $c['customer_id'];
+      $slug = substr($base, 0, 40);
+      $i = 0;
+      while (val("SELECT customer_id FROM customer WHERE personal_slug=?", [$slug])) {
+          $slug = substr($base, 0, 36) . '-' . substr(bin2hex(random_bytes(2)), 0, 4);
+          if (++$i > 5) { $slug = 'k' . $c['customer_id'] . '-' . bin2hex(random_bytes(3)); break; }
+      }
+      try { q("UPDATE customer SET personal_slug=? WHERE customer_id=?", [$slug, $c['customer_id']]); $c['personal_slug'] = $slug; } catch (Exception $e) {}
+  }
+  $personalLink = 'https://app.fleckfrei.de/p/' . $c['personal_slug'];
+
+  // Stundensatz bestimmen — wenn Kunde Company/Airbnb/Host → STR/B2B, sonst home_care
+  $ctype = $c['customer_type'] ?? 'Private Person';
+  $svcKey = in_array($ctype, ['Airbnb','Host'], true) ? 'str' : (in_array($ctype, ['Company'], true) ? 'office' : 'home_care');
+  $rate = function_exists('fleckfrei_hourly') ? fleckfrei_hourly($svcKey) : ['gross' => 27.29, 'net' => 22.94];
+?>
+
+<div class="bg-gradient-to-br from-brand-light to-brand-light/50 border-2 border-brand/30 rounded-xl p-4 mb-4">
+  <div class="flex items-start gap-3">
+    <div class="text-2xl">🔗</div>
+    <div class="flex-1">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <div class="font-bold text-brand-dark">Persönlicher Buchungs-Link · dauerhaft</div>
+        <div class="text-sm">
+          <span class="font-semibold text-brand-dark"><?= number_format($rate['gross'], 2, ',', '.') ?> €/h</span>
+          <span class="text-[10px] text-brand">brutto</span>
+          <span class="text-gray-400 mx-1">·</span>
+          <span class="text-[11px] text-gray-600"><?= number_format($rate['net'], 2, ',', '.') ?> €/h netto</span>
+          <span class="text-gray-400 mx-1">·</span>
+          <span class="text-[10px] uppercase tracking-wider text-brand-dark"><?= strtoupper($svcKey === 'home_care' ? 'Home Care' : ($svcKey === 'str' ? 'STR' : 'B2B')) ?></span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <input type="text" value="<?= e($personalLink) ?>" readonly class="flex-1 min-w-[280px] px-3 py-2 bg-white border rounded-lg font-mono text-xs" onclick="this.select()"/>
+        <a href="<?= e($personalLink) ?>" target="_blank" class="px-3 py-2 bg-brand text-white rounded-lg text-sm font-semibold hover:bg-brand-dark">👀 Als Kunde öffnen</a>
+        <button type="button" onclick="navigator.clipboard.writeText('<?= e($personalLink) ?>').then(()=>this.textContent='✓ kopiert')" class="px-3 py-2 bg-gray-700 text-white rounded-lg text-sm font-semibold">📋 Kopieren</button>
+        <a href="https://wa.me/<?= preg_replace('/\D/', '', $c['phone'] ?? '') ?>?text=<?= urlencode('Hallo ' . ($c['name'] ?? '') . ",\n\nIhr persönlicher Fleckfrei-Buchungs-Link:\n" . $personalLink) ?>" target="_blank" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold">WhatsApp</a>
+      </div>
+      <div class="text-xs text-brand-dark mt-1.5">Kunde #<?= (int)$c['customer_id'] ?> · Booking auto-prefilled mit Name, Adresse, Telefon · permanent gültig</div>
+    </div>
+  </div>
+</div>
+
 <!-- Stammdaten -->
 <form method="POST">
   <?= csrfField() ?>
@@ -392,6 +442,31 @@ if ($emailDomain) {
       </div>
       </div>
       <div class="mt-3"><label class="block text-xs font-medium text-gray-500 mb-1">Notizen</label><textarea name="notes" rows="3" class="w-full px-3 py-2 border rounded-xl text-sm"><?= e($c['notes']) ?></textarea></div>
+
+      <!-- Premium / Travel-Block + Bezirk -->
+      <div class="mt-3 p-3 rounded-xl border-2 bg-amber-50 border-amber-200">
+        <label class="flex items-center gap-2 font-semibold text-amber-900">
+          <input type="checkbox" name="is_premium" value="1" <?= !empty($c['is_premium']) ? 'checked' : '' ?>/>
+          🚗 Premium-Kunde (weite Anfahrt / VIP)
+        </label>
+        <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs text-amber-900">Partner-Tag blockieren bis:</label>
+            <input type="time" name="travel_block_until" value="<?= e($c['travel_block_until'] ?? '') ?>" class="w-full px-2 py-1 border rounded text-sm bg-white"/>
+          </div>
+          <div>
+            <label class="block text-xs text-amber-900">🗺 Berlin-Bezirk (für Route-Planner):</label>
+            <select name="district" class="w-full px-2 py-1 border rounded text-sm bg-white">
+              <option value="">— kein Bezirk —</option>
+              <?php try { $ds = all("SELECT name FROM berlin_districts ORDER BY sort_order, name"); } catch (Exception $e) { $ds = []; }
+              foreach ($ds as $d): ?>
+              <option value="<?= e($d['name']) ?>" <?= ($c['district'] ?? '')===$d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+        <div class="text-[11px] text-amber-700 mt-2">z.B. <code>15:00</code> → Partner darf an diesem Tag bis dahin keinen Parallel-Job annehmen. Bezirk gruppiert Kunden in <a href="/admin/route-planner.php" class="underline">Route-Planner</a>.</div>
+      </div>
       <div class="mt-4 pt-4 border-t space-y-2">
         <button type="submit" class="w-full px-4 py-3 bg-brand text-white rounded-xl font-semibold text-base">💾 Speichern (nur dieser Kunde)</button>
         <button type="submit" name="action" value="apply_perms_all"

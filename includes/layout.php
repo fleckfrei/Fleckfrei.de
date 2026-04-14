@@ -53,8 +53,8 @@ $user = me(); $page = $page ?? ''; ?>
     ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
     /* Calendar */
-    .fc-event { border: none !important; border-radius: 4px !important; transition: opacity 0.15s; }
-    .fc-event:hover { opacity: 0.85; }
+    .fc-event { border: none !important; border-radius: 4px !important; }
+    .fc-event:hover { filter: brightness(0.92); }
     .fc-daygrid-event { margin: 1px 2px !important; font-size: 11px; }
     .fc-daygrid-day-events { min-height: 0 !important; }
     .fc .fc-daygrid-day-frame { min-height: 100px !important; }
@@ -167,6 +167,10 @@ $user = me(); $page = $page ?? ''; ?>
         $menu = [
           ['/admin/', 'Dashboard', 'dashboard', $iconHome, ''],
           ['/admin/jobs.php', 'Jobs Kalender', 'jobs', $iconCal, $badgePending > 0 ? $badgePending : ''],
+          ['/admin/route-planner.php', '🗺 Route-Planner', 'route-planner', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>', ''],
+          ['/admin/prebook-links.php', '🔗 Prebook-Links', 'prebook-links', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>', ''],
+          ['/admin/vacations.php', '🏖 Kunden-Urlaube', 'vacations', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>', ''],
+          ['/admin/blocked-days.php', '🚫 Tage sperren', 'blocked-days', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>', ''],
           ['/admin/customers.php', 'Kunden', 'customers', $iconUser, ''],
           ['/admin/leads.php', 'Leads', 'leads', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>', ''],
           ['/admin/keys.php', 'Schlüssel', 'keys', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>', ''],
@@ -177,6 +181,7 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/photo-scores.php', 'KI Foto-Scores', 'photo-scores', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>', ''],
           ['/admin/optional-products.php', 'Optionale Produkte', 'optional-products', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>', ''],
           ['/admin/pricing.php', 'Preis-Strategie', 'pricing', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>', ''],
+          ['/admin/gutscheine.php', 'Gutscheine', 'gutscheine', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-7l-4 4z"/>', ''],
           ['/admin/invoices.php', 'Rechnungen', 'invoices', $iconInv, $badgeUnpaid > 0 ? $badgeUnpaid : ''],
           ['/admin/messages.php', 'Nachrichten', 'messages', $iconMsg, $badgeMsgs > 0 ? $badgeMsgs : ''],
           ['/admin/whatsapp.php', 'WhatsApp', 'whatsapp', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>', ''],
@@ -193,6 +198,7 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/booking-priority.php', 'Buchungs-Priorität', 'booking-priority', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>', ''],
           ['/admin/health.php', 'Health', 'health', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>', ''],
           ['/admin/settings.php', 'Einstellungen', 'settings', $iconCog, ''],
+          ['/admin/sync.php', 'Daten-Sync', 'sync', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>', ''],
         ];
         // Conditional features
         if (FEATURE_SMOOBU) array_splice($menu, 2, 0, [
@@ -201,13 +207,9 @@ $user = me(); $page = $page ?? ''; ?>
         ]);
         if (FEATURE_OSINT) array_splice($menu, -2, 0, [
           ['/admin/osi.php', 'OSI', 'scanner', $iconSearch, ''],
-          ['/admin/osi-person.php', 'OSI Person', 'osi-person', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>', ''],
-          ['/admin/memory.php', 'Memory', 'memory', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>', ''],
         ]);
         array_splice($menu, -2, 0, [
           ['/admin/pricing.php', 'Pricing', 'pricing', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', ''],
-          ['/admin/finance.php', 'Finance', 'finance', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', ''],
-          ['/admin/airbnb-analyzer.php', 'Airbnb-AI', 'airbnb-analyzer', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>', ''],
           ['/admin/email-inbox.php', 'Email', 'email-inbox', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>', ''],
           ['/admin/reports.php', 'Reports', 'reports', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>', ''],
         ]);
@@ -221,7 +223,7 @@ $user = me(); $page = $page ?? ''; ?>
         if (customerCan('messages')) $menu[] = ['/customer/messages.php', 'Nachrichten', 'messages', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>', ''];
         if (customerCan('profile')) $menu[] = ['/customer/profile.php', 'Profil', 'profile', $iconProfile, ''];
         if (customerCan('booking')) $menu[] = ['/customer/booking.php', 'Neue Buchung', 'booking', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>', ''];
-        if (in_array($user['customer_type'] ?? '', ['Airbnb','Host','Booking','Short-Term Rental'], true)) $menu[] = ['/customer/airbnb.php', 'Airbnb-Analyse', 'airbnb', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>', ''];
+        $menu[] = ['/customer/vacations.php', '🏖 Urlaub', 'vacations', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>', ''];
         if (empty($menu)) $menu[] = ['/customer/', 'Dashboard', 'dashboard', $iconHome, ''];
       } elseif ($user['type'] === 'employee') {
         $badgeEmpMsgs = 0;
@@ -240,15 +242,19 @@ $user = me(); $page = $page ?? ''; ?>
         // Group admin menu items into collapsible sections
         $groupMap = [
           'dashboard' => '_top',
-          'jobs' => 'Termine', 'bookings' => 'Termine', 'availability' => 'Termine',
-          'customers' => 'Kunden', 'leads' => 'Kunden',
+          'jobs' => 'Termine', 'bookings' => 'Termine', 'availability' => 'Termine', 'booking-priority' => 'Termine',
+          'customers' => 'Kunden', 'leads' => 'Kunden', 'consent-log' => 'Kunden',
           'employees' => 'Partner', 'work-hours' => 'Partner',
           'keys' => 'Zugang', 'locks' => 'Zugang',
           'services' => 'Services', 'checklists' => 'Services', 'photo-scores' => 'Services', 'optional-products' => 'Services', 'pricing' => 'Services',
-          'invoices' => 'Finanzen', 'reports' => 'Finanzen',
-          'messages' => 'Kommunikation', 'whatsapp' => 'Kommunikation', 'email-inbox' => 'Kommunikation',
-          'live-map' => 'Tools', 'arrivals' => 'Tools', 'scanner' => 'Tools',
-          'audit' => 'System', 'health' => 'System', 'settings' => 'System',
+          'invoices' => 'Finanzen', 'reports' => 'Finanzen', 'gutscheine' => 'Finanzen',
+          'messages' => 'Kommunikation', 'whatsapp' => 'Kommunikation', 'email-inbox' => 'Kommunikation', 'notifications' => 'Kommunikation',
+          'live-map' => 'Tools', 'arrivals' => 'Tools', 'scanner' => 'Tools', 'partners-live' => 'Tools', 'doc-scanner' => 'Tools',
+          'audit' => 'System', 'health' => 'System', 'settings' => 'System', 'api-tokens' => 'System', 'sync' => 'System',
+          'route-planner' => 'Termine',
+          'prebook-links' => 'Termine',
+          'vacations' => 'Termine',
+          'blocked-days' => 'Termine',
         ];
         $groups = []; $topItems = [];
         foreach ($menu as $item) {
@@ -268,30 +274,19 @@ $user = me(); $page = $page ?? ''; ?>
         <?php if ($badge): ?><span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"><?= $badge ?></span><?php endif; ?>
       </a>
       <?php endforeach;
-        // Render grouped items
+        // Render grouped items — FLAT mit fixen Labels (keine Collapse-Klicks mehr)
         foreach ($groups as $groupName => $items):
-          $isOpen = $activeGroup === $groupName;
-          $hasBadge = false;
-          foreach ($items as $it) { if (!empty($it[4])) $hasBadge = true; }
       ?>
-      <div x-data="{ open: <?= $isOpen ? 'true' : 'false' ?> }" class="mt-1">
-        <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition">
-          <span class="flex items-center gap-1.5"><?= e($groupName) ?><?php if ($hasBadge): ?><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span><?php endif; ?></span>
-          <svg class="w-3.5 h-3.5 transition" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-        </button>
-        <div x-show="open" x-cloak x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 -translate-y-1" x-transition:enter-end="opacity-100 translate-y-0" x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="ml-1 space-y-0.5">
-          <?php foreach ($items as [$href, $label, $key, $icon, $badge]):
+      <div class="pt-3 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-gray-400"><?= e($groupName) ?></div>
+      <?php foreach ($items as [$href, $label, $key, $icon, $badge]):
             $active = $page === $key ? 'active' : '';
-          ?>
-          <a href="<?= $href ?>" class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 <?= $active ?>">
-            <svg class="w-[16px] h-[16px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><?= $icon ?></svg>
-            <span class="flex-1"><?= $label ?></span>
-            <?php if ($badge): ?><span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"><?= $badge ?></span><?php endif; ?>
-          </a>
-          <?php endforeach; ?>
-        </div>
-      </div>
-      <?php endforeach;
+      ?>
+      <a href="<?= $href ?>" class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 <?= $active ?>">
+        <svg class="w-[16px] h-[16px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><?= $icon ?></svg>
+        <span class="flex-1"><?= $label ?></span>
+        <?php if ($badge): ?><span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"><?= $badge ?></span><?php endif; ?>
+      </a>
+      <?php endforeach; endforeach;
       } else {
         // Customer/Employee: flat menu
         foreach ($menu as [$href, $label, $key, $icon, $badge]):
@@ -322,17 +317,80 @@ $user = me(); $page = $page ?? ''; ?>
 
   <!-- Main -->
   <main class="flex-1 overflow-y-auto min-w-0">
-    <header class="bg-white/80 backdrop-blur-sm border-b px-6 py-3 flex items-center justify-between sticky top-0 z-10">
-      <div class="flex items-center gap-3">
-        <button @click="sidebarOpen = !sidebarOpen" class="p-2 rounded-lg hover:bg-gray-100 transition">
-          <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    <header class="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center gap-3 sticky top-0 z-20">
+      <button @click="sidebarOpen = !sidebarOpen" class="p-2 rounded-lg hover:bg-gray-100 transition" aria-label="Menü">
+        <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <h1 class="text-lg font-semibold text-gray-900 truncate hidden sm:block"><?= e($title ?? '') ?></h1>
+
+      <?php if ($user['type'] === 'admin'): ?>
+      <!-- Global Search -->
+      <div class="flex-1 max-w-xl mx-auto" x-data="globalSearch()">
+        <div class="relative">
+          <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input type="text" x-model="q" @input.debounce.250ms="search()" @focus="if(results.length||q)open=true" @click.away="open=false" @keydown.escape="open=false" placeholder="Suche Kunde · Job #· Rechnung · Lead · Code…" class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-brand focus:border-brand"/>
+          <div x-show="open && (results.length || loading)" x-cloak class="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-96 overflow-y-auto z-30">
+            <div x-show="loading" class="px-4 py-3 text-xs text-gray-400">Suche…</div>
+            <template x-for="r in results" :key="r.type+'-'+r.id">
+              <a :href="r.url" class="block px-4 py-2.5 hover:bg-brand-light border-b border-gray-100 last:border-0">
+                <div class="flex items-center gap-2">
+                  <span class="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded"
+                        :class="{'bg-blue-100 text-blue-700':r.type==='customer','bg-purple-100 text-purple-700':r.type==='job','bg-green-100 text-green-700':r.type==='invoice','bg-orange-100 text-orange-700':r.type==='lead','bg-pink-100 text-pink-700':r.type==='voucher'}"
+                        x-text="r.type"></span>
+                  <span class="font-medium text-sm text-gray-900" x-text="r.title"></span>
+                </div>
+                <div class="text-xs text-gray-500 mt-0.5" x-text="r.subtitle"></div>
+              </a>
+            </template>
+            <div x-show="!loading && !results.length && q.length >= 2" class="px-4 py-3 text-xs text-gray-400">Keine Treffer.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick-Actions -->
+      <div class="relative" x-data="{open:false}">
+        <button @click="open=!open" @click.away="open=false" class="flex items-center gap-1.5 px-3 py-2 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-dark transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+          <span class="hidden sm:inline">Neu</span>
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
         </button>
-        <h1 class="text-lg font-semibold text-gray-900"><?= e($title ?? '') ?></h1>
+        <div x-show="open" x-cloak x-transition.origin.top.right class="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-30">
+          <a href="/admin/jobs.php?new=1" class="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-brand-light">📅 Neuer Job</a>
+          <a href="/admin/customers.php?new=1" class="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-brand-light">👤 Neuer Kunde</a>
+          <a href="/admin/employees.php?new=1" class="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-brand-light">👷 Neuer Partner</a>
+          <a href="/admin/bookings.php?new=1" class="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-brand-light">🏨 Neue Buchung</a>
+          <a href="/admin/services.php?new=1" class="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-brand-light">🏢 Neuer Service</a>
+          <a href="/admin/gutscheine.php?new=1" class="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-brand-light">🎟 Neuer Gutschein</a>
+          <a href="/admin/invoices.php?new=1" class="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-brand-light">💶 Neue Rechnung</a>
+          <div class="border-t my-1"></div>
+          <a href="/admin/osi.php" class="flex items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-brand-light">🔍 OSI Scan</a>
+        </div>
       </div>
-      <div class="flex items-center gap-3">
-        <span class="text-xs text-gray-400 hidden sm:inline"><?= date('d.m.Y H:i') ?></span>
-      </div>
+      <?php endif; ?>
+
+      <span class="text-xs text-gray-500 hidden xl:inline tabular-nums"><?= date('d.m.Y') ?></span>
     </header>
+
+    <?php
+    // Toast-Flash (ersetzt URL-Banner-Gescrolle — oben sticky, auto-dismiss)
+    $flashMsg = null; $flashKind = 'info';
+    if (!empty($_GET['saved']) || !empty($_GET['added'])) { $flashMsg = 'Gespeichert.'; $flashKind = 'ok'; }
+    elseif (!empty($_GET['deleted'])) { $flashMsg = 'Gelöscht.'; $flashKind = 'ok'; }
+    elseif (!empty($_GET['err'])) { $flashMsg = match($_GET['err']) { 'dup'=>'Bereits vorhanden.', 'code'=>'Pflichtfeld leer.', 'csrf'=>'Session abgelaufen — bitte neu laden.', default => 'Fehler: '.$_GET['err'] }; $flashKind = 'err'; }
+    if ($flashMsg):
+    ?>
+    <div x-data="{show:true}" x-show="show" x-init="setTimeout(()=>show=false, 4500)" x-cloak
+         class="fixed top-16 right-4 z-40 min-w-[280px] max-w-md px-4 py-3 rounded-xl border shadow-lg flex items-center gap-3
+                <?= $flashKind==='ok' ? 'bg-green-50 border-green-200 text-green-800' : ($flashKind==='err' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-blue-50 border-blue-200 text-blue-800') ?>">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <?php if ($flashKind==='ok'): ?><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        <?php elseif ($flashKind==='err'): ?><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16a2 2 0 001.73 3z"/>
+        <?php else: ?><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><?php endif; ?>
+      </svg>
+      <span class="flex-1 text-sm font-medium"><?= e($flashMsg) ?></span>
+      <button @click="show=false" class="text-current opacity-60 hover:opacity-100">&times;</button>
+    </div>
+    <?php endif; ?>
     <?php if (!empty($_SESSION['admin_uid'])): ?>
     <div class="bg-orange-500 text-white px-6 py-2 flex items-center justify-between text-sm">
       <span>Eingeloggt als <strong><?= e($user['name']) ?></strong> (<?= e($user['type']) ?>)</span>

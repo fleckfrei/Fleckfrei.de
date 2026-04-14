@@ -520,3 +520,4 @@ function shadow_log(string $table, string $action, array $data) {
 }
 
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/pricing.php';

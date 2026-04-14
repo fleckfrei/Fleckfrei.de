@@ -329,10 +329,78 @@ include __DIR__ . '/../includes/layout.php';
     </div>
     <?php endif; ?>
     <div class="text-sm mb-3">
-      <p><strong>Adresse:</strong> <?= e($j['address'] ?: $j['street'].' '.$j['city']) ?></p>
+      <p><strong>Adresse:</strong> <?= e($j['address'] ?: $j['street'].' '.$j['city']) ?>
+        <?php if (!empty($j['doorbell_name'])): ?> · 🔔 <b><?= e($j['doorbell_name']) ?></b><?php endif; ?>
+        <?php if (!empty($j['floor'])): ?> · <?= e($j['floor']) ?>. Etage<?php endif; ?>
+      </p>
+      <?php if (!empty($j['is_trial'])): ?><p class="mt-1"><span class="inline-block px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold">🧪 Probereinigung</span> <span class="text-xs text-amber-700">— erster Termin, bitte besondere Sorgfalt.</span></p><?php endif; ?>
+      <?php if (!empty($j['travel_block_until'])): ?>
+        <p class="mt-1"><span class="inline-block px-2 py-0.5 bg-purple-100 text-purple-800 rounded font-semibold">🚗 Premium/Weite Anfahrt</span>
+        <span class="text-xs text-purple-700">— kein Parallel-Job an diesem Tag bis <b><?= e($j['travel_block_until']) ?></b> möglich.</span></p>
+      <?php endif; ?>
+      <?php if (!empty($j['travel_tickets']) && (int)$j['travel_tickets'] > 0): $tix = (int)$j['travel_tickets']; $tp = (float)($j['travel_ticket_price'] ?? 3.80); $tsum = $tix * $tp; ?>
+        <p class="mt-1 inline-flex items-center gap-2 px-3 py-1.5 bg-orange-50 border border-orange-300 rounded text-sm">
+          <span class="font-bold text-orange-900">🚇 BVG-Tickets: Kunde zahlt dir CASH</span>
+          <span class="text-orange-800"><?= $tix ?> × <?= number_format($tp,2,',','.') ?> € = <b><?= number_format($tsum,2,',','.') ?> €</b></span>
+        </p>
+      <?php endif; ?>
+
+      <?php
+      // Route-Info: ist dieser Job Teil einer Route?
+      static $routeCache = [];
+      $rkey = $j['j_date'] . '|' . ($j['emp_id_fk'] ?? 0);
+      if (!isset($routeCache[$rkey])) {
+          $routeCache[$rkey] = false;
+          try {
+              $r = one("SELECT ra_id, district, sequence_order FROM route_assignments WHERE assignment_date=? AND emp_id_fk=?", [$j['j_date'], $j['emp_id_fk'] ?? 0]);
+              if ($r) {
+                  $seq = json_decode($r['sequence_order'] ?? '[]', true) ?: [];
+                  $r['sequence'] = $seq;
+                  $r['total']    = count($seq);
+                  $routeCache[$rkey] = $r;
+              }
+          } catch (Exception $e) {}
+      }
+      $route = $routeCache[$rkey];
+      if ($route && in_array((int)$j['j_id'], $route['sequence'], true)):
+          $step = array_search((int)$j['j_id'], $route['sequence'], true) + 1;
+      ?>
+      <p class="mt-1 inline-flex items-center gap-2 px-2 py-1 bg-indigo-50 border border-indigo-200 rounded text-xs">
+        <span class="font-bold text-indigo-900">🗺 Route #<?= $step ?>/<?= $route['total'] ?></span>
+        <span class="text-indigo-700"><?= e($route['district']) ?></span>
+      </p>
+      <?php endif; ?>
       <?php if ($j['code_door']): ?><p><strong>Türcode:</strong> <span class="font-mono bg-gray-100 px-2 py-0.5 rounded"><?= e($j['code_door']) ?></span></p><?php endif; ?>
       <?php if ($j['box_code']): ?><p><strong>Box:</strong> <?= e($j['box_code']) ?> | <strong>Client:</strong> <?= e($j['client_code']) ?> | <strong>Deposit:</strong> <?= e($j['deposit_code']) ?></p><?php endif; ?>
       <?php if ($j['wifi_name']): ?><p><strong>WiFi:</strong> <?= e($j['wifi_name']) ?> / <?= e($j['wifi_password']) ?></p><?php endif; ?>
+
+      <?php
+      // Show customer-selected rooms/tasks from booking (JSON arrays of IDs)
+      $roomIds = json_decode($j['rooms_selected'] ?? '[]', true) ?: [];
+      $taskIds = json_decode($j['tasks_selected'] ?? '[]', true) ?: [];
+      if ($roomIds || $taskIds) {
+          static $roomsMap = null, $tasksMap = null;
+          if ($roomsMap === null) {
+              $roomsMap = [];
+              try { foreach (all("SELECT br_id, label, icon FROM booking_rooms") as $r) $roomsMap[(int)$r['br_id']] = $r; } catch (Exception $e) {}
+          }
+          if ($tasksMap === null) {
+              $tasksMap = [];
+              try { foreach (all("SELECT bt_id, label, icon FROM booking_tasks") as $r) $tasksMap[(int)$r['bt_id']] = $r; } catch (Exception $e) {}
+          }
+          if ($roomIds) {
+              echo '<p class="mt-2"><strong>🚪 Räume:</strong> ';
+              foreach ($roomIds as $rid) if (isset($roomsMap[$rid])) echo '<span class="inline-block bg-blue-50 text-blue-800 px-2 py-0.5 rounded text-xs mr-1">'.$roomsMap[$rid]['icon'].' '.e($roomsMap[$rid]['label']).'</span>';
+              echo '</p>';
+          }
+          if ($taskIds) {
+              echo '<p class="mt-1"><strong>✨ Aufgaben:</strong> ';
+              foreach ($taskIds as $tid) if (isset($tasksMap[$tid])) echo '<span class="inline-block bg-green-50 text-green-800 px-2 py-0.5 rounded text-xs mr-1">'.$tasksMap[$tid]['icon'].' '.e($tasksMap[$tid]['label']).'</span>';
+              echo '</p>';
+          }
+      }
+      ?>
+
       <?php if ($j['emp_message']): ?><p class="mt-2 bg-yellow-50 p-2 rounded text-yellow-800"><?= autoTranslateHtml($j['emp_message'] ?? '', $partnerLang) ?></p><?php endif; ?>
     </div>
 
