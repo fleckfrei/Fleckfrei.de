@@ -40,9 +40,9 @@ include __DIR__ . '/../includes/layout.php';
 
 <?php
 // Website Service-Cards (fleckfrei.de) — Quick-Edit Block
-\$_ws = one("SELECT website_title_home_care, website_title_str, website_title_office, website_price_private_override, website_price_str_override, website_price_office_override FROM settings LIMIT 1") ?: [];
-\$_wsCalc = json_decode(@file_get_contents("https://app.fleckfrei.de/api/prices-public.php"), true) ?: [];
-\$_wsMin = \$_wsCalc["min_prices"] ?? [];
+$_ws = one("SELECT website_title_home_care, website_title_str, website_title_office, website_price_private_override, website_price_str_override, website_price_office_override FROM settings LIMIT 1") ?: [];
+$_wsCalc = json_decode(@file_get_contents("https://app.fleckfrei.de/api/prices-public.php"), true) ?: [];
+$_wsMin = $_wsCalc["min_prices"] ?? [];
 ?>
 <div class="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-400 rounded-2xl p-5 mb-6">
   <div class="flex items-center justify-between mb-4">
@@ -57,12 +57,12 @@ include __DIR__ . '/../includes/layout.php';
       ["private", "home_care", "🏠", "Home Care", "website_price_private_override", "website_title_home_care"],
       ["str", "str", "🏨", "Short-Term Rental ★", "website_price_str_override", "website_title_str"],
       ["office", "office", "🏢", "Business & Office", "website_price_office_override", "website_title_office"],
-    ] as [\$k, \$tk, \$icon, \$default_title, \$priceKey, \$titleKey]): ?>
+    ] as [$k, $tk, $icon, $default_title, $priceKey, $titleKey]): ?>
     <div class="bg-white rounded-xl border-2 border-amber-300 p-4">
-      <div class="text-2xl mb-2"><?= \$icon ?></div>
-      <div class="font-bold text-sm"><?= e(\$_ws[\$titleKey] ?? \$default_title) ?></div>
-      <div class="text-xs text-gray-500 mb-2">Auto-Preis: <strong class="text-gray-700"><?= isset(\$_wsMin[\$k]) ? number_format(\$_wsMin[\$k], 2, ",", ".") . " €" : "-" ?></strong></div>
-      <div class="text-xs text-gray-500">Override: <strong class="<?= \$_ws[\$priceKey] !== null ? "text-amber-700" : "text-gray-400" ?>"><?= \$_ws[\$priceKey] !== null ? number_format(\$_ws[\$priceKey], 2, ",", ".") . " €" : "auto" ?></strong></div>
+      <div class="text-2xl mb-2"><?= $icon ?></div>
+      <div class="font-bold text-sm"><?= e($_ws[$titleKey] ?? $default_title) ?></div>
+      <div class="text-xs text-gray-500 mb-2">Auto-Preis: <strong class="text-gray-700"><?= isset($_wsMin[$k]) ? number_format($_wsMin[$k], 2, ",", ".") . " €" : "-" ?></strong></div>
+      <div class="text-xs text-gray-500">Override: <strong class="<?= $_ws[$priceKey] !== null ? "text-amber-700" : "text-gray-400" ?>"><?= $_ws[$priceKey] !== null ? number_format($_ws[$priceKey], 2, ",", ".") . " €" : "auto" ?></strong></div>
       <a href="/admin/pricing.php#website" class="mt-3 block text-center text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700">✏ Bearbeiten</a>
     </div>
     <?php endforeach; ?>
