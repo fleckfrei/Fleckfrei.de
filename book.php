@@ -65,26 +65,61 @@ body{font-family:'Inter',sans-serif}
     </div>
   </section>
 
-  <!-- Step 1: Property + Address -->
+  <!-- Step 1: Property + Address with OSM Autocomplete -->
   <section x-show="step === 1" class="bg-white rounded-2xl shadow p-6 border">
     <button @click="step = 0" class="text-sm text-gray-500 hover:text-brand mb-3">← Zurück</button>
     <h2 class="text-2xl font-bold mb-1">Deine Wohnung</h2>
-    <p class="text-sm text-gray-500 mb-5">Ort + Größe — für exakten Preis.</p>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Straße + Nr. *</label>
-        <input x-model="form.street" class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none" required/>
+    <p class="text-sm text-gray-500 mb-5">Tippe die Adresse — wir prüfen sie automatisch.</p>
+
+    <!-- Address-Autocomplete Field -->
+    <div class="relative mb-3">
+      <label class="block text-xs font-bold text-gray-600 mb-1">Adresse suchen *</label>
+      <input x-model="addrQuery" @input.debounce.400="searchAddress()" @focus="addrFocus=true" @blur="setTimeout(()=>addrFocus=false,200)"
+             placeholder="z.B. Alexanderplatz 1, 10178 Berlin"
+             class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"
+             :class="form.address_verified ? 'border-emerald-500 bg-emerald-50' : ''"/>
+      <div x-show="addrLoading" class="absolute right-3 top-9 text-xs text-gray-400">⏳ Suche...</div>
+      <div x-show="form.address_verified" class="absolute right-3 top-9 text-emerald-600 text-xl">✓</div>
+
+      <!-- Suggestions dropdown -->
+      <div x-show="addrResults.length && addrFocus" class="absolute left-0 right-0 top-full mt-1 bg-white border rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
+        <template x-for="(r,i) in addrResults" :key="i">
+          <button type="button" @click="pickAddress(r)" class="w-full text-left px-3 py-2 hover:bg-gray-50 border-b text-sm">
+            <div class="font-semibold" x-text="r.display_name.split(',').slice(0,2).join(',')"></div>
+            <div class="text-xs text-gray-500" x-text="r.display_name.split(',').slice(2).join(',').trim()"></div>
+          </button>
+        </template>
       </div>
-      <div class="grid grid-cols-2 gap-2">
+    </div>
+
+    <!-- Resolved fields (read-only after pick) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Straße + Nr.</label>
+        <input x-model="form.street" class="w-full px-3 py-2.5 border-2 rounded-lg bg-gray-50" readonly/>
+      </div>
+      <div class="grid grid-cols-3 gap-2">
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">PLZ *</label>
-          <input x-model="form.plz" maxlength="5" pattern="[0-9]{5}" required class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
+          <label class="block text-xs font-bold text-gray-600 mb-1">PLZ</label>
+          <input x-model="form.plz" maxlength="5" class="w-full px-3 py-2.5 border-2 rounded-lg bg-gray-50" readonly/>
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">Stadt</label>
-          <input x-model="form.city" class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
+          <input x-model="form.city" class="w-full px-3 py-2.5 border-2 rounded-lg bg-gray-50" readonly/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Land</label>
+          <input x-model="form.country" class="w-full px-3 py-2.5 border-2 rounded-lg bg-gray-50" readonly/>
         </div>
       </div>
+    </div>
+
+    <!-- Out-of-Berlin Warning -->
+    <div x-show="form.address_verified && !form.in_berlin_area" class="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-3 text-sm text-amber-900">
+      ⚠️ Diese Adresse ist <strong x-text="form.distance_km + ' km'"></strong> von Berlin-Mitte entfernt. Unser Standard-Servicegebiet ist Berlin (≤30 km). Außerhalb: bitte vorher via <a href="mailto:info@fleckfrei.de" class="underline">info@fleckfrei.de</a> anfragen.
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="block text-xs font-bold text-gray-600 mb-1">Größe (qm) *</label>
         <input x-model.number="form.qm" type="number" min="10" max="1000" required class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
@@ -94,8 +129,9 @@ body{font-family:'Inter',sans-serif}
         <input x-model.number="form.rooms" type="number" min="1" max="20" class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"/>
       </div>
     </div>
-    <button type="button" @click="step = 2" :disabled="!form.plz || !form.street || !form.qm"
+    <button type="button" @click="step = 2" :disabled="!form.address_verified || !form.qm"
             class="mt-5 w-full py-3 bg-brand text-white rounded-lg font-bold disabled:opacity-50 hover:bg-brand-dark transition">Weiter →</button>
+    <p x-show="!form.address_verified" class="text-xs text-gray-500 mt-2 text-center">Bitte wähle eine Adresse aus der Liste.</p>
   </section>
 
   <!-- Step 2: Date, Time, Extras -->
@@ -155,7 +191,8 @@ body{font-family:'Inter',sans-serif}
       <div class="flex justify-between py-1"><span>Service</span><strong x-text="form.service_name"></strong></div>
       <div class="flex justify-between py-1"><span>Datum</span><strong x-text="form.date + ' um ' + form.time"></strong></div>
       <div class="flex justify-between py-1"><span>Dauer</span><strong x-text="form.hours + ' h'"></strong></div>
-      <div class="flex justify-between py-1"><span>Adresse</span><strong x-text="form.street + ', ' + form.plz + ' ' + form.city"></strong></div>
+      <div class="flex justify-between py-1"><span>Adresse</span><strong x-text="form.street + ', ' + form.plz + ' ' + form.city + ' · ' + form.country"></strong></div>
+      <div class="flex justify-between py-1 text-xs"><span>Entfernung Berlin</span><strong x-text="form.distance_km + ' km'"></strong></div>
       <div class="flex justify-between py-1"><span>Wohnung</span><strong x-text="form.qm + ' qm · ' + form.rooms + ' Zi.'"></strong></div>
       <div class="flex justify-between py-2 mt-1 border-t text-lg"><span class="font-bold">Basispreis</span><strong class="text-brand" x-text="(form.service_price_start || 0).toFixed(2).replace('.',',') + ' € netto'"></strong></div>
       <div class="text-xs text-gray-500 mt-1">Endpreis nach Adress- und Wohnungs-Check. Bestätigung via Email binnen 24h.</div>
@@ -237,10 +274,49 @@ function bookingFlow() {
     ],
     form: {
       service_type: '', service_name: '', service_price_start: 0,
-      street: '', plz: '', city: 'Berlin', qm: 60, rooms: 2,
+      street: '', plz: '', city: 'Berlin', country: 'Deutschland',
+      lat: 0, lng: 0, address_verified: false, in_berlin_area: false, distance_km: 0,
+      qm: 60, rooms: 2,
       date: '', time: '09:00', hours: 3, frequency: 'once',
       extras: [], name: '', email: '', phone: '', notes: '',
       consent_contact: false, consent_privacy: false, consent_marketing: false,
+    },
+    addrQuery: '',
+    addrResults: [],
+    addrLoading: false,
+    addrFocus: false,
+    async searchAddress() {
+      const q = (this.addrQuery || '').trim();
+      if (q.length < 5) { this.addrResults = []; return; }
+      this.addrLoading = true;
+      try {
+        // Nominatim — free, no key. Countrycode bias Germany but allow others.
+        const url = 'https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&countrycodes=de,at,ch&q=' + encodeURIComponent(q);
+        const r = await fetch(url, { headers: { 'Accept-Language': 'de' }});
+        this.addrResults = (await r.json()) || [];
+      } catch(e) { console.warn('addr search failed', e); this.addrResults = []; }
+      finally { this.addrLoading = false; }
+    },
+    pickAddress(r) {
+      const a = r.address || {};
+      this.form.street = ((a.road || a.pedestrian || a.footway || '') + ' ' + (a.house_number || '')).trim();
+      this.form.plz = a.postcode || '';
+      this.form.city = a.city || a.town || a.village || a.municipality || '';
+      this.form.country = a.country || 'Deutschland';
+      this.form.lat = parseFloat(r.lat);
+      this.form.lng = parseFloat(r.lon);
+      // Distance from Berlin-Mitte (52.5200, 13.4050) via haversine
+      const R = 6371;
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(52.5200 - this.form.lat);
+      const dLon = toRad(13.4050 - this.form.lng);
+      const hav = Math.sin(dLat/2)**2 + Math.cos(toRad(this.form.lat)) * Math.cos(toRad(52.5200)) * Math.sin(dLon/2)**2;
+      this.form.distance_km = Math.round(R * 2 * Math.atan2(Math.sqrt(hav), Math.sqrt(1-hav)));
+      this.form.in_berlin_area = this.form.distance_km <= 30;
+      this.form.address_verified = true;
+      this.addrQuery = this.form.street + ', ' + this.form.plz + ' ' + this.form.city;
+      this.addrResults = [];
+      this.addrFocus = false;
     },
     get minDate() { const d = new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); },
     get canSubmit() {

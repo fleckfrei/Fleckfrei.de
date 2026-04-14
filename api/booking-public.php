@@ -42,7 +42,22 @@ $plz = trim($body['plz']);
 $street = trim($body['street'] ?? '');
 $number = trim($body['number'] ?? '');
 $city = trim($body['city'] ?? 'Berlin');
-$country = 'Deutschland';
+$country = trim($body['country'] ?? 'Deutschland');
+$lat = (float)($body['lat'] ?? 0);
+$lng = (float)($body['lng'] ?? 0);
+$distanceKm = (int)($body['distance_km'] ?? 0);
+
+// Reject blatantly fake addresses (no lat/lng verification or >100km from Berlin)
+if ($lat === 0.0 && $lng === 0.0) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Adresse nicht verifiziert — bitte aus der Liste wählen']);
+    exit;
+}
+if ($distanceKm > 100) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'error' => 'Adresse liegt außerhalb unseres Servicegebiets (>100km Berlin). Bitte kontaktiere info@fleckfrei.de.']);
+    exit;
+}
 $qm = (int)($body['qm'] ?? 0);
 $rooms = (int)($body['rooms'] ?? 2);
 $beds = (int)($body['beds'] ?? 2);
@@ -88,8 +103,9 @@ try {
         }
     }
 
-    // 2) Store address (or create service entry)
-    $addressStr = trim("$street $number, $plz $city");
+    // 2) Store address with full details
+    $addressStr = trim("$street, $plz $city, $country");
+    if ($lat && $lng) $addressStr .= " [GPS: $lat,$lng · $distanceKm km]";
 
     // 3) Create job
     $optionalProdStr = implode(',', array_map('intval', $extras));
