@@ -14,15 +14,15 @@
 if (!defined('APIFY_LOADED')) {
     define('APIFY_LOADED', true);
 
-    // Actor-Map per platform — update if better actors found
+    // Actor-Map per platform. Airbnb is intentionally SKIPPED (direct OG-scrape works + is faster)
     function apifyActor(string $platform): ?string {
         return match ($platform) {
-            'airbnb'       => 'tri_angle/new-fast-airbnb-scraper',
             'booking'      => 'voyager/booking-scraper',
             'vrbo'         => 'voyager/vrbo-scraper',
-            'fewo-direkt'  => 'voyager/vrbo-scraper',  // FeWo-direkt = VRBO family
+            'fewo-direkt'  => 'voyager/vrbo-scraper',
             'expedia'      => 'apify/expedia-scraper',
-            default        => null,
+            'agoda'        => 'tri_angle/agoda-scraper',
+            default        => null,   // airbnb, travelminit, etc. → fallback to direct scrape
         };
     }
 
@@ -121,15 +121,24 @@ if (!defined('APIFY_LOADED')) {
         } elseif ($platform === 'booking') {
             $out['title'] = $item['name'] ?? null;
             $out['description'] = $item['description'] ?? null;
-            $out['rating'] = (float) ($item['rating'] ?? 0) ?: null;
-            $out['reviews_count'] = (int) ($item['reviewsCount'] ?? 0) ?: null;
-            $out['price_per_night_eur'] = (float) ($item['price'] ?? 0) ?: null;
-            if (!empty($item['reviews'])) {
+            // Booking uses 0-10 scale → convert to 0-5
+            $bookingRating = (float) ($item['rating'] ?? 0);
+            $out['rating'] = $bookingRating ? round($bookingRating / 2, 2) : null;
+            $out['price_per_night_eur'] = null;
+            if (isset($item['price']) && is_numeric($item['price'])) $out['price_per_night_eur'] = (float)$item['price'];
+            if (!empty($item['address']['city'])) $out['location_hint'] = $item['address']['city'];
+            if (!empty($item['stars'])) $out['hotel_stars'] = (int)$item['stars'];
+            $out['type'] = $item['type'] ?? null;
+            if (!empty($item['reviews']) && is_array($item['reviews'])) {
                 foreach (array_slice($item['reviews'], 0, 15) as $r) {
-                    $neg = $r['negative'] ?? '';
-                    $pos = $r['positive'] ?? '';
-                    $out['reviews'][] = trim(($neg ? "[NEG] $neg " : '') . ($pos ? "[POS] $pos" : ''));
+                    $neg = $r['negative'] ?? $r['negativeText'] ?? '';
+                    $pos = $r['positive'] ?? $r['positiveText'] ?? '';
+                    $txt = trim(($neg ? "[NEG] $neg " : '') . ($pos ? "[POS] $pos" : ''));
+                    if ($txt) $out['reviews'][] = $txt;
                 }
+            }
+            if (!empty($item['rooms']) && is_array($item['rooms']) && isset($item['rooms'][0]['beds'])) {
+                $out['beds'] = (int)$item['rooms'][0]['beds'];
             }
         } else {
             $out['title'] = $item['title'] ?? $item['name'] ?? null;
