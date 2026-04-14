@@ -206,7 +206,8 @@ if ($pastedText) {
     // 1) Try Apify first if token available (100% undetectable)
     $apifyResult = null;
     if (function_exists('apifyScrape') && defined('APIFY_API_TOKEN') && APIFY_API_TOKEN) {
-        $apifyResult = apifyScrape($platform, $url, 60);
+        set_time_limit(180);
+        $apifyResult = apifyScrape($platform, $url, 120);
         if ($apifyResult && empty($apifyResult['error']) && !empty($apifyResult['title'])) {
             $meta['title'] = $apifyResult['title'];
             $meta['description'] = $apifyResult['description'] ?? '';

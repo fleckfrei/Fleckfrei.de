@@ -54,7 +54,7 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true,
     CURLOPT_POSTFIELDS=>json_encode($analysisPayload),
     CURLOPT_HTTPHEADER=>['Content-Type: application/json'],
-    CURLOPT_TIMEOUT=>60,
+    CURLOPT_TIMEOUT=>180,
 ]);
 $resp = curl_exec($ch);
 curl_close($ch);
