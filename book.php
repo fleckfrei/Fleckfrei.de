@@ -237,15 +237,31 @@ body{font-family:'Inter',sans-serif}
     <p class="text-sm text-gray-500 mb-5">Wir senden dir Bestätigung per Email.</p>
 
     <!-- Summary -->
-    <div class="bg-gray-50 rounded-xl p-4 mb-5 text-sm">
+    <div class="bg-gray-50 rounded-xl p-4 mb-4 text-sm">
       <div class="flex justify-between py-1"><span>Service</span><strong x-text="form.service_name"></strong></div>
-      <div class="flex justify-between py-1"><span>Datum</span><strong x-text="form.date + ' um ' + form.time"></strong></div>
-      <div class="flex justify-between py-1"><span>Dauer</span><strong x-text="form.hours + ' h'"></strong></div>
-      <div class="flex justify-between py-1"><span>Adresse</span><strong x-text="form.street + ', ' + form.plz + ' ' + form.city + ' · ' + form.country"></strong></div>
-      <div class="flex justify-between py-1 text-xs"><span>Entfernung Berlin</span><strong x-text="form.distance_km + ' km'"></strong></div>
+      <div class="flex justify-between py-1"><span>Datum</span><strong x-text="form.date + ' um ' + form.time + ' – ' + stopTime + ' Uhr'"></strong></div>
+      <div class="flex justify-between py-1"><span>Dauer</span><strong x-text="form.hours + ' h · ' + form.frequency"></strong></div>
+      <div class="flex justify-between py-1"><span>Adresse</span><strong x-text="form.street + ', ' + form.plz + ' ' + form.city"></strong></div>
       <div class="flex justify-between py-1"><span>Wohnung</span><strong x-text="form.qm + ' qm · ' + form.rooms + ' Zi.'"></strong></div>
-      <div class="flex justify-between py-2 mt-1 border-t text-lg"><span class="font-bold">Basispreis</span><strong class="text-brand" x-text="(form.service_price_start || 0).toFixed(2).replace('.',',') + ' € netto'"></strong></div>
-      <div class="text-xs text-gray-500 mt-1">Endpreis nach Adress- und Wohnungs-Check. Bestätigung via Email binnen 24h.</div>
+      <div class="flex justify-between py-2 mt-1 border-t"><span>Basispreis</span><strong x-text="liveTotal.toFixed(2).replace('.',',') + ' €'"></strong></div>
+      <div x-show="coupon.valid" class="flex justify-between py-1 text-emerald-700"><span x-text="'✓ Gutschein ' + coupon.code"></span><strong x-text="'-' + coupon.discount_amount.toFixed(2).replace('.',',') + ' €'"></strong></div>
+      <div class="flex justify-between py-2 border-t text-lg"><span class="font-bold">Gesamt netto</span><strong class="text-brand" x-text="finalTotal.toFixed(2).replace('.',',') + ' €'"></strong></div>
+    </div>
+
+    <!-- Coupon field -->
+    <div class="mb-4">
+      <label class="block text-xs font-bold text-gray-600 mb-1">🎁 Gutschein-Code (optional)</label>
+      <div class="flex gap-2">
+        <input x-model="coupon.inputCode" @keyup.enter="applyCoupon()" placeholder="z.B. WELCOME10"
+               class="flex-1 px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none uppercase"/>
+        <button type="button" @click="applyCoupon()" :disabled="!coupon.inputCode || coupon.validating"
+                class="px-4 py-2.5 bg-brand/10 text-brand rounded-lg font-semibold hover:bg-brand/20 disabled:opacity-50">
+          <span x-show="!coupon.validating">Einlösen</span>
+          <span x-show="coupon.validating">⏳</span>
+        </button>
+        <button x-show="coupon.valid" type="button" @click="removeCoupon()" class="px-3 py-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">✕</button>
+      </div>
+      <div x-show="coupon.message" class="text-xs mt-1" :class="coupon.valid ? 'text-emerald-600' : 'text-red-600'" x-text="coupon.message"></div>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -286,6 +302,17 @@ body{font-family:'Inter',sans-serif}
         <label class="block text-xs font-bold text-gray-600 mb-1">Zusatz-Info (optional)</label>
         <textarea x-model="form.notes" rows="2" class="w-full px-3 py-2.5 border-2 rounded-lg focus:border-brand outline-none"></textarea>
       </div>
+    </div>
+
+    <!-- Kundenkonto-Option -->
+    <div class="mt-4 border-2 border-brand/30 bg-brand/5 rounded-xl p-4">
+      <label class="flex items-start gap-2 cursor-pointer">
+        <input type="checkbox" x-model="form.create_account" class="mt-0.5"/>
+        <div>
+          <div class="font-bold text-brand">🎁 Kundenkonto kostenlos erstellen</div>
+          <div class="text-xs text-gray-600 mt-1">Buchungen einsehen, Rechnungen verwalten, wiederholt buchen — Konto wird automatisch angelegt, Login via Google oder Passwort-Reset-Email. <strong>Empfohlen.</strong></div>
+        </div>
+      </label>
     </div>
 
     <div class="mt-4 space-y-2 text-xs bg-gray-50 p-3 rounded-lg">
@@ -362,6 +389,41 @@ function bookingFlow() {
       date: '', time: '09:00', hours: 3, frequency: 'once', weekdays: [], interval_weeks: 2,
       extras: [], name: '', email: '', phone_prefix: '+49', phone_local: '', phone: '', notes: '',
       consent_contact: false, consent_privacy: false, consent_marketing: false,
+      create_account: true, coupon_code: '',
+    },
+    coupon: { inputCode: '', code: '', valid: false, discount_amount: 0, message: '', validating: false, description: '', discount_type: '' },
+    get finalTotal() {
+      return Math.max(0, this.liveTotal - (this.coupon.valid ? this.coupon.discount_amount : 0));
+    },
+    async applyCoupon() {
+      const code = (this.coupon.inputCode || '').trim().toUpperCase();
+      if (!code) return;
+      this.coupon.validating = true;
+      this.coupon.message = '';
+      try {
+        const r = await fetch('/api/coupon-validate.php', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ code, subtotal: this.liveTotal, service_type: this.form.service_type }),
+        });
+        const d = await r.json();
+        if (d.valid) {
+          this.coupon.code = d.code;
+          this.coupon.valid = true;
+          this.coupon.discount_amount = d.discount_amount;
+          this.coupon.description = d.description;
+          this.coupon.message = d.message;
+          this.form.coupon_code = d.code;
+        } else {
+          this.coupon.valid = false;
+          this.coupon.message = d.error || 'Ungültig';
+          this.form.coupon_code = '';
+        }
+      } catch(e) { this.coupon.message = '❌ Fehler'; }
+      finally { this.coupon.validating = false; }
+    },
+    removeCoupon() {
+      this.coupon = { inputCode: '', code: '', valid: false, discount_amount: 0, message: '', validating: false, description: '', discount_type: '' };
+      this.form.coupon_code = '';
     },
     get autoHours() {
       // From tiers by qm
@@ -494,10 +556,11 @@ function bookingFlow() {
       // Fire OSI precheck in parallel (non-blocking)
       this.osiPrecheck();
       try {
+        const payload = { ...this.form, subtotal: this.liveTotal, final_total: this.finalTotal };
         const r = await fetch('/api/booking-public.php', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(this.form),
+          body: JSON.stringify(payload),
         });
         const d = await r.json();
         if (!d.success) throw new Error(d.error || 'Fehler');

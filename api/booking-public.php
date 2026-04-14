@@ -80,18 +80,44 @@ $ip = $_SERVER['REMOTE_ADDR'] ?? null;
 $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
 
 try {
-    // 1) Find or auto-create customer
+    // Coupon: validate + compute discount
+    $couponCode = strtoupper(trim($body['coupon_code'] ?? ''));
+    $discount = 0;
+    if ($couponCode) {
+        $c = one("SELECT * FROM coupons WHERE code=? AND is_active=1", [$couponCode]);
+        if ($c) {
+            // Simple re-validation
+            $today = date('Y-m-d');
+            $ok = (!$c['valid_from'] || $c['valid_from'] <= $today)
+               && (!$c['valid_until'] || $c['valid_until'] >= $today)
+               && ($c['usage_limit'] == 0 || $c['usage_count'] < $c['usage_limit']);
+            if ($ok) {
+                // Assume price from form
+                $subtotal = (float)($body['subtotal'] ?? 0);
+                if ($c['discount_type'] === 'percent') $discount = round($subtotal * ($c['discount_value'] / 100), 2);
+                elseif ($c['discount_type'] === 'fixed') $discount = (float)$c['discount_value'];
+                $discount = min($discount, $subtotal);
+                // Usage-count inkrementieren
+                q("UPDATE coupons SET usage_count = usage_count + 1 WHERE co_id=?", [$c['co_id']]);
+            }
+        }
+    }
+
+    // 1) Find or create customer (only if requested)
+    $wantAccount = !empty($body['create_account']);
     $customer = one("SELECT * FROM customer WHERE email=? LIMIT 1", [$email]);
     $newCustomer = false;
-    if (!$customer) {
-        // Auto-register
+    if ($customer) {
+        $customerId = (int)$customer['customer_id'];
+        if (empty($customer['phone']) && $phone) q("UPDATE customer SET phone=? WHERE customer_id=?", [$phone, $customerId]);
+    } elseif ($wantAccount) {
+        // Auto-register full account
         $nameParts = explode(' ', $name, 2);
         $fn = $nameParts[0] ?? $name;
         $ln = $nameParts[1] ?? '';
         $randomPw = bin2hex(random_bytes(16));
         q("INSERT INTO customer (name, surname, email, phone, customer_type, status,
-             consent_email, consent_whatsapp, consent_phone, consent_updated_at,
-             password, created_at)
+             consent_email, consent_whatsapp, consent_phone, consent_updated_at, password, created_at)
            VALUES (?,?,?,?,?,1, ?,?,?, NOW(), ?, NOW())",
           [$fn, $ln, $email, $phone, $customerType,
            !empty($body['consent_marketing']) ? 1 : 0,
@@ -99,16 +125,19 @@ try {
            !empty($body['consent_marketing']) ? 1 : 0,
            password_hash($randomPw, PASSWORD_BCRYPT)]);
         $customerId = (int) lastInsertId();
-        // Also add to users table
         try { q("INSERT INTO users (email, type) VALUES (?, 'customer')", [$email]); } catch (Exception $e) {}
         $newCustomer = true;
-        audit('auto_signup', 'customer', $customerId, "via /book.php — $email");
+        audit('auto_signup', 'customer', $customerId, "via /book.php — $email (user opted-in)");
     } else {
-        $customerId = (int)$customer['customer_id'];
-        // Update phone if missing
-        if (empty($customer['phone']) && $phone) {
-            q("UPDATE customer SET phone=? WHERE customer_id=?", [$phone, $customerId]);
-        }
+        // Guest booking — store as minimal-customer (flag or separate table)
+        $nameParts = explode(' ', $name, 2);
+        $fn = $nameParts[0] ?? $name;
+        $ln = $nameParts[1] ?? '';
+        q("INSERT INTO customer (name, surname, email, phone, customer_type, status, created_at)
+           VALUES (?,?,?,?,?, 1, NOW())",
+          [$fn, $ln, $email, $phone, $customerType]);
+        $customerId = (int) lastInsertId();
+        $newCustomer = false; // no account
     }
 
     // 2) Store address with full details
@@ -120,9 +149,9 @@ try {
     $jobTime = substr($time, 0, 5) . ':00';
     q("INSERT INTO jobs (customer_id_fk, j_date, j_time, j_hours, job_for, s_id_fk,
          address, optional_products, emp_message, no_people, no_children, no_pets, code_door,
-         status, platform, job_status, created_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?, '', ?, 0, 0, '', 1, 'Website', 'NEW', NOW())",
-      [$customerId, $date, $jobTime, $hours, $customerType, $addressStr, $optionalProdStr, $rooms + $beds]);
+         status, platform, job_status, coupon_code, discount_applied, created_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, '', ?, 0, 0, '', 1, 'Website', 'NEW', ?, ?, NOW())",
+      [$customerId, $date, $jobTime, $hours, $customerType, $addressStr, $optionalProdStr, $rooms + $beds, $couponCode ?: null, $discount]);
     $jobId = (int) lastInsertId();
 
     // 4) Consent history
