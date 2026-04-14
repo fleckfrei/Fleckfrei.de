@@ -13,3 +13,4 @@ scripts/monitor.log
 php_errors.log
 includes/google-keys.php
 includes/telegram-keys.php
+includes/apify-keys.php

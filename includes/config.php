@@ -92,6 +92,9 @@ if (file_exists($_llmKeys)) { require_once $_llmKeys; }
 
 $_telegramKeys = __DIR__ . "/telegram-keys.php";
 if (file_exists($_telegramKeys)) { require_once $_telegramKeys; }
+
+$_apifyKeys = __DIR__ . "/apify-keys.php";
+if (file_exists($_apifyKeys)) { require_once $_apifyKeys; }
 if (!defined('STRIPE_PK')) define('STRIPE_PK', '');
 if (!defined('STRIPE_SK')) define('STRIPE_SK', '');
 define('FEATURE_STRIPE', !empty(STRIPE_SK));

@@ -7,20 +7,22 @@
  */
 require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/llm-helpers.php';
+$_apifyScraper = __DIR__ . '/../includes/apify-scraper.php';
+if (file_exists($_apifyScraper)) require_once $_apifyScraper;
 header('Content-Type: application/json; charset=utf-8');
 
 $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 $cacheRoot = sys_get_temp_dir() . '/airbnb_check_v2';
 if (!is_dir($cacheRoot)) @mkdir($cacheRoot, 0700, true);
 
-// Rate limit
+// Rate limit — 30/h per IP
 $rlFile = $cacheRoot . '/rl_' . md5($ip) . '.json';
 $now = time();
 $entries = file_exists($rlFile) ? (json_decode(@file_get_contents($rlFile), true) ?: []) : [];
 $entries = array_values(array_filter($entries, fn($t) => $t > $now - 3600));
-if (count($entries) >= 5) {
+if (count($entries) >= 30) {
     http_response_code(429);
-    echo json_encode(['success' => false, 'error' => 'Zu viele Anfragen — max. 5/Stunde pro IP.']);
+    echo json_encode(['success' => false, 'error' => 'Zu viele Anfragen — max. 30/Stunde.']);
     exit;
 }
 
@@ -34,31 +36,32 @@ if (!$url && !$pastedText) {
     exit;
 }
 
-// Detect STR platform
+// Detect STR platform (best-effort label; ANY http(s) URL is accepted)
 function detectPlatform(string $url): ?string {
     $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
-    if (str_contains($host, 'airbnb.'))           return 'airbnb';
-    if (str_contains($host, 'booking.'))          return 'booking';
-    if (str_contains($host, 'vrbo.'))             return 'vrbo';
-    if (str_contains($host, 'agoda.'))            return 'agoda';
-    if (str_contains($host, 'fewo-direkt.'))      return 'fewo-direkt';
-    if (str_contains($host, 'expedia.'))          return 'expedia';
-    if (str_contains($host, 'hotels.com'))        return 'hotels-com';
-    if (str_contains($host, 'hometogo.'))         return 'hometogo';
-    if (str_contains($host, 'tripadvisor.'))      return 'tripadvisor';
-    if (str_contains($host, 'holidu.'))           return 'holidu';
-    if (str_contains($host, 'trivago.'))          return 'trivago';
-    return null;
+    $known = [
+        'airbnb'=>'airbnb', 'booking'=>'booking', 'vrbo'=>'vrbo', 'agoda'=>'agoda',
+        'fewo-direkt'=>'fewo-direkt', 'expedia'=>'expedia', 'hotels.com'=>'hotels-com',
+        'hometogo'=>'hometogo', 'tripadvisor'=>'tripadvisor', 'holidu'=>'holidu',
+        'trivago'=>'trivago', 'travelminit'=>'travelminit', 'plumguide'=>'plumguide',
+        'homeaway'=>'homeaway', 'kayak'=>'kayak', '9flats'=>'9flats',
+        'housetrip'=>'housetrip', 'misterb'=>'misterb', 'gethub'=>'gethub',
+        'wimdu'=>'wimdu', 'novasol'=>'novasol', 'interhome'=>'interhome',
+        'hrs.'=>'hrs', 'trip.com'=>'trip-com', 'lastminute'=>'lastminute',
+    ];
+    foreach ($known as $needle => $label) if (str_contains($host, $needle)) return $label;
+    return $host ? ('other:' . $host) : null;
 }
 
 $platform = null;
 if ($url) {
-    $platform = detectPlatform($url);
-    if (!$platform) {
+    if (!preg_match('~^https?://~i', $url)) {
         http_response_code(400);
-        echo json_encode(['success' => false, 'error' => 'Unbekannte Plattform. Unterstützt: Airbnb, Booking.com, VRBO, Agoda, FeWo-direkt, Expedia, Hotels.com, HomeToGo, TripAdvisor, Holidu, Trivago. Oder nutze den Text-Modus.']);
+        echo json_encode(['success' => false, 'error' => 'URL muss mit http:// oder https:// beginnen']);
         exit;
     }
+    $platform = detectPlatform($url);
+    // ACCEPT any URL — we try our best to scrape + analyze
 }
 
 // ============================================================
@@ -200,14 +203,56 @@ if ($pastedText) {
     $meta['description'] = mb_substr($pastedText, 0, 6000);
     $scrapeMode = 'text';
 } elseif ($url) {
-    $res = fetchWithFallback($url);
-    $html = $res['html'] ?? ''; $code = $res['code'] ?? 0; $scrapeVia = $res['via'] ?? 'unknown';
-    if ($html && $code < 400) {
+    // 1) Try Apify first if token available (100% undetectable)
+    $apifyResult = null;
+    if (function_exists('apifyScrape') && defined('APIFY_API_TOKEN') && APIFY_API_TOKEN) {
+        $apifyResult = apifyScrape($platform, $url, 60);
+        if ($apifyResult && empty($apifyResult['error']) && !empty($apifyResult['title'])) {
+            $meta['title'] = $apifyResult['title'];
+            $meta['description'] = $apifyResult['description'] ?? '';
+            if ($apifyResult['rating']) $meta['rating'] = $apifyResult['rating'];
+            if ($apifyResult['reviews_count']) $meta['review_count'] = $apifyResult['reviews_count'];
+            $reviews = $apifyResult['reviews'] ?? [];
+            $meta['facts'] = array_filter([
+                'rating' => $apifyResult['rating'] ?? null,
+                'beds' => $apifyResult['beds'] ?? null,
+                'baths' => $apifyResult['baths'] ?? null,
+                'guests' => $apifyResult['guests'] ?? null,
+                'price_per_night_eur' => $apifyResult['price_per_night_eur'] ?? null,
+                'sqm' => $apifyResult['sqm'] ?? null,
+            ]);
+            $scrapeMode = 'apify';
+            $scrapeVia = 'apify/' . $platform;
+        }
+    }
+    // 2) Fallback to direct/proxy fetch if Apify failed
+    if ($scrapeMode === 'none') {
+        $res = fetchWithFallback($url);
+        $html = $res['html'] ?? ''; $code = $res['code'] ?? 0; $scrapeVia = $res['via'] ?? 'unknown';
+        $meta['facts'] = $meta['facts'] ?? [];
+        if ($html && $code < 400) {
         // Universal OG tags
         if (preg_match('~<meta property="og:title" content="([^"]+)"~i', $html, $m)) $meta['title'] = html_entity_decode($m[1]);
         if (preg_match('~<meta property="og:description" content="([^"]+)"~i', $html, $m)) $meta['description'] = html_entity_decode($m[1]);
         if (preg_match('~<meta property="og:image" content="([^"]+)"~i', $html, $m)) $meta['image'] = $m[1];
-        if (!$meta['title'] && preg_match('~<title>([^<]+)</title>~i', $html, $m)) $meta['title'] = trim(html_entity_decode($m[1]));
+        if (empty($meta['title']) && preg_match('~<title>([^<]+)</title>~i', $html, $m)) $meta['title'] = trim(html_entity_decode($m[1]));
+
+        // PARSE AIRBNB TITLE FACTS — "Privatunterkunft · Houston · ★5,0 · 3 Schlafzimmer · 3 Betten · 3,5 Bäder"
+        $facts = [];
+        $t = $meta['title'] ?? '';
+        if (preg_match('~★\s*([\d.,]+)~u', $t, $m)) $facts['rating'] = (float) str_replace(',', '.', $m[1]);
+        if (preg_match('~([\d.,]+)\s+(?:Schlafzimmer|bedrooms?|habitaciones?|chambres)~iu', $t, $m)) $facts['bedrooms'] = (int)$m[1];
+        if (preg_match('~([\d.,]+)\s+(?:Bett(?:en)?|beds?)~iu', $t, $m)) $facts['beds'] = (int)$m[1];
+        if (preg_match('~([\d.,]+)\s+(?:Bäder|bathrooms?|baños)~iu', $t, $m)) $facts['baths'] = (float) str_replace(',', '.', $m[1]);
+        if (preg_match('~([\d.,]+)\s+(?:Gäste|guests?)~iu', $t, $m)) $facts['guests'] = (int)$m[1];
+        // Extract city/location (first non-category, non-★ token)
+        $parts = array_map('trim', explode('·', $t));
+        foreach ($parts as $p) {
+            if (!preg_match('~★|Schlafzimmer|Bett|Bäder|Gäste|Privatunterkunft|Hotel|Bnb~iu', $p) && mb_strlen($p) > 2 && mb_strlen($p) < 50) {
+                $facts['location_hint'] = $p; break;
+            }
+        }
+        $meta['facts'] = $facts;
 
         // Platform-specific review extraction
         if ($platform === 'airbnb') {
@@ -235,8 +280,9 @@ if ($pastedText) {
             $meta['review_count'] = (int) $ar[2];
         }
         $scrapeMode = (empty($meta['title']) && empty($meta['description'])) ? 'blocked' : 'scraped';
+        }
     }
-    if ($scrapeMode !== 'scraped') {
+    if (!in_array($scrapeMode, ['apify', 'scraped'], true)) {
         $meta['title'] = $meta['title'] ?: (ucfirst($platform) . ' Listing ' . ($listingId ?: ''));
         $meta['description'] = $meta['description'] ?: ($platform . " blockiert Server-Fetch. Nutze den Text-Modus und kopiere Listing-Beschreibung + Reviews für präzisere Analyse.");
     }
@@ -261,10 +307,28 @@ $marketCtx = ($market && !empty($market['avg_rating'])) ? sprintf(
 $platformLabel = $platform ? strtoupper($platform) : 'STR (Text-Input)';
 $existingRating = !empty($meta['rating']) ? sprintf("AKTUELL: %.2f/5 aus %d Reviews (Plattform-Angabe)", $meta['rating'], $meta['review_count'] ?? 0) : '';
 
+// Harte Fakten aus dem Title (dürfen NICHT halluziniert werden)
+$hardFacts = '';
+if (!empty($meta['facts'])) {
+    $f = $meta['facts'];
+    $parts = [];
+    if (isset($f['rating']))   $parts[] = "Rating: " . $f['rating'] . "/5 (confirmed)";
+    if (isset($f['bedrooms'])) $parts[] = "Schlafzimmer: " . $f['bedrooms'];
+    if (isset($f['beds']))     $parts[] = "Betten: " . $f['beds'];
+    if (isset($f['baths']))    $parts[] = "Bäder: " . $f['baths'];
+    if (isset($f['guests']))   $parts[] = "Gäste: " . $f['guests'];
+    if (!empty($f['location_hint'])) $parts[] = "Lage: " . $f['location_hint'];
+    if ($parts) $hardFacts = "HARTE FAKTEN (NICHT ÄNDERN, DIREKT VOM INSERAT):\n- " . implode("\n- ", $parts);
+}
+
 $prompt = <<<PROMPT
-Du bist Senior-Reinigungs-Consultant für Short-Term-Rental-Hosts (Airbnb/Booking.com/VRBO/Agoda etc.) in Berlin. Deine Aufgabe: ein PROFESSIONELLES BUSINESS-DOSSIER für den Host erstellen, auf Basis seines Inserats + Live-Marktdaten. Ziel: den Host davon überzeugen, dass professionelle Reinigung (Fleckfrei) Pflicht ist, nicht Luxus. Nutze konkrete Zahlen, keine Floskeln. Die Marktdaten kommen von Airbnb — nutze sie als Benchmark auch für andere Plattformen (Booking/VRBO haben meist höhere Preise + striktere Review-Kultur).
+Du bist Senior-Reinigungs-Consultant für Short-Term-Rental-Hosts (Airbnb/Booking.com/VRBO/Agoda etc.) in Berlin. Deine Aufgabe: ein PROFESSIONELLES BUSINESS-DOSSIER für den Host erstellen, auf Basis seines Inserats + Live-Marktdaten. Ziel: den Host davon überzeugen, dass professionelle Reinigung (Fleckfrei) Pflicht ist, nicht Luxus. Nutze konkrete Zahlen, keine Floskeln. Die Marktdaten kommen von Airbnb — nutze sie als Benchmark auch für andere Plattformen.
+
+KRITISCH: Wenn "HARTE FAKTEN" gegeben sind, übernimm diese EXAKT in "listing_audit". Halluziniere keine anderen Werte. qm darfst du schätzen wenn nicht gegeben.
 
 $marketCtx
+
+$hardFacts
 
 INSERAT DES HOSTS (Plattform: $platformLabel):
 TITEL: {$meta['title']}
@@ -347,6 +411,20 @@ $clean = preg_replace('~^```(?:json)?\s*|\s*```$~m', '', trim($raw));
 $clean = preg_replace('~("fleckfrei_roi_ratio"\s*:\s*)(\d+:\d+)~', '$1"$2"', $clean);
 $clean = preg_replace('~("price_vs_market"\s*:\s*)([+\-]?\d+%?)~', '$1"$2"', $clean);
 $dossier = json_decode($clean, true) ?: ['raw' => $raw, 'parse_error' => true];
+
+// HARD OVERRIDE: Wenn wir harte Fakten haben, überschreibe listing_audit-Felder damit
+if (!empty($meta['facts']) && !empty($dossier['listing_audit']) && is_array($dossier['listing_audit'])) {
+    $f = $meta['facts'];
+    if (isset($f['bedrooms'])) $dossier['listing_audit']['bedrooms'] = $f['bedrooms'];
+    if (isset($f['beds']))     $dossier['listing_audit']['beds'] = $f['beds'];
+    if (isset($f['baths']))    $dossier['listing_audit']['baths'] = $f['baths'];
+    if (isset($f['guests']))   $dossier['listing_audit']['guests'] = $f['guests'];
+    // Apartment-type aus Schlafzimmern ableiten (override LLM only if bedrooms known)
+    if (isset($f['bedrooms'])) {
+        $bed = (int)$f['bedrooms'];
+        $dossier['listing_audit']['apartment_type'] = $bed === 0 ? 'studio' : ($bed . '-zimmer');
+    }
+}
 
 // Record rate-limit
 $entries[] = $now;
