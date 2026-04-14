@@ -111,11 +111,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /admin/pricing.php?saved=1#tiers'); exit;
     }
     if ($act === 'save_website_prices') {
+        // Normalize decimal — accept "12,34" (DE) and "12.34" (EN)
+        $parsePrice = fn($v) => (string)$v === '' ? null : (float) str_replace([' ', ','], ['', '.'], trim((string)$v));
         q("UPDATE settings SET website_price_private_override=?, website_price_str_override=?, website_price_office_override=?, website_title_home_care=?, website_title_str=?, website_title_office=?",
           [
-            $_POST['website_price_private_override'] !== '' ? (float)$_POST['website_price_private_override'] : null,
-            $_POST['website_price_str_override'] !== '' ? (float)$_POST['website_price_str_override'] : null,
-            $_POST['website_price_office_override'] !== '' ? (float)$_POST['website_price_office_override'] : null,
+            $parsePrice($_POST['website_price_private_override'] ?? ''),
+            $parsePrice($_POST['website_price_str_override'] ?? ''),
+            $parsePrice($_POST['website_price_office_override'] ?? ''),
             trim($_POST['website_title_home_care'] ?? 'Home Care'),
             trim($_POST['website_title_str'] ?? 'Short-Term Rental'),
             trim($_POST['website_title_office'] ?? 'Business & Office'),
@@ -554,7 +556,7 @@ function editRule(r) {
         <label class="block text-xs mb-1">Card-Titel</label>
         <input name="website_title_home_care" value="<?= e($settings['website_title_home_care'] ?? 'Home Care') ?>" class="w-full px-3 py-2 border rounded mb-2 text-sm"/>
         <label class="block text-xs mb-1">„ab XX EUR" Preis</label>
-        <input type="number" step="0.01" name="website_price_private_override" value="<?= $settings['website_price_private_override'] !== null ? e($settings['website_price_private_override']) : '' ?>" placeholder="auto" class="w-full px-3 py-2 border rounded font-mono text-sm"/>
+        <input type="text" inputmode="decimal" pattern="[0-9.,]*" name="website_price_private_override" value="<?= $settings['website_price_private_override'] !== null ? e($settings['website_price_private_override']) : '' ?>" placeholder="auto" class="w-full px-3 py-2 border rounded font-mono text-sm"/>
         <p class="text-xs text-gray-400 mt-1">leer = auto aus Tiers</p>
       </div>
       <div class="border-2 border-brand rounded-lg p-3 bg-brand/5">
@@ -562,7 +564,7 @@ function editRule(r) {
         <label class="block text-xs mb-1">Card-Titel</label>
         <input name="website_title_str" value="<?= e($settings['website_title_str'] ?? 'Short-Term Rental') ?>" class="w-full px-3 py-2 border rounded mb-2 text-sm"/>
         <label class="block text-xs mb-1">„ab XX EUR" Preis</label>
-        <input type="number" step="0.01" name="website_price_str_override" value="<?= $settings['website_price_str_override'] !== null ? e($settings['website_price_str_override']) : '' ?>" placeholder="auto" class="w-full px-3 py-2 border rounded font-mono text-sm"/>
+        <input type="text" inputmode="decimal" pattern="[0-9.,]*" name="website_price_str_override" value="<?= $settings['website_price_str_override'] !== null ? e($settings['website_price_str_override']) : '' ?>" placeholder="auto" class="w-full px-3 py-2 border rounded font-mono text-sm"/>
         <p class="text-xs text-gray-400 mt-1">leer = auto aus Tiers</p>
       </div>
       <div class="border rounded-lg p-3">
@@ -570,12 +572,12 @@ function editRule(r) {
         <label class="block text-xs mb-1">Card-Titel</label>
         <input name="website_title_office" value="<?= e($settings['website_title_office'] ?? 'Business & Office') ?>" class="w-full px-3 py-2 border rounded mb-2 text-sm"/>
         <label class="block text-xs mb-1">„ab XX EUR" Preis</label>
-        <input type="number" step="0.01" name="website_price_office_override" value="<?= $settings['website_price_office_override'] !== null ? e($settings['website_price_office_override']) : '' ?>" placeholder="auto" class="w-full px-3 py-2 border rounded font-mono text-sm"/>
+        <input type="text" inputmode="decimal" pattern="[0-9.,]*" name="website_price_office_override" value="<?= $settings['website_price_office_override'] !== null ? e($settings['website_price_office_override']) : '' ?>" placeholder="auto" class="w-full px-3 py-2 border rounded font-mono text-sm"/>
         <p class="text-xs text-gray-400 mt-1">leer = auto aus Tiers</p>
       </div>
     </div>
     <button class="px-4 py-2 bg-brand text-white rounded-lg font-semibold">Website-Preise speichern</button>
-    <p class="text-xs text-gray-500">💡 Änderungen sind binnen 5 Min live auf fleckfrei.de (JS-Loader-Cache).</p>
+    <p class="text-xs text-gray-500">⚡ Änderungen sind in <strong>~15 Sekunden live</strong> auf <a href="https://fleckfrei.de" target="_blank" class="underline">fleckfrei.de</a> (kein Cache, JS-Auto-Poll). Komma oder Punkt erlaubt (0,02 oder 0.02).</p>
   </form>
 </div>
 
