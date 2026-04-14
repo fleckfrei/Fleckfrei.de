@@ -223,11 +223,29 @@ require_once __DIR__ . '/includes/config.php';
 function bookingForm() {
   return {
     step:0, paying:false, bookingId:'',
-    services:[
-      {id:'hc',name:'Home Care',price:24.58,desc:'Regelmaessige Pflege fuer Ihr Zuhause. Fester Partner, Live-Updates, Foto-Dokumentation.',tag:'Woechentlich bis monatlich'},
-      {id:'str',name:'Short-Term Rental',price:24.58,desc:'Vollautomatischer Turnover-Service. iCal-Sync und Buchungsplattformen. Wir kommen, bevor Ihre Gaeste gehen.',tag:'Meistgebucht'},
-      {id:'bs',name:'Business & Office',price:24.58,desc:'Flexibler Service fuer Startups und Unternehmen. On-Demand oder regelmaessig. Keine Langzeitvertraege.',tag:'Gewerbe'}
-    ],
+    services:[],
+    addons:[],
+    async loadFromAPI(){
+      try {
+        const r = await fetch("/api/prices-public.php");
+        const d = await r.json();
+        if (!d.success) return;
+        const t = d.website_titles || {};
+        const mp = d.min_prices || {};
+        const base = d.base || {};
+        // Convert min_prices from "ab X EUR" to per-hour equivalent (for display)
+        const hp_private = parseFloat((base.private || {}).base_hourly_netto) || 24.58;
+        const hp_business = parseFloat((base.business || {}).base_hourly_netto) || hp_private;
+        this.services = [
+          {id:"hc", name: t.home_care || "Home Care", price: hp_private, startingPrice: mp.private, desc:"Regelmaessige Pflege fuer Ihr Zuhause. Fester Partner, Live-Updates, Foto-Dokumentation.", tag:"Woechentlich bis monatlich"},
+          {id:"str", name: t.str || "Short-Term Rental", price: hp_private, startingPrice: mp.str, desc:"Vollautomatischer Turnover-Service. iCal-Sync und Buchungsplattformen.", tag:"Meistgebucht"},
+          {id:"bs", name: t.office || "Business & Office", price: hp_business, startingPrice: mp.office, desc:"Flexibler Service fuer Startups und Unternehmen. On-Demand oder regelmaessig.", tag:"Gewerbe"}
+        ];
+        this.addons = (d.addons || []).filter(a => a.visibility !== "hidden").map(a => ({
+          id: a.id, name: a.name, price: parseFloat(a.price), type: a.pricing_type, icon: a.icon || ""
+        }));
+      } catch(e) { console.warn("prices-public fetch failed", e); }
+    },
     form:{service:'',price_per_hour:0,name:'',phone:'',email:'',address:'',date:'',time:'09:00',hours:'3',frequency:'once',notes:''},
     get minDate(){var d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)},
     get totalPrice(){return(this.form.price_per_hour*parseInt(this.form.hours)).toFixed(2)},
@@ -240,7 +258,8 @@ function bookingForm() {
     },
     formatDate(d){if(!d)return'';var p=d.split('-');return p[2]+'.'+p[1]+'.'+p[0]},
     init() {
-      // Auto-select service from URL parameter
+      await this.loadFromAPI();
+            // Auto-select service from URL parameter
       var params = new URLSearchParams(window.location.search);
       var svc = params.get('service');
       if (svc) {
