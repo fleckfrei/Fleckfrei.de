@@ -6,7 +6,7 @@
  */
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
-header('Cache-Control: public, max-age=60'); // 1 Min cache (Admin-Änderungen schnell sichtbar)
+header('Cache-Control: no-store, must-revalidate'); // 1 Min cache (Admin-Änderungen schnell sichtbar)
 require_once __DIR__ . '/../includes/config.php';
 
 try {
