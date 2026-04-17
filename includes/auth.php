@@ -61,7 +61,8 @@ function employeeCan($perm) {
     if ($eperms === null) {
         $raw = val("SELECT email_permissions FROM employee WHERE emp_id=?", [$eid]);
         $eperms = json_decode($raw ?: '{}', true);
-        if (!is_array($eperms)) $eperms = ['portal_dashboard'=>1,'portal_jobs'=>1,'portal_messages'=>1,'portal_profile'=>1,'can_start_stop'=>1,'can_cancel'=>1,'can_upload_photos'=>1,'can_see_customer_info'=>1,'can_see_address'=>1];
+        // BUG-FIX: json_decode('{}') returns [] (empty array, not null) — also apply defaults when empty
+        if (!is_array($eperms) || empty($eperms)) $eperms = ['portal_dashboard'=>1,'portal_jobs'=>1,'portal_messages'=>1,'portal_profile'=>1,'can_start_stop'=>1,'can_cancel'=>1,'can_upload_photos'=>1,'can_see_customer_info'=>1,'can_see_address'=>1];
     }
     return !empty($eperms[$perm]);
 }
