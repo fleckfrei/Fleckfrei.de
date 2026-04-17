@@ -53,9 +53,9 @@ tailwind.config = { theme: { extend: { colors: { brand: '<?= BRAND ?>', 'brand-d
 <!-- Top-Nav -->
 <header class="bg-white border-b sticky top-0 z-30">
   <div class="max-w-7xl mx-auto px-4 lg:px-6 py-3 flex items-center justify-between gap-4">
-    <a href="https://fleckfrei.de" class="font-bold text-xl text-brand flex-shrink-0">Fleckfrei</a>
+    <a href="https://<?= SITE_DOMAIN ?>" class="font-bold text-xl text-brand flex-shrink-0"><?= SITE ?></a>
     <nav class="hidden lg:flex items-center gap-6 text-sm font-medium text-gray-600">
-      <a href="https://fleckfrei.de" class="hover:text-brand">Home</a>
+      <a href="https://<?= SITE_DOMAIN ?>" class="hover:text-brand">Home</a>
       <a href="https://fleckfrei.de/#service" class="hover:text-brand">Reinigung</a>
       <a href="https://fleckfrei.de/#preise" class="hover:text-brand">Services</a>
       <a href="#details" class="hover:text-brand">Details</a>
@@ -408,7 +408,7 @@ tailwind.config = { theme: { extend: { colors: { brand: '<?= BRAND ?>', 'brand-d
         </label>
         <label class="flex items-start gap-2 text-sm mb-2">
           <input type="checkbox" x-model="form.consent_privacy" class="mt-0.5"/>
-          <span>Ich akzeptiere die <a href="https://fleckfrei.de/datenschutz" target="_blank" class="text-brand underline">Datenschutzerklärung</a>. *</span>
+          <span>Ich akzeptiere die <a href="https://<?= SITE_DOMAIN ?>/datenschutz" target="_blank" class="text-brand underline">Datenschutzerklärung</a>. *</span>
         </label>
         <label class="flex items-start gap-2 text-sm">
           <input type="checkbox" x-model="form.consent_marketing" class="mt-0.5"/>
@@ -604,11 +604,11 @@ tailwind.config = { theme: { extend: { colors: { brand: '<?= BRAND ?>', 'brand-d
 
 <footer class="bg-white border-t py-8 mt-12">
   <div class="max-w-7xl mx-auto px-4 lg:px-6 flex flex-wrap items-center justify-between gap-4 text-sm text-gray-500">
-    <span class="font-bold text-brand">Fleckfrei</span>
+    <span class="font-bold text-brand"><?= SITE ?></span>
     <div class="flex gap-6">
-      <a href="https://fleckfrei.de/impressum" class="hover:text-brand">Impressum</a>
-      <a href="https://fleckfrei.de/datenschutz" class="hover:text-brand">Datenschutz</a>
-      <a href="https://fleckfrei.de/agb" class="hover:text-brand">AGB</a>
+      <a href="https://<?= SITE_DOMAIN ?>/impressum" class="hover:text-brand">Impressum</a>
+      <a href="https://<?= SITE_DOMAIN ?>/datenschutz" class="hover:text-brand">Datenschutz</a>
+      <a href="https://<?= SITE_DOMAIN ?>/agb" class="hover:text-brand">AGB</a>
     </div>
   </div>
 </footer>

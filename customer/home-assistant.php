@@ -228,7 +228,7 @@ include __DIR__ . '/../includes/layout-customer.php';
           <span class="w-6 h-6 rounded-full bg-brand text-white text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
           <div>
             <strong>Long-Lived Access Token erstellen:</strong><br/>
-            In Home Assistant: Klicken Sie auf Ihren Avatar unten links → Scrollen nach unten → <strong>"Langlebige Zugriffstoken"</strong> → "Token erstellen" → Namen "Fleckfrei" eingeben → Token kopieren
+            In Home Assistant: Klicken Sie auf Ihren Avatar unten links → Scrollen nach unten → <strong>"Langlebige Zugriffstoken"</strong> → "Token erstellen" → Namen "<?= SITE ?>" eingeben → Token kopieren
           </div>
         </li>
         <li class="flex gap-3">

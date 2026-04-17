@@ -166,7 +166,7 @@ if ($source === 'all' || $source === 'employee') {
                     $stats['employee']['links']++;
                 }
                 // Link to Fleckfrei as organization
-                $orgId = ontology_upsert_object('company', 'Fleckfrei', ['internal' => true], null, 0.99);
+                $orgId = ontology_upsert_object('company', '<?= SITE ?>', ['internal' => true], null, 0.99);
                 ontology_upsert_link($personId, $orgId, 'works_at', 'employee_table', 0.99);
                 $stats['employee']['links']++;
 

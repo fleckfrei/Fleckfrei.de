@@ -231,7 +231,7 @@ include __DIR__ . '/../includes/layout.php';
   ?>
   <div class="bg-white rounded-xl border p-5 ring-2 ring-brand/20" x-data="{editing:false}">
     <div class="flex items-center justify-between mb-1">
-      <div class="text-xs font-semibold text-brand uppercase tracking-wider">Fleckfrei</div>
+      <div class="text-xs font-semibold text-brand uppercase tracking-wider"><?= SITE ?></div>
       <button type="button" @click="editing=!editing" class="text-xs text-gray-400 hover:text-brand" x-text="editing ? '✕' : '✏️'"></button>
     </div>
     <div x-show="!editing">
@@ -629,7 +629,7 @@ function editRule(r) {
 <!-- ============ Website-Service-Cards (fleckfrei.de) ============ -->
 <div id="website" class="bg-white rounded-xl border p-5 mt-6">
   <h3 class="font-semibold mb-2 flex items-center gap-2">🌐 Website Service-Cards (fleckfrei.de)</h3>
-  <p class="text-xs text-gray-500 mb-4">Direkt-Edit der 3 Preis-Cards auf <a href="https://fleckfrei.de" target="_blank" class="underline">fleckfrei.de</a>. Lass Preis leer = automatisch berechneter Min-Preis aus Tiers. Zahl eintragen = manueller Override.</p>
+  <p class="text-xs text-gray-500 mb-4">Direkt-Edit der 3 Preis-Cards auf <a href="https://<?= SITE_DOMAIN ?>" target="_blank" class="underline"><?= SITE_DOMAIN ?></a>. Lass Preis leer = automatisch berechneter Min-Preis aus Tiers. Zahl eintragen = manueller Override.</p>
   <form method="POST" class="space-y-4">
     <?= csrfField() ?>
     <input type="hidden" name="action" value="save_website_prices"/>
@@ -688,7 +688,7 @@ function editRule(r) {
       <?php endforeach; ?>
     </div>
     <button class="px-4 py-2 bg-brand text-white rounded-lg font-semibold">Website-Preise speichern</button>
-    <p class="text-xs text-gray-500">⚡ Änderungen sind in <strong>~15 Sekunden live</strong> auf <a href="https://fleckfrei.de" target="_blank" class="underline">fleckfrei.de</a> (kein Cache, JS-Auto-Poll). Komma oder Punkt erlaubt (0,02 oder 0.02).</p>
+    <p class="text-xs text-gray-500">⚡ Änderungen sind in <strong>~15 Sekunden live</strong> auf <a href="https://<?= SITE_DOMAIN ?>" target="_blank" class="underline"><?= SITE_DOMAIN ?></a> (kein Cache, JS-Auto-Poll). Komma oder Punkt erlaubt (0,02 oder 0.02).</p>
   </form>
 </div>
 

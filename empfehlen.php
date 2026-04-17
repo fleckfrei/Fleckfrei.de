@@ -19,7 +19,7 @@ require_once __DIR__ . '/includes/config.php';
 
 <header class="bg-white border-b sticky top-0 z-30">
   <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-    <a href="https://fleckfrei.de" class="font-bold text-xl text-brand">Fleckfrei</a>
+    <a href="https://<?= SITE_DOMAIN ?>" class="font-bold text-xl text-brand"><?= SITE ?></a>
     <a href="/book.php" class="px-3 py-1.5 bg-brand text-white rounded-lg text-sm font-medium hover:bg-brand-dark">Jetzt buchen</a>
   </div>
 </header>
@@ -90,11 +90,11 @@ require_once __DIR__ . '/includes/config.php';
 
 <footer class="bg-white border-t py-6 mt-6">
   <div class="max-w-5xl mx-auto px-4 flex flex-wrap items-center justify-between gap-4 text-sm text-gray-500">
-    <span class="font-bold text-brand">Fleckfrei</span>
+    <span class="font-bold text-brand"><?= SITE ?></span>
     <div class="flex gap-6">
-      <a href="https://fleckfrei.de/impressum" class="hover:text-brand">Impressum</a>
-      <a href="https://fleckfrei.de/datenschutz" class="hover:text-brand">Datenschutz</a>
-      <a href="https://fleckfrei.de/agb" class="hover:text-brand">AGB</a>
+      <a href="https://<?= SITE_DOMAIN ?>/impressum" class="hover:text-brand">Impressum</a>
+      <a href="https://<?= SITE_DOMAIN ?>/datenschutz" class="hover:text-brand">Datenschutz</a>
+      <a href="https://<?= SITE_DOMAIN ?>/agb" class="hover:text-brand">AGB</a>
     </div>
   </div>
 </footer>

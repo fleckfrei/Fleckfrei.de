@@ -43,8 +43,8 @@
     <div>© <?= date('Y') ?> <?= SITE ?> — Alle Rechte vorbehalten</div>
     <div class="flex gap-4">
       <a href="/customer/help.php" class="hover:text-gray-700">Hilfe</a>
-      <a href="https://fleckfrei.de/agb" class="hover:text-gray-700">AGB</a>
-      <a href="https://fleckfrei.de/datenschutz" class="hover:text-gray-700">Datenschutz</a>
+      <a href="https://<?= SITE_DOMAIN ?>/agb" class="hover:text-gray-700">AGB</a>
+      <a href="https://<?= SITE_DOMAIN ?>/datenschutz" class="hover:text-gray-700">Datenschutz</a>
       <span class="text-gray-400">·</span>
       <span class="text-gray-400">1 % unserer Einnahmen → <strong class="text-gray-600">Rumänien-Hilfe</strong> 🇷🇴</span>
     </div>

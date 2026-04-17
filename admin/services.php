@@ -50,7 +50,7 @@ $_wsMin = $_wsCalc["min_prices"] ?? [];
       <h2 class="text-lg font-bold text-amber-900">🌐 Website Service-Cards (fleckfrei.de)</h2>
       <p class="text-xs text-amber-800">Die 3 Cards die Kunden zuerst sehen. Bearbeite direkt hier oder auf <a href="/admin/pricing.php#website" class="underline font-semibold">Pricing-Seite</a>.</p>
     </div>
-    <a href="https://fleckfrei.de" target="_blank" class="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700">Live anschauen →</a>
+    <a href="https://<?= SITE_DOMAIN ?>" target="_blank" class="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700">Live anschauen →</a>
   </div>
   <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
     <?php foreach ([

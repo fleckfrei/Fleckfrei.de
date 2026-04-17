@@ -28,7 +28,7 @@ body{font-family:'Inter',sans-serif}
 
 <nav class="bg-white border-b sticky top-0 z-10">
   <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-    <a href="https://fleckfrei.de" class="font-bold text-xl text-brand">Fleckfrei</a>
+    <a href="https://<?= SITE_DOMAIN ?>" class="font-bold text-xl text-brand"><?= SITE ?></a>
     <a href="/login.php" class="text-sm text-gray-600 hover:text-brand">Login</a>
   </div>
 </nav>
@@ -86,7 +86,7 @@ body{font-family:'Inter',sans-serif}
         </label>
         <label class="flex items-start gap-2 text-xs cursor-pointer">
           <input type="checkbox" name="consent_privacy" required checked class="mt-0.5 shrink-0 rounded"/>
-          <span>Ich akzeptiere die <a href="https://fleckfrei.de/datenschutz.html" target="_blank" class="text-brand underline">Datenschutzerklärung</a>.<span class="text-red-500">*</span></span>
+          <span>Ich akzeptiere die <a href="https://<?= SITE_DOMAIN ?>/datenschutz.html" target="_blank" class="text-brand underline">Datenschutzerklärung</a>.<span class="text-red-500">*</span></span>
         </label>
         <label class="flex items-start gap-2 text-xs cursor-pointer">
           <input type="checkbox" name="consent_marketing" checked class="mt-0.5 shrink-0 rounded"/>
@@ -116,13 +116,13 @@ body{font-family:'Inter',sans-serif}
   <!-- DSGVO Info -->
   <div class="bg-white rounded-xl border p-5 text-xs text-gray-600 space-y-2">
     <h4 class="font-bold text-sm text-gray-800">🔒 Deine Daten</h4>
-    <p>Wir speichern Name, Email, Handy und die Analyse zur Angebotserstellung (Art. 6(1)(b) DSGVO). Keine Weitergabe an Dritte. Auskunft/Löschung: <a href="mailto:info@fleckfrei.de" class="underline">info@fleckfrei.de</a>.</p>
+    <p>Wir speichern Name, Email, Handy und die Analyse zur Angebotserstellung (Art. 6(1)(b) DSGVO). Keine Weitergabe an Dritte. Auskunft/Löschung: <a href="mailto:<?= CONTACT_EMAIL ?>" class="underline"><?= CONTACT_EMAIL ?></a>.</p>
     <p>Diese Seite nutzt <strong>Plausible Analytics</strong> — cookielos, IP-anonym, DSGVO-konform (<a href="https://plausible.io/data-policy" target="_blank" class="underline">Datenpolicy</a>).</p>
   </div>
 </section>
 
 <footer class="text-center py-8 text-xs text-gray-500 border-t">
-  © <?= date('Y') ?> Fleckfrei · <a href="https://fleckfrei.de" class="underline">fleckfrei.de</a> · <a href="https://fleckfrei.de/impressum.html" class="underline">Impressum</a> · <a href="https://fleckfrei.de/datenschutz.html" class="underline">Datenschutz</a> · <a href="https://fleckfrei.de/agb.html" class="underline">AGB</a>
+  © <?= date('Y') ?> Fleckfrei · <a href="https://<?= SITE_DOMAIN ?>" class="underline"><?= SITE_DOMAIN ?></a> · <a href="https://<?= SITE_DOMAIN ?>/impressum.html" class="underline">Impressum</a> · <a href="https://<?= SITE_DOMAIN ?>/datenschutz.html" class="underline">Datenschutz</a> · <a href="https://<?= SITE_DOMAIN ?>/agb.html" class="underline">AGB</a>
 </footer>
 
 <script>
@@ -167,7 +167,7 @@ function renderDossier(data) {
   html += card('💼 Business-Case', `<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-3"><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">pro Turnover</div><div class="font-bold">${bc.fleckfrei_cost_per_turnover_eur||'?'}€</div></div><div class="p-3 bg-gray-50 rounded"><div class="text-xs text-gray-500">pro Monat</div><div class="font-bold">${bc.fleckfrei_cost_per_month_estimate_eur||'?'}€</div></div><div class="p-3 bg-amber-50 rounded"><div class="text-xs text-gray-500">Break-even</div><div class="font-bold">${bc.break_even_bookings_per_month||'?'}/Mo</div></div><div class="p-3 bg-emerald-50 rounded"><div class="text-xs text-gray-500">12-Mon Netto</div><div class="font-bold text-emerald-700">+${bc['12_month_net_gain_eur']||'?'}€</div></div></div><p class="text-sm">${bc.summary_de||''}</p>`);
 
   // Final CTA
-  html += `<div class="bg-gradient-to-br from-brand to-brand-dark text-white rounded-2xl shadow-xl p-8 text-center"><div class="text-sm font-bold opacity-80 mb-2">🚀 NÄCHSTER SCHRITT</div><h3 class="text-2xl md:text-3xl font-black mb-3">Wir rufen Sie binnen 24h an</h3><p class="opacity-90 mb-5">Sie haben den Report und wir melden uns mit einem individuellen Angebot. Kein Druck. Keine Abo-Falle.</p><a href="mailto:info@fleckfrei.de?subject=Angebot%20anfordern" class="inline-block px-8 py-4 bg-white text-brand rounded-xl font-bold text-lg hover:bg-gray-100 shadow-xl">💬 Jetzt Angebot anfordern →</a></div>`;
+  html += `<div class="bg-gradient-to-br from-brand to-brand-dark text-white rounded-2xl shadow-xl p-8 text-center"><div class="text-sm font-bold opacity-80 mb-2">🚀 NÄCHSTER SCHRITT</div><h3 class="text-2xl md:text-3xl font-black mb-3">Wir rufen Sie binnen 24h an</h3><p class="opacity-90 mb-5">Sie haben den Report und wir melden uns mit einem individuellen Angebot. Kein Druck. Keine Abo-Falle.</p><a href="mailto:<?= CONTACT_EMAIL ?>?subject=Angebot%20anfordern" class="inline-block px-8 py-4 bg-white text-brand rounded-xl font-bold text-lg hover:bg-gray-100 shadow-xl">💬 Jetzt Angebot anfordern →</a></div>`;
 
   result.innerHTML = html;
   result.classList.remove('hidden');

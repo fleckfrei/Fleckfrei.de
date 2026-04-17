@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Track failed attempt
     file_put_contents($lockFile, json_encode(['count' => $attempts + 1, 'time' => time()]));
     $err = $isAccountDeleted
-        ? 'Dieses Konto wurde gelöscht. Für eine Wiederherstellung kontaktieren Sie bitte info@fleckfrei.de.'
+        ? 'Dieses Konto wurde gelöscht. Für eine Wiederherstellung kontaktieren Sie bitte ' . CONTACT_EMAIL . '.'
         : 'Falsche E-Mail oder Passwort.';
 }
 
@@ -111,7 +111,7 @@ $resetSent = !empty($_GET['reset_sent']);
   <!-- Logo + Brand -->
   <div class="text-center mb-6 relative z-10">
     <div class="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-brand text-white text-3xl font-extrabold mb-4 shadow-xl shadow-brand/30">
-      F
+      <?= LOGO_LETTER ?>
     </div>
     <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight"><?= SITE ?></h1>
     <p class="text-gray-500 mt-1 text-sm"><?= e(siteText('login.tagline', 'Berlin · Reinigung neu gedacht')) ?></p>
@@ -240,9 +240,9 @@ $resetSent = !empty($_GET['reset_sent']);
     <!-- Footer info -->
     <p class="text-center text-[11px] text-gray-400 mt-6">
       🇩🇪 Made in Berlin · 1 % unserer Einnahmen → Rumänien-Hilfe 🇷🇴<br/>
-      <a href="https://fleckfrei.de/agb" class="hover:text-brand">AGB</a> ·
-      <a href="https://fleckfrei.de/datenschutz" class="hover:text-brand">Datenschutz</a> ·
-      <a href="https://fleckfrei.de/impressum" class="hover:text-brand">Impressum</a>
+      <a href="https://<?= SITE_DOMAIN ?>/agb" class="hover:text-brand">AGB</a> ·
+      <a href="https://<?= SITE_DOMAIN ?>/datenschutz" class="hover:text-brand">Datenschutz</a> ·
+      <a href="https://<?= SITE_DOMAIN ?>/impressum" class="hover:text-brand">Impressum</a>
     </p>
   </div>
 </div>

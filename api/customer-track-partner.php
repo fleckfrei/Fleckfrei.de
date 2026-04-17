@@ -67,7 +67,7 @@ if ((!$sLat || !$sLng) && !empty($job['street']) && !empty($job['city'])) {
     $ch = curl_init('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' . urlencode($query));
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_USERAGENT => 'FleckfreiGeocoder/1.0 (info@fleckfrei.de)',
+        CURLOPT_USERAGENT => 'FleckfreiGeocoder/1.0 (<?= CONTACT_EMAIL ?>)',
         CURLOPT_TIMEOUT => 5,
     ]);
     $resp = curl_exec($ch);

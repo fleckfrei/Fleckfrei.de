@@ -154,7 +154,8 @@ define('FEATURE_RECURRING', true);    // Wiederkehrende Jobs
 define('FEATURE_AUDIT', true);        // Audit-Log
 define('FEATURE_WHATSAPP', true);     // WhatsApp-Integration
 define('FEATURE_TELEGRAM', false);    // Telegram-Integration
-define('FEATURE_INVOICE_AUTO', true); // Auto-Rechnungserstellung
+define('FEATURE_INVOICE_AUTO', true);          // Monthly batch invoice generation enabled
+define('FEATURE_AUTO_INVOICE_PER_JOB', false); // OFF: do NOT create per-job invoice on Stop (bug-fix 2026-04-17)
 
 // ============================================================
 // SYSTEM — Nicht ändern

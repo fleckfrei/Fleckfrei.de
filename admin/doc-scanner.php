@@ -148,7 +148,7 @@ include __DIR__ . '/../includes/layout.php';
     <!-- Telegram Send -->
     <div class="bg-white rounded-xl border p-5">
       <h3 class="font-semibold mb-3 flex items-center gap-2">📱 An Telegram senden</h3>
-      <p class="text-xs text-gray-500 mb-3">Sendet Text an @fleckfrei_bot (oder Email-Fallback an info@fleckfrei.de). 1-malig: schick /start an @fleckfrei_bot um Telegram zu aktivieren.</p>
+      <p class="text-xs text-gray-500 mb-3">Sendet Text an @fleckfrei_bot (oder Email-Fallback an <?= CONTACT_EMAIL ?>). 1-malig: schick /start an @fleckfrei_bot um Telegram zu aktivieren.</p>
       <button type="button" id="tgBtn" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm">📤 Text an Telegram senden</button>
       <span id="tgStatus" class="ml-3 text-xs"></span>
     </div>

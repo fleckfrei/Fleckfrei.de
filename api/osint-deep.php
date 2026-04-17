@@ -731,7 +731,7 @@ if ($phone) {
 // ============================================================
 if ($address) {
     $geoUrl = 'https://nominatim.openstreetmap.org/search?q=' . urlencode($address) . '&format=json&limit=1&addressdetails=1';
-    $geoRaw = safeFetch($geoUrl, 8, [CURLOPT_HTTPHEADER => ['User-Agent: FleckfreiOSINT/2.0 info@fleckfrei.de']]);
+    $geoRaw = safeFetch($geoUrl, 8, [CURLOPT_HTTPHEADER => ['User-Agent: FleckfreiOSINT/2.0 <?= CONTACT_EMAIL ?>']]);
     if ($geoRaw) {
         $geo = json_decode($geoRaw, true);
         if (is_array($geo) && !empty($geo[0])) {

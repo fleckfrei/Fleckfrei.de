@@ -46,9 +46,9 @@ require_once __DIR__ . '/includes/config.php';
 
 <nav class="nav">
   <div class="container nav__inner">
-    <a href="https://fleckfrei.de"><img src="https://fleckfrei.de/img/logo/logo-nav.svg" alt="fleckfrei" height="28"/></a>
+    <a href="https://<?= SITE_DOMAIN ?>"><img src="https://fleckfrei.de/img/logo/logo-nav.svg" alt="fleckfrei" height="28"/></a>
     <div style="display:flex;gap:.5rem">
-      <a href="https://fleckfrei.de" class="btn btn--ghost" style="padding:.4rem .75rem;font-size:.8rem">Website</a>
+      <a href="https://<?= SITE_DOMAIN ?>" class="btn btn--ghost" style="padding:.4rem .75rem;font-size:.8rem">Website</a>
       <a href="/admin/osint-dashboard.php" class="btn btn--cta" style="padding:.4rem .75rem;font-size:.8rem">Dashboard</a>
     </div>
   </div>

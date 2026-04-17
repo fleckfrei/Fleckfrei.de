@@ -55,7 +55,7 @@ if ($lat === 0.0 && $lng === 0.0) {
 }
 if ($distanceKm > 100) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'error' => 'Adresse liegt außerhalb unseres Servicegebiets (>100km Berlin). Bitte kontaktiere info@fleckfrei.de.']);
+    echo json_encode(['success' => false, 'error' => 'Adresse liegt außerhalb unseres Servicegebiets (>100km Berlin). Bitte kontaktiere <?= CONTACT_EMAIL ?>.']);
     exit;
 }
 $qm = (int)($body['qm'] ?? 0);
@@ -243,12 +243,12 @@ try {
       ' . $loginHint . '
       <p>Wir melden uns innerhalb von 24h mit einer Bestätigung + Partnerdaten.</p>
       <a class="cta" href="https://app.fleckfrei.de/login.php">Zum Kundenportal →</a>
-      <p style="font-size:11px;color:#888;margin-top:24px">Fleckfrei · Berlin · <a href="https://fleckfrei.de">fleckfrei.de</a></p>
+      <p style="font-size:11px;color:#888;margin-top:24px">Fleckfrei · Berlin · <a href="https://<?= SITE_DOMAIN ?>"><?= SITE_DOMAIN ?></a></p>
       </body></html>';
     $headers = "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n"
              . "From: Fleckfrei <no-reply@fleckfrei.de>\r\n"
-             . "Reply-To: info@fleckfrei.de\r\n"
-             . "Bcc: info@fleckfrei.de\r\n";
+             . "Reply-To: <?= CONTACT_EMAIL ?>\r\n"
+             . "Bcc: <?= CONTACT_EMAIL ?>\r\n";
     if (!function_exists('shouldSendEmail') || shouldSendEmail('booking')) {
         @mail($email, $subject, $html, $headers);
     }

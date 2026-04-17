@@ -151,16 +151,16 @@ if (!empty($ap['immediate'])) {
     $emailHtml .= '</ul></div>';
 }
 
-$emailHtml .= '<a class="cta" href="mailto:info@fleckfrei.de?subject=Angebot%20anfordern%20('.urlencode($email).')">💬 Jetzt unverbindliches Angebot anfordern →</a>';
-$emailHtml .= '<div style="padding:20px 24px;font-size:11px;color:#64748b;text-align:center">© Fleckfrei · <a href="https://fleckfrei.de">fleckfrei.de</a> · <a href="https://fleckfrei.de/impressum.html">Impressum</a> · <a href="https://fleckfrei.de/datenschutz.html">Datenschutz</a></div></div></body></html>';
+$emailHtml .= '<a class="cta" href="mailto:<?= CONTACT_EMAIL ?>?subject=Angebot%20anfordern%20('.urlencode($email).')">💬 Jetzt unverbindliches Angebot anfordern →</a>';
+$emailHtml .= '<div style="padding:20px 24px;font-size:11px;color:#64748b;text-align:center">© Fleckfrei · <a href="https://<?= SITE_DOMAIN ?>"><?= SITE_DOMAIN ?></a> · <a href="https://<?= SITE_DOMAIN ?>/impressum.html">Impressum</a> · <a href="https://<?= SITE_DOMAIN ?>/datenschutz.html">Datenschutz</a></div></div></body></html>';
 
 // Send email
 $subject = "📊 Ihr Fleckfrei Revenue-Report — " . mb_substr($title, 0, 60);
 $headers = "MIME-Version: 1.0\r\n"
          . "Content-Type: text/html; charset=UTF-8\r\n"
          . "From: Fleckfrei <no-reply@fleckfrei.de>\r\n"
-         . "Reply-To: info@fleckfrei.de\r\n"
-         . "Bcc: info@fleckfrei.de\r\n";
+         . "Reply-To: <?= CONTACT_EMAIL ?>\r\n"
+         . "Bcc: <?= CONTACT_EMAIL ?>\r\n";
 $mailSent = @mail($email, $subject, $emailHtml, $headers);
 
 if ($leadId) {

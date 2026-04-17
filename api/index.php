@@ -354,8 +354,12 @@ try {
             }
 
             // Auto-Invoicing: Job erledigt → Rechnung sofort erstellen
+            // BUG-FIX 2026-04-17: per-job invoices create one invoice per stop.
+            // Customers expect ONE invoice per month aggregating all their jobs.
+            // Gate on FEATURE_AUTO_INVOICE_PER_JOB (default false). Monthly
+            // aggregation is done via POST /api/invoice/generate with {customer_id, month}.
             $autoInvoiceId = null;
-            if ($body['status'] === 'COMPLETED' && $job) {
+            if ($body['status'] === 'COMPLETED' && $job && defined('FEATURE_AUTO_INVOICE_PER_JOB') && FEATURE_AUTO_INVOICE_PER_JOB) {
                 try {
                     // Only auto-invoice if job has no invoice yet
                     $hasInvoice = one("SELECT invoice_id FROM jobs WHERE j_id=? AND invoice_id IS NOT NULL", [$body['j_id']]);

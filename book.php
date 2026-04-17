@@ -30,7 +30,7 @@ body{font-family:'Inter',sans-serif}
 
 <nav class="bg-white border-b sticky top-0 z-10">
   <div class="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-    <a href="https://fleckfrei.de" class="font-bold text-xl text-brand">Fleckfrei</a>
+    <a href="https://<?= SITE_DOMAIN ?>" class="font-bold text-xl text-brand"><?= SITE ?></a>
     <a href="https://app.fleckfrei.de/login.php" class="text-sm text-gray-600 hover:text-brand">Login</a>
   </div>
 </nav>
@@ -116,7 +116,7 @@ body{font-family:'Inter',sans-serif}
 
     <!-- Out-of-Berlin Warning -->
     <div x-show="form.address_verified && !form.in_berlin_area" class="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-3 text-sm text-amber-900">
-      ⚠️ Diese Adresse ist <strong x-text="form.distance_km + ' km'"></strong> von Berlin-Mitte entfernt. Unser Standard-Servicegebiet ist Berlin (≤30 km). Außerhalb: bitte vorher via <a href="mailto:info@fleckfrei.de" class="underline">info@fleckfrei.de</a> anfragen.
+      ⚠️ Diese Adresse ist <strong x-text="form.distance_km + ' km'"></strong> von Berlin-Mitte entfernt. Unser Standard-Servicegebiet ist Berlin (≤30 km). Außerhalb: bitte vorher via <a href="mailto:<?= CONTACT_EMAIL ?>" class="underline"><?= CONTACT_EMAIL ?></a> anfragen.
     </div>
 
     <div class="grid grid-cols-2 gap-3">
@@ -322,7 +322,7 @@ body{font-family:'Inter',sans-serif}
       </label>
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="checkbox" x-model="form.consent_privacy" required class="mt-0.5"/>
-        <span>Ich akzeptiere die <a href="https://fleckfrei.de/datenschutz.html" target="_blank" class="text-brand underline">Datenschutzerklärung</a>. *</span>
+        <span>Ich akzeptiere die <a href="https://<?= SITE_DOMAIN ?>/datenschutz.html" target="_blank" class="text-brand underline">Datenschutzerklärung</a>. *</span>
       </label>
       <label class="flex items-start gap-2 cursor-pointer">
         <input type="checkbox" x-model="form.consent_marketing"/>
@@ -349,7 +349,7 @@ body{font-family:'Inter',sans-serif}
       Log dich ein unter <a href="https://app.fleckfrei.de/login.php" class="underline font-semibold">app.fleckfrei.de/login</a> — mit Google-Sign-in oder setze ein Passwort via „Passwort vergessen".
     </div>
     <a href="https://app.fleckfrei.de/login.php" class="inline-block px-6 py-3 bg-brand text-white rounded-lg font-bold hover:bg-brand-dark">Zum Kundenportal →</a>
-    <div class="mt-4"><a href="https://fleckfrei.de" class="text-sm text-gray-500 hover:text-brand">← zurück zur Startseite</a></div>
+    <div class="mt-4"><a href="https://<?= SITE_DOMAIN ?>" class="text-sm text-gray-500 hover:text-brand">← zurück zur Startseite</a></div>
   </section>
 
 </main>

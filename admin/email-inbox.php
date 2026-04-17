@@ -212,11 +212,11 @@ include __DIR__ . '/../includes/layout.php';
     <?= csrfField() ?><input type="hidden" name="action" value="add_account"/>
     <div class="grid grid-cols-2 gap-3">
       <div><label class="block text-xs font-medium text-gray-500 mb-1">Email</label>
-        <input type="email" name="email" required value="info@fleckfrei.de" class="w-full px-3 py-2 border rounded-lg"/></div>
+        <input type="email" name="email" required value="<?= CONTACT_EMAIL ?>" class="w-full px-3 py-2 border rounded-lg"/></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">IMAP Host</label>
         <input type="text" name="imap_host" required value="imap.gmail.com" class="w-full px-3 py-2 border rounded-lg"/></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">IMAP User</label>
-        <input type="text" name="imap_user" required value="info@fleckfrei.de" class="w-full px-3 py-2 border rounded-lg"/></div>
+        <input type="text" name="imap_user" required value="<?= CONTACT_EMAIL ?>" class="w-full px-3 py-2 border rounded-lg"/></div>
       <div><label class="block text-xs font-medium text-gray-500 mb-1">IMAP Passwort</label>
         <input type="password" name="imap_pass" required class="w-full px-3 py-2 border rounded-lg"/></div>
     </div>

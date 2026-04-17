@@ -321,9 +321,9 @@ if (!empty($photos)):
   <strong>Rechtlicher Hinweis:</strong> Dieses Dokument wurde automatisch aus dem Fleckfrei-Einsatzsystem generiert und dient als Nachweis
   der erbrachten Reinigungsleistung. Es enthält Protokolldaten (GPS, Zeitstempel, Foto-Beweise), die zum Zeitpunkt der Ausführung erhoben wurden.
   Zur Verifikation bei Versicherungsfällen, Plattform-Garantien (Airbnb, Booking.com) oder Streitigkeiten kontaktieren Sie bitte
-  <a href="mailto:info@fleckfrei.de">info@fleckfrei.de</a> unter Angabe der Nachweis-Nr. <strong><?= e($reportId) ?></strong>.
+  <a href="mailto:<?= CONTACT_EMAIL ?>"><?= CONTACT_EMAIL ?></a> unter Angabe der Nachweis-Nr. <strong><?= e($reportId) ?></strong>.
   <br><br>
-  Fleckfrei &mdash; Max Adrian · Berlin · <a href="https://fleckfrei.de">fleckfrei.de</a> · Verifikations-URL: <code><?= e($verifyUrl) ?></code>
+  Fleckfrei &mdash; Max Adrian · Berlin · <a href="https://<?= SITE_DOMAIN ?>"><?= SITE_DOMAIN ?></a> · Verifikations-URL: <code><?= e($verifyUrl) ?></code>
 </div>
 
 <?php if ($autoPrint): ?>
