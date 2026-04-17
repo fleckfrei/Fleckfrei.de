@@ -13,7 +13,10 @@ require_once __DIR__ . '/env.php';
 // ============================================================
 $__host = strtolower($_SERVER['HTTP_HOST'] ?? '');
 $__envTenant = env('TENANT', '');
-if ($__envTenant === 'la-renting' || str_contains($__host, 'la-renting')) {
+$__getTenant = $_GET['TENANT'] ?? '';   // Preview override: ?TENANT=la-renting
+if ($__getTenant === 'fleckfrei' || $__getTenant === 'la-renting') {
+    define('TENANT', $__getTenant);
+} elseif ($__envTenant === 'la-renting' || str_contains($__host, 'la-renting')) {
     define('TENANT', 'la-renting');
 } else {
     define('TENANT', 'fleckfrei');
