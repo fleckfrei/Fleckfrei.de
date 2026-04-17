@@ -114,7 +114,7 @@ $resetSent = !empty($_GET['reset_sent']);
       F
     </div>
     <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight"><?= SITE ?></h1>
-    <p class="text-gray-500 mt-1 text-sm">Berlin · Reinigung neu gedacht</p>
+    <p class="text-gray-500 mt-1 text-sm"><?= e(siteText('login.tagline', 'Berlin · Reinigung neu gedacht')) ?></p>
   </div>
 
   <!-- Login Card -->
