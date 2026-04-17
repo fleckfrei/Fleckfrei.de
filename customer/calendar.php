@@ -265,7 +265,7 @@ $firstJob = val("SELECT MIN(j_date) FROM jobs WHERE customer_id_fk=? AND status=
 $monthsActive = $firstJob ? max(0, floor((time() - strtotime($firstJob)) / (30*86400))) : 0;
 ?>
 <!-- Header -->
-<div class="mb-6 flex flex-wrap items-center justify-between gap-4" x-data="{ showManual: false }">
+<div class="mb-6 flex flex-wrap items-center justify-between gap-4" x-data="{ showManual: false, showVacation: false }">
   <div>
     <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Guten Tag, <?= e($greetingName) ?> 👋</h1>
     <p class="text-gray-500 mt-1 text-sm">Hier sind Ihre kommenden Termine — wir kümmern uns um den Rest.</p>
@@ -275,10 +275,52 @@ $monthsActive = $firstJob ? max(0, floor((time() - strtotime($firstJob)) / (30*8
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
       Eintrag
     </button>
+    <button @click="showVacation = true" class="px-3 py-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 rounded-xl text-sm font-semibold text-amber-900 flex items-center gap-2 transition">
+      🏖 Urlaub
+    </button>
     <a href="/customer/booking.php" class="px-4 py-2 bg-brand hover:bg-brand/90 text-white rounded-xl text-sm font-semibold flex items-center gap-2 transition">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
       Reinigung buchen
     </a>
+  </div>
+
+  <!-- Vacation inline modal — saves via POST /customer/vacations.php -->
+  <div x-show="showVacation" x-cloak @click.self="showVacation = false" class="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <form method="POST" action="/customer/vacations.php" class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden" @click.stop>
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="add_vacation"/>
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-amber-50">
+        <h3 class="font-semibold text-gray-900">🏖 Urlaub anmelden</h3>
+        <button type="button" @click="showVacation = false" class="w-8 h-8 rounded-lg hover:bg-amber-100 flex items-center justify-center text-gray-500">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <p class="text-xs text-gray-600">Während dieser Zeit pausieren wir alle geplanten Reinigungen automatisch.</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Von</label>
+            <input type="date" name="from_date" required min="<?= date('Y-m-d') ?>" class="w-full px-3 py-2.5 border rounded-lg"/>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Bis</label>
+            <input type="date" name="to_date" required min="<?= date('Y-m-d') ?>" class="w-full px-3 py-2.5 border rounded-lg"/>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Grund (optional)</label>
+          <input name="reason" placeholder="z.B. Familienurlaub, Geschäftsreise..." class="w-full px-3 py-2.5 border rounded-lg"/>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" name="auto_skip_jobs" value="1" checked class="rounded"/>
+          Geplante Reinigungen in diesem Zeitraum automatisch pausieren
+        </label>
+      </div>
+      <div class="px-5 py-4 bg-gray-50 border-t flex gap-3 justify-end">
+        <button type="button" @click="showVacation = false" class="px-4 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-200">Abbrechen</button>
+        <button type="submit" class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold">Speichern</button>
+      </div>
+    </form>
   </div>
 
   <!-- Manual event modal -->
@@ -444,9 +486,6 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
   </a>
   <a href="?view=month&m=<?= e($month) ?>" class="px-4 py-2 rounded-xl text-sm font-semibold transition <?= $view === 'month' ? 'bg-brand text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:border-brand' ?>">
     📅 Monat
-  </a>
-  <a href="/customer/vacations.php" class="px-4 py-2 rounded-xl text-sm font-semibold transition bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300 ml-auto">
-    🏖 Urlaub anmelden
   </a>
 </div>
 
