@@ -8,11 +8,11 @@ require_once __DIR__ . '/includes/config.php';
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>50 € weiterempfehlen · Fleckfrei</title>
 <meta name="description" content="Empfehle Fleckfrei weiter und bekomme 50 € Gutschrift nach 3 Monaten — einfach & transparent."/>
-<meta name="theme-color" content="#2E7D6B"/>
+<meta name="theme-color" content="<?= BRAND ?>"/>
 <link rel="icon" href="https://fleckfrei.de/img/logo/favicon.svg"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-<script>tailwind.config={theme:{extend:{colors:{brand:'#2E7D6B','brand-dark':'#1e5a4c','brand-light':'#E8F5F1'},fontFamily:{sans:['Inter','sans-serif']}}}}</script>
+<script>tailwind.config={theme:{extend:{colors:{brand:'<?= BRAND ?>','brand-dark':'<?= BRAND_DARK ?>','brand-light':'<?= BRAND_LIGHT ?>'},fontFamily:{sans:['Inter','sans-serif']}}}}</script>
 <style>body{font-family:'Inter',sans-serif}</style>
 </head>
 <body class="bg-gray-50 text-gray-900">

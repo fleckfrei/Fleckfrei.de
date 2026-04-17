@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
         if (!empty($_POST['auto_send_email']) && !empty($_POST['email']) && function_exists('sendEmail')) {
             $link = 'https://app.fleckfrei.de/p/' . $token;
             $n = trim($_POST['name'] ?? '') ?: 'Kunde';
-            $html = "<p>Hallo " . e($n) . ",</p><p>vielen Dank für Ihr Interesse an Fleckfrei. Über diesen persönlichen Link können Sie direkt Ihren Termin buchen — Ihre Daten sind bereits vorausgefüllt:</p><p><a href=\"$link\" style=\"background:#2E7D6B;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;display:inline-block\">Jetzt Termin buchen →</a></p><p style=\"color:#666;font-size:13px;margin-top:16px\">Oder Link kopieren: <a href=\"$link\">$link</a></p><p style=\"color:#999;font-size:11px\">Link gültig bis " . date('d.m.Y', strtotime($expires)) . "</p><p>Viele Grüße<br/>Ihr Team von Fleckfrei</p>";
+            $html = "<p>Hallo " . e($n) . ",</p><p>vielen Dank für Ihr Interesse an Fleckfrei. Über diesen persönlichen Link können Sie direkt Ihren Termin buchen — Ihre Daten sind bereits vorausgefüllt:</p><p><a href=\"$link\" style=\"background:<?= BRAND ?>;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;display:inline-block\">Jetzt Termin buchen →</a></p><p style=\"color:#666;font-size:13px;margin-top:16px\">Oder Link kopieren: <a href=\"$link\">$link</a></p><p style=\"color:#999;font-size:11px\">Link gültig bis " . date('d.m.Y', strtotime($expires)) . "</p><p>Viele Grüße<br/>Ihr Team von Fleckfrei</p>";
             if (sendEmail(strtolower(trim($_POST['email'])), 'Ihr persönlicher Buchungs-Link — Fleckfrei', $html, null, 'booking')) $emailSent = 1;
         }
 
@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
         $pl = one("SELECT * FROM prebooking_links WHERE pl_id=?", [(int)$_POST['pl_id']]);
         if ($pl && $pl['email']) {
             $link = 'https://app.fleckfrei.de/p/' . $pl['token'];
-            $html = "<p>Hallo " . e($pl['name'] ?? '') . ",</p><p>Über diesen persönlichen Link können Sie Ihren Termin direkt bei Fleckfrei buchen — Ihre Daten sind bereits vorausgefüllt:</p><p><a href=\"$link\" style=\"background:#2E7D6B;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700\">Jetzt Termin buchen →</a></p><p style=\"color:#666;font-size:12px\">Link gültig bis " . date('d.m.Y', strtotime($pl['expires_at'])) . "</p>";
+            $html = "<p>Hallo " . e($pl['name'] ?? '') . ",</p><p>Über diesen persönlichen Link können Sie Ihren Termin direkt bei Fleckfrei buchen — Ihre Daten sind bereits vorausgefüllt:</p><p><a href=\"$link\" style=\"background:<?= BRAND ?>;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700\">Jetzt Termin buchen →</a></p><p style=\"color:#666;font-size:12px\">Link gültig bis " . date('d.m.Y', strtotime($pl['expires_at'])) . "</p>";
             sendEmail($pl['email'], 'Ihr persönlicher Buchungs-Link — Fleckfrei', $html, null, 'booking');
             header("Location: /admin/prebook-links.php?sent=1"); exit;
         }

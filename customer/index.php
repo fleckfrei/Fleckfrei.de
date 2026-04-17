@@ -243,7 +243,7 @@ include __DIR__ . '/../includes/layout-customer.php';
 
     <!-- Map (full-width, height 300px, mit Brand-Rahmen) -->
     <div class="relative">
-      <div id="partnerMap" style="width: 100%; height: 320px; background: linear-gradient(135deg, #E8F5F1 0%, #f5f6f8 100%);"></div>
+      <div id="partnerMap" style="width: 100%; height: 320px; background: linear-gradient(135deg, <?= BRAND_LIGHT ?> 0%, #f5f6f8 100%);"></div>
       <!-- Overlay mit Live-Badge wenn GPS aktiv -->
       <div x-show="data.partner_lat && data.partner_lng" class="absolute top-3 left-3 bg-white/95 backdrop-blur rounded-lg px-3 py-1.5 shadow-lg z-[1000] flex items-center gap-1.5 text-xs font-bold text-emerald-700 pointer-events-none">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -899,7 +899,7 @@ function partnerTracker() {
       // Service marker (Fleckfrei-Brand-Pin mit Adresse)
       if (sLat && sLng) {
         var homeIcon = L.divIcon({
-          html: '<div style="background:#2E7D6B;border-radius:50% 50% 50% 0;width:36px;height:36px;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 4px 12px rgba(46,125,107,0.5);"><span style="transform:rotate(45deg);font-size:18px;">🏠</span></div>',
+          html: '<div style="background:<?= BRAND ?>;border-radius:50% 50% 50% 0;width:36px;height:36px;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 4px 12px rgba(46,125,107,0.5);"><span style="transform:rotate(45deg);font-size:18px;">🏠</span></div>',
           iconSize: [36, 36], iconAnchor: [18, 36], className: '',
         });
         this.serviceMarker = L.marker([sLat, sLng], { icon: homeIcon })
@@ -922,7 +922,7 @@ function partnerTracker() {
 
           // Route-Linie zwischen Partner und Ziel
           var routeLine = L.polyline([[pLat, pLng], [sLat, sLng]], {
-            color: '#2E7D6B', weight: 3, opacity: 0.6, dashArray: '8, 8'
+            color: '<?= BRAND ?>', weight: 3, opacity: 0.6, dashArray: '8, 8'
           }).addTo(this.map);
         }
       }

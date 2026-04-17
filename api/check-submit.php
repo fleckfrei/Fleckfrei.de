@@ -112,17 +112,17 @@ $roi = htmlspecialchars($ri['fleckfrei_roi_ratio'] ?? '—');
 $emailHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>
 body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;padding:0;margin:0;color:#0f172a}
 .wrap{max-width:640px;margin:0 auto;background:#fff;padding:0}
-.hdr{background:linear-gradient(135deg,#2E7D6B,#1e5a4c);color:#fff;padding:30px 24px;text-align:center}
+.hdr{background:linear-gradient(135deg,<?= BRAND ?>,<?= BRAND_DARK ?>);color:#fff;padding:30px 24px;text-align:center}
 .hdr h1{margin:0;font-size:22px}
 .sec{padding:20px 24px;border-bottom:1px solid #e2e8f0}
-.sec h2{font-size:16px;margin:0 0 12px 0;color:#2E7D6B}
+.sec h2{font-size:16px;margin:0 0 12px 0;color:<?= BRAND ?>}
 .hero{background:linear-gradient(135deg,#fef2f2,#fef3c7);padding:30px 24px;text-align:center}
 .hero .big{font-size:48px;font-weight:900;color:#dc2626;margin:8px 0}
 .grid{display:table;width:100%;border-spacing:8px}
 .cell{display:table-cell;background:#f1f5f9;border-radius:8px;padding:12px;text-align:center;width:25%}
 .cell .v{font-weight:700;font-size:18px}
 .cell .l{font-size:11px;color:#64748b}
-.cta{display:block;background:#2E7D6B;color:#fff!important;padding:16px 24px;text-align:center;text-decoration:none;border-radius:10px;font-weight:700;margin:20px 24px}
+.cta{display:block;background:<?= BRAND ?>;color:#fff!important;padding:16px 24px;text-align:center;text-decoration:none;border-radius:10px;font-weight:700;margin:20px 24px}
 ul{padding-left:18px;margin:8px 0}
 .risk-'.($riskScore>=7?'high':($riskScore>=4?'mid':'low')).'{background:'.($riskScore>=7?'#fef2f2':($riskScore>=4?'#fef3c7':'#ecfdf5')).';border-left:4px solid '.($riskScore>=7?'#dc2626':($riskScore>=4?'#f59e0b':'#10b981')).';padding:12px;margin:12px 0;border-radius:6px}
 </style></head><body><div class="wrap">

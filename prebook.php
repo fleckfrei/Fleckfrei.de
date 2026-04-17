@@ -10,7 +10,7 @@ if ($token) {
     $pl = one("SELECT * FROM prebooking_links WHERE token=? LIMIT 1", [$token]);
     if ($pl) {
         if (!empty($pl['used_at'])) {
-            $error = 'Link wurde bereits genutzt. Ihre Buchung ist aktiv — Login unter <a href="/login.php" style="color:#2E7D6B;text-decoration:underline">app.fleckfrei.de/login</a>';
+            $error = 'Link wurde bereits genutzt. Ihre Buchung ist aktiv — Login unter <a href="/login.php" style="color:<?= BRAND ?>;text-decoration:underline">app.fleckfrei.de/login</a>';
         } elseif ($pl['expires_at'] && strtotime($pl['expires_at']) < time()) {
             $error = 'Link ist abgelaufen. Bitte neuen Link anfordern.';
         }
@@ -91,7 +91,7 @@ if ($pl && !$error) {
     <div class="text-4xl mb-3">🔗</div>
     <h1 class="text-xl font-bold mb-3">Link nicht verfügbar</h1>
     <p class="text-sm text-gray-600 mb-5"><?= $error ?></p>
-    <a href="/book.php" class="inline-block px-5 py-2.5 bg-brand text-white rounded-xl font-semibold" style="background:#2E7D6B">Normal buchen →</a>
+    <a href="/book.php" class="inline-block px-5 py-2.5 bg-brand text-white rounded-xl font-semibold" style="background:<?= BRAND ?>">Normal buchen →</a>
   </div>
 </body>
 </html>

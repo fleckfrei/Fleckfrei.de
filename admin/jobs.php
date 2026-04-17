@@ -226,7 +226,7 @@ include __DIR__ . '/../includes/layout.php';
       <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#eab308"></span>Kein Partner</div>
       <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#2563EB"></span>Partner zugewiesen</div>
       <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#ea580c"></span>Partner in Bearbeitung</div>
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#2E7D6B"></span>Erledigt</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:<?= BRAND ?>"></span>Erledigt</div>
       <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#dc2626"></span>Storniert</div>
     </div>
     <div id="calendar"></div>
@@ -507,7 +507,7 @@ const colors = {
   NEW: '#2563EB',         // Blau
   RUNNING: '#ea580c',     // Orange — läuft
   STARTED: '#ea580c',     // Orange — läuft
-  COMPLETED: '#2E7D6B',   // Fleckfrei-Brand-Grün — fertig
+  COMPLETED: '<?= BRAND ?>',   // Fleckfrei-Brand-Grün — fertig
   CANCELLED: '#dc2626'    // Rot — storniert
 };
 function jobColor(j) {

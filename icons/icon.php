@@ -3,7 +3,7 @@
 $size = max(16, min(1024, (int)($_GET['s'] ?? 192)));
 $img = imagecreatetruecolor($size, $size);
 
-// Brand color #2E7D6B
+// Brand color <?= BRAND ?>
 $bg = imagecolorallocate($img, 46, 125, 107);
 $white = imagecolorallocate($img, 255, 255, 255);
 imagefill($img, 0, 0, $bg);

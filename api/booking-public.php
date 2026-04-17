@@ -224,9 +224,9 @@ try {
         ? "<p><strong>Dein Kundenkonto wurde automatisch erstellt.</strong> Logge dich ein: <a href=\"https://app.fleckfrei.de/login.php\">app.fleckfrei.de/login</a> — mit Google oder <a href=\"https://app.fleckfrei.de/password-reset.php\">Passwort setzen</a>.</p>"
         : "<p>Dein Kundenkonto: <a href=\"https://app.fleckfrei.de/login.php\">app.fleckfrei.de/login</a></p>";
     $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:600px;margin:0 auto;color:#111}
-      .hdr{background:#2E7D6B;color:#fff;padding:24px;text-align:center}
+      .hdr{background:<?= BRAND ?>;color:#fff;padding:24px;text-align:center}
       .box{padding:20px;background:#f8f9fa;margin:16px 0;border-radius:8px}
-      .cta{display:inline-block;background:#2E7D6B;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700}
+      .cta{display:inline-block;background:<?= BRAND ?>;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700}
       </style></head><body>
       <div class="hdr"><h1>✓ Buchung eingegangen</h1><p style="margin:8px 0 0">Buchung #' . $jobId . '</p></div>
       <div class="box">

@@ -758,7 +758,7 @@ function renderDeepCards(data, container) {
         cards.push('<div class="bg-gray-50 rounded-xl border p-4"><h4 class="font-bold text-sm mb-2 text-gray-700">WHOIS</h4><div class="space-y-1 text-sm">'+(w.registrant?'<div class="flex justify-between"><span class="text-gray-500">Registrant</span><b>'+w.registrant+'</b></div>':'')+(w.org?'<div class="flex justify-between"><span class="text-gray-500">Org</span><span>'+w.org+'</span></div>':'')+(w.registrar?'<div class="flex justify-between"><span class="text-gray-500">Registrar</span><span>'+w.registrar+'</span></div>':'')+(w.created?'<div class="flex justify-between"><span class="text-gray-500">Erstellt</span><span>'+w.created+'</span></div>':'')+'</div></div>');
     }
     if(d.correlation && d.correlation.identity_graph && d.correlation.identity_graph.length) {
-        cards.push('<div class="rounded-xl border p-4" style="background:rgba(46,125,107,0.05);border-color:rgba(46,125,107,0.2)"><h4 class="font-bold text-sm mb-2" style="color:#2E7D6B">Verifizierte Accounts ('+d.correlation.identity_graph.length+')</h4><div class="flex flex-wrap gap-1.5">'+d.correlation.identity_graph.map(function(ig){return '<a href="'+ig.url+'" target="_blank" class="px-2.5 py-1 rounded-lg text-xs font-medium hover:opacity-80" style="background:rgba(46,125,107,0.1);color:#2E7D6B">'+ig.platform+'</a>';}).join('')+'</div></div>');
+        cards.push('<div class="rounded-xl border p-4" style="background:rgba(46,125,107,0.05);border-color:rgba(46,125,107,0.2)"><h4 class="font-bold text-sm mb-2" style="color:<?= BRAND ?>">Verifizierte Accounts ('+d.correlation.identity_graph.length+')</h4><div class="flex flex-wrap gap-1.5">'+d.correlation.identity_graph.map(function(ig){return '<a href="'+ig.url+'" target="_blank" class="px-2.5 py-1 rounded-lg text-xs font-medium hover:opacity-80" style="background:rgba(46,125,107,0.1);color:<?= BRAND ?>">'+ig.platform+'</a>';}).join('')+'</div></div>');
     }
     if(d.impressum_validation && d.impressum_validation.extracted && d.impressum_validation.extracted.owner) {
         var iv = d.impressum_validation, ex = iv.extracted;
@@ -1516,7 +1516,7 @@ function renderOntoGraph(data) {
       { selector:'node', style:{
           'label':'data(label)','color':'#374151','font-size':'10px',
           'text-valign':'bottom','text-margin-y':5,
-          'background-color':'#2E7D6B','width':24,'height':24,
+          'background-color':'<?= BRAND ?>','width':24,'height':24,
           'border-width':2,'border-color':'#fff',
       }},
       { selector:'node[type="person"]', style:{'background-color':'#3b82f6'} },
@@ -1898,8 +1898,8 @@ async function ontoCascade() {
 <!-- Hidden printable report -->
 <div id="printReport" class="hidden">
   <div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:40px;">
-    <div style="border-bottom:3px solid #2E7D6B;padding-bottom:15px;margin-bottom:20px;">
-      <h1 style="margin:0;color:#2E7D6B;">OSINT Personenbericht</h1>
+    <div style="border-bottom:3px solid <?= BRAND ?>;padding-bottom:15px;margin-bottom:20px;">
+      <h1 style="margin:0;color:<?= BRAND ?>;">OSINT Personenbericht</h1>
       <p style="color:#666;margin:5px 0 0;">Erstellt: <?= date('d.m.Y H:i') ?> — <?= SITE ?></p>
       <p style="color:#999;font-size:12px;">Vertraulich — Nur für autorisierte interne Verwendung</p>
     </div>

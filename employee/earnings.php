@@ -231,7 +231,7 @@ new Chart(document.getElementById('earningsChart'), {
         datasets: [{
             label: 'Verdienst (€)',
             data: $chartEarnings,
-            backgroundColor: '#2E7D6B',
+            backgroundColor: '<?= BRAND ?>',
             borderRadius: 8,
             borderSkipped: false,
             yAxisID: 'y'

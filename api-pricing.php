@@ -13,7 +13,7 @@ require_once __DIR__ . '/includes/config.php';
   <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet"/>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>
-    :root{--brand:#2E7D6B;--brand-dark:#245f54;--brand-light:#e8f5f1;--text:#1e2121;--text-sec:#5a6060;--text-muted:#8e9696;--border:#e8eaea;--radius:8px;--radius-lg:16px;--radius-pill:9999px;}
+    :root{--brand:<?= BRAND ?>;--brand-dark:#245f54;--brand-light:#e8f5f1;--text:#1e2121;--text-sec:#5a6060;--text-muted:#8e9696;--border:#e8eaea;--radius:8px;--radius-lg:16px;--radius-pill:9999px;}
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Nunito Sans',system-ui,sans-serif;color:var(--text);background:#fff;line-height:1.6;-webkit-font-smoothing:antialiased}
     h1,h2,h3{font-family:'Montserrat',system-ui,sans-serif;font-weight:700;line-height:1.3}

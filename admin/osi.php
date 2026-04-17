@@ -48,7 +48,7 @@ include __DIR__ . '/../includes/layout.php';
 .score-ring { width: 80px; height: 80px; }
 .score-ring circle { fill: none; stroke-width: 6; stroke-linecap: round; }
 .score-bg { stroke: #e5e7eb; }
-.score-fg { stroke: var(--brand, #2E7D6B); transition: stroke-dashoffset 1s ease; }
+.score-fg { stroke: var(--brand, <?= BRAND ?>); transition: stroke-dashoffset 1s ease; }
 @media print { .no-print { display: none !important; } }
 </style>
 

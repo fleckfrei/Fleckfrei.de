@@ -108,10 +108,10 @@ if (!empty($j['address'])) $serviceAddress = $j['address'];
 <style>
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 12pt; color: #222; margin: 0; padding: 24px; max-width: 900px; margin: 0 auto; }
-  h1 { font-size: 22pt; margin: 0 0 4px 0; color: #2E7D6B; }
-  h2 { font-size: 14pt; margin: 24px 0 10px 0; border-bottom: 2px solid #2E7D6B; padding-bottom: 4px; color: #2E7D6B; }
+  h1 { font-size: 22pt; margin: 0 0 4px 0; color: <?= BRAND ?>; }
+  h2 { font-size: 14pt; margin: 24px 0 10px 0; border-bottom: 2px solid <?= BRAND ?>; padding-bottom: 4px; color: <?= BRAND ?>; }
   h3 { font-size: 11pt; margin: 12px 0 6px 0; text-transform: uppercase; color: #666; letter-spacing: 0.5px; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #2E7D6B; padding-bottom: 16px; margin-bottom: 20px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid <?= BRAND ?>; padding-bottom: 16px; margin-bottom: 20px; }
   .brand { font-weight: bold; }
   .report-id { font-family: monospace; font-size: 10pt; color: #666; background: #f3f4f6; padding: 4px 8px; border-radius: 4px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -121,12 +121,12 @@ if (!empty($j['address'])) $serviceAddress = $j['address'];
   dl.kv dt { color: #666; }
   dl.kv dd { margin: 0; font-weight: 600; }
   .stat-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; text-align: center; }
-  .stat-big { font-size: 22pt; font-weight: bold; color: #2E7D6B; }
+  .stat-big { font-size: 22pt; font-weight: bold; color: <?= BRAND ?>; }
   .stat-lbl { font-size: 9pt; color: #666; text-transform: uppercase; }
   .check-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
   .check-table th { text-align: left; padding: 6px 8px; background: #f3f4f6; border-bottom: 2px solid #ddd; font-weight: 600; font-size: 9pt; text-transform: uppercase; color: #555; }
   .check-table td { padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
-  .chk-done { color: #2E7D6B; font-weight: bold; }
+  .chk-done { color: <?= BRAND ?>; font-weight: bold; }
   .chk-miss { color: #dc2626; }
   .prio-critical { color: #dc2626; font-size: 9pt; }
   .prio-high { color: #ea580c; font-size: 9pt; }
@@ -134,9 +134,9 @@ if (!empty($j['address'])) $serviceAddress = $j['address'];
   .photo-item { text-align: center; }
   .photo-item img { width: 100%; height: 120px; object-fit: cover; border: 1px solid #ddd; border-radius: 6px; }
   .photo-item .cap { font-size: 9pt; color: #666; margin-top: 4px; line-height: 1.2; }
-  .signature-box { border: 2px solid #2E7D6B; border-radius: 8px; padding: 16px; background: #f0fdf8; margin-top: 12px; }
+  .signature-box { border: 2px solid <?= BRAND ?>; border-radius: 8px; padding: 16px; background: #f0fdf8; margin-top: 12px; }
   .footer-note { margin-top: 30px; padding-top: 16px; border-top: 1px solid #ddd; font-size: 9pt; color: #666; line-height: 1.5; }
-  .print-btn { position: fixed; top: 16px; right: 16px; background: #2E7D6B; color: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; font-size: 11pt; text-decoration: none; border: none; cursor: pointer; }
+  .print-btn { position: fixed; top: 16px; right: 16px; background: <?= BRAND ?>; color: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; font-size: 11pt; text-decoration: none; border: none; cursor: pointer; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9pt; font-weight: 600; }
   .badge-ok { background: #d1fae5; color: #065f46; }
   .badge-warn { background: #fef3c7; color: #92400e; }
@@ -311,7 +311,7 @@ if (!empty($photos)):
 
 <?php if ($rating && !empty($rating['comment'])): ?>
 <h2>6. Kunden-Kommentar</h2>
-<blockquote style="border-left: 4px solid #2E7D6B; padding: 8px 16px; margin: 0; background:#f9fafb; font-style: italic;">
+<blockquote style="border-left: 4px solid <?= BRAND ?>; padding: 8px 16px; margin: 0; background:#f9fafb; font-style: italic;">
   "<?= e($rating['comment']) ?>"
   <div style="font-style:normal; font-size:9pt; color:#666; margin-top:4px;">— Bewertung vom <?= date('d.m.Y', strtotime($rating['created_at'])) ?></div>
 </blockquote>

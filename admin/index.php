@@ -556,13 +556,13 @@ new Chart(document.getElementById('trendChart'), {
         datasets: [{
             label: 'Jobs',
             data: $trendJobs,
-            borderColor: '#2E7D6B',
+            borderColor: '<?= BRAND ?>',
             backgroundColor: 'rgba(46,125,107,0.1)',
             fill: true,
             tension: 0.3,
             borderWidth: 2,
             pointRadius: 4,
-            pointBackgroundColor: '#2E7D6B',
+            pointBackgroundColor: '<?= BRAND ?>',
             yAxisID: 'y'
         },{
             label: 'Umsatz (€)',
@@ -605,7 +605,7 @@ new Chart(document.getElementById('monthChart'), {
             {
                 label: 'Erledigt',
                 data: $chartDone,
-                backgroundColor: '#2E7D6B',
+                backgroundColor: '<?= BRAND ?>',
                 borderRadius: 6,
                 borderSkipped: false
             },

@@ -180,7 +180,7 @@ async function loadGraph() {
       { selector: 'node', style: {
           'label': 'data(label)', 'color': '#374151', 'font-size': '11px',
           'text-valign': 'bottom', 'text-margin-y': 6,
-          'background-color': '#2E7D6B', 'width': 32, 'height': 32,
+          'background-color': '<?= BRAND ?>', 'width': 32, 'height': 32,
           'border-width': 2, 'border-color': '#fff',
       }},
       { selector: 'node[type="person"]',  style: {'background-color': '#3b82f6'} },
