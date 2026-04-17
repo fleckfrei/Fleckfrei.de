@@ -247,12 +247,12 @@ $user = me(); $page = $page ?? ''; ?>
         $badgeEmpMsgs = 0;
         try { $badgeEmpMsgs = valLocal("SELECT COUNT(*) FROM messages WHERE recipient_type='employee' AND recipient_id=? AND read_at IS NULL", [$user['id']]) ?: 0; } catch (Exception $e) {}
         $menu = [];
-        if (employeeCan('portal_jobs')) $menu[] = ['/employee/', 'Meine Jobs', 'dashboard', $iconHome, ''];
-        if (employeeCan('portal_earnings')) $menu[] = ['/employee/earnings.php', 'Verdienst', 'earnings', $iconInv, ''];
-        if (employeeCan('portal_messages')) $menu[] = ['/employee/messages.php', 'Nachrichten', 'messages', $iconMsg, $badgeEmpMsgs > 0 ? $badgeEmpMsgs : ''];
-        $menu[] = ['/employee/availability.php', 'Verfügbarkeit', 'availability', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>', ''];
-        if (employeeCan('portal_profile')) $menu[] = ['/employee/profile.php', 'Profil', 'profile', $iconProfile, ''];
-        if (empty($menu)) $menu[] = ['/employee/', 'Meine Jobs', 'dashboard', $iconHome, ''];
+        if (employeeCan('portal_jobs'))     $menu[] = ['/employee/',               t('nav.jobs'),         'dashboard',   $iconHome, ''];
+        if (employeeCan('portal_earnings')) $menu[] = ['/employee/earnings.php',   t('nav.earnings'),     'earnings',    $iconInv, ''];
+        if (employeeCan('portal_messages')) $menu[] = ['/employee/messages.php',   t('nav.messages'),     'messages',    $iconMsg, $badgeEmpMsgs > 0 ? $badgeEmpMsgs : ''];
+        $menu[] =                             ['/employee/availability.php',       t('nav.availability'), 'availability','<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>', ''];
+        if (employeeCan('portal_profile'))  $menu[] = ['/employee/profile.php',    t('nav.profile'),      'profile',     $iconProfile, ''];
+        if (empty($menu))                   $menu[] = ['/employee/',               t('nav.jobs'),         'dashboard',   $iconHome, ''];
       } else {
         $menu = [['/login.php', 'Login', '', $iconHome, '']];
       }

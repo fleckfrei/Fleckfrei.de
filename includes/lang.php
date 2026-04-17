@@ -17,6 +17,7 @@ $TRANSLATIONS = [
         'nav.booking' => 'Neue Buchung',
         'nav.earnings' => 'Verdienst',
         'nav.logout' => 'Abmelden',
+        'nav.availability' => 'Verfügbarkeit',
 
         // Common
         'common.save' => 'Speichern',
@@ -250,6 +251,7 @@ $TRANSLATIONS = [
         'nav.booking' => 'Rezervare nouă',
         'nav.earnings' => 'Câștiguri',
         'nav.logout' => 'Deconectare',
+        'nav.availability' => 'Disponibilitate',
 
         'common.save' => 'Salvează',
         'common.cancel' => 'Anulează',
