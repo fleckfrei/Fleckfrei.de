@@ -62,7 +62,7 @@ $weekEnd = (new DateTime($weekStart))->modify('+6 days')->format('Y-m-d');
 $districts = all("SELECT * FROM berlin_districts ORDER BY sort_order, name");
 $partners = all("SELECT emp_id, name, surname FROM employee WHERE status=1 ORDER BY name");
 
-// Premium-Jobs dieser Woche (mit district-Zuordnung via customer)
+// ALL jobs this week grouped by district — not just premium
 $jobs = all("SELECT j.j_id, j.j_date, j.j_time, j.j_hours, j.travel_block_until, j.emp_id_fk, j.address, j.doorbell_name, j.floor,
              c.customer_id, c.name AS cname, c.district, c.is_premium, c.travel_block_until AS cust_block
              FROM jobs j
@@ -70,7 +70,6 @@ $jobs = all("SELECT j.j_id, j.j_date, j.j_time, j.j_hours, j.travel_block_until,
              WHERE j.j_date BETWEEN ? AND ?
              AND j.status=1
              AND (j.job_status IS NULL OR UPPER(j.job_status) NOT IN ('CANCELLED','CANCELED','REJECTED','DELETED'))
-             AND (j.travel_block_until IS NOT NULL OR c.is_premium=1)
              ORDER BY j.j_date, j.j_time", [$weekStart, $weekEnd]);
 
 // Index by date + district
@@ -122,7 +121,7 @@ include __DIR__ . '/../includes/layout.php';
 <?php if (!empty($_GET['quickset'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">✅ Kunde als Premium markiert — lädt jetzt in der Route-Woche.</div><?php endif; ?>
 <?php if (!empty($_GET['quickvouch'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">✅ Voucher <code><?= e($_GET['code'] ?? 'FLECKFREI-PREMIUM') ?></code> angelegt. Kunden können ihn jetzt einlösen → Partner-Tag bis 15:00 geblockt.</div><?php endif; ?>
 
-<?php if ($totalFuturePrem === 0): ?>
+<?php if (false && $totalFuturePrem === 0): // Quick-Setup-Card disabled (route planner now works for all jobs) ?>
 <!-- QUICK-SETUP-CARD -->
 <div class="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl p-6 mb-6">
   <h2 class="text-xl font-bold mb-2">🚀 Schnellstart — Route-Planner aktivieren</h2>
@@ -179,7 +178,7 @@ include __DIR__ . '/../includes/layout.php';
     <a href="/admin/route-planner.php" class="text-xs text-brand hover:underline">Heute</a>
   </div>
   <div class="text-xs text-gray-500">
-    <?= count($jobs) ?> Premium-Jobs · <?= count($assignments) ?> Routen geplant
+    <?= count($jobs) ?> Jobs · <?= count($assignments) ?> Routen geplant
   </div>
 </div>
 
@@ -270,7 +269,7 @@ include __DIR__ . '/../includes/layout.php';
         </tr>
         <?php endforeach; ?>
         <?php if (empty($jobs)): ?>
-        <tr><td colspan="8" class="px-4 py-12 text-center text-gray-400">Keine Premium-Jobs diese Woche. Buche eine Premium-Kundin oder einen Voucher mit Block-Until-Flag.</td></tr>
+        <tr><td colspan="8" class="px-4 py-12 text-center text-gray-400">Keine Jobs diese Woche.</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
@@ -279,10 +278,10 @@ include __DIR__ . '/../includes/layout.php';
 
 <!-- Legende -->
 <div class="mt-4 flex items-center gap-4 text-xs text-gray-500 flex-wrap">
-  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-100 border border-amber-300 inline-block"></span> Unassigned Premium-Job</span>
-  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-100 border border-gray-300 inline-block"></span> Job bereits Partner zugewiesen</span>
-  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-purple-100 border border-purple-300 inline-block"></span> Route aktiv</span>
-  <span class="ml-auto">⭐ Premium-Kunde · 🚗 Voucher-Block</span>
+  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-amber-100 border border-amber-300 inline-block"></span> Unzugewiesener Job</span>
+  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-gray-100 border border-gray-300 inline-block"></span> Partner zugewiesen</span>
+  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-purple-100 border border-purple-300 inline-block"></span> Route als Gruppe geplant</span>
+  <span class="ml-auto">⭐ Premium · 🚗 Voucher-Block</span>
 </div>
 
 <?php include __DIR__.'/../includes/footer.php'; ?>
