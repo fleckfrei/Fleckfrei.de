@@ -11,7 +11,7 @@ $today = date('Y-m-d');
 // Next upcoming job
 $nextJob = one("
     SELECT j.*, s.title as stitle, e.display_name as edisplay, e.profile_pic as eavatar
-    FROM jobs_calendar j
+    FROM jobs j
     LEFT JOIN services s ON j.s_id_fk = s.s_id
     LEFT JOIN employee e ON j.emp_id_fk = e.emp_id
     WHERE j.customer_id_fk = ?
@@ -31,7 +31,7 @@ $unpaid = customerCan('invoices') ? all("
 $totalUnpaid = array_sum(array_column($unpaid, 'remaining_price'));
 
 // Counts
-$upcomingCount = (int) val("SELECT COUNT(*) FROM jobs_calendar WHERE customer_id_fk = ? AND j_date >= ? AND status = 1 AND job_status NOT IN ('CANCELLED','COMPLETED')", [$cid, $today]);
+$upcomingCount = (int) val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk = ? AND j_date >= ? AND status = 1 AND job_status NOT IN ('CANCELLED','COMPLETED')", [$cid, $today]);
 $completedCount = (int) val("SELECT COUNT(*) FROM jobs WHERE customer_id_fk = ? AND job_status = 'COMPLETED' AND status = 1", [$cid]);
 
 // THIS MONTH stats — all-in-one summary

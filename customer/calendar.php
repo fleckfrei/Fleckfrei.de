@@ -99,7 +99,7 @@ $jobs = all("
     SELECT j.j_id, j.j_date, j.j_time, j.job_status, j.total_hours, j.j_hours, j.emp_id_fk, j.s_id_fk,
            j.no_people, j.no_children, j.no_pets, j.address, j.code_door, j.emp_message, j.job_note, j.platform,
            s.title AS stitle, e.display_name AS edisplay, e.profile_pic AS eavatar
-    FROM jobs_calendar j
+    FROM jobs j
     LEFT JOIN services s ON j.s_id_fk = s.s_id
     LEFT JOIN employee e ON j.emp_id_fk = e.emp_id
     WHERE j.customer_id_fk = ?
@@ -484,7 +484,7 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
   <?php if ($view === 'week'):
     // Need to load jobs/events for week range if different from month range
     $weekJobs = all("SELECT j.*, s.title as stitle, s.street, s.city, e.display_name as edisplay, e.profile_pic as eavatar
-        FROM jobs_calendar j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
+        FROM jobs j LEFT JOIN services s ON j.s_id_fk=s.s_id LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
         WHERE j.customer_id_fk=? AND j.j_date BETWEEN ? AND ? AND j.status=1 ORDER BY j.j_date, j.j_time", [$cid, $weekStart, $weekEnd]);
     $weekJobsByDate = [];
     foreach ($weekJobs as $j) $weekJobsByDate[$j['j_date']][] = $j;

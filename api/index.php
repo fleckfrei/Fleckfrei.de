@@ -135,7 +135,7 @@ try {
                     c.name as customer_name, c.customer_type,
                     e.name as emp_name, e.surname as emp_surname,
                     s.title as service_title
-                    FROM jobs_calendar j
+                    FROM jobs j
                     LEFT JOIN customer c ON j.customer_id_fk=c.customer_id
                     LEFT JOIN employee e ON j.emp_id_fk=e.emp_id
                     LEFT JOIN services s ON j.s_id_fk=s.s_id
