@@ -616,23 +616,25 @@ const cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
                 color: jobColor(j),
                 extendedProps: j
             }));
+            // Stable color-per-customer using golden-angle hue spread
+            const customerHue = (id) => (parseInt(id, 10) * 137.508) % 360;
             const vacs = (dVacs && dVacs.success && Array.isArray(dVacs.data)) ? dVacs.data : [];
             const vacEvents = vacs.map(v => {
                 const toDate = new Date(v.to_date);
-                toDate.setDate(toDate.getDate() + 1); // FullCalendar end is exclusive
-                // Short name (first 14 chars) — stackable at top of day as thin bar
+                toDate.setDate(toDate.getDate() + 1);
                 const shortName = (v.customer_name || 'Kunde').replace(/^\s+|\s+$/g, '').substring(0, 14);
+                const hue = customerHue(v.customer_id_fk);
                 return {
                     id: 'vac-' + v.cv_id,
                     title: '🏖 ' + shortName,
                     start: v.from_date,
                     end: toDate.toISOString().slice(0,10),
                     allDay: true,
-                    backgroundColor: '#fef3c7',
-                    borderColor: '#f59e0b',
-                    textColor: '#92400e',
+                    backgroundColor: `hsl(${hue}, 70%, 90%)`,
+                    borderColor:     `hsl(${hue}, 65%, 55%)`,
+                    textColor:       `hsl(${hue}, 80%, 22%)`,
                     classNames: ['vac-event'],
-                    extendedProps: { _vacation: true, ...v }
+                    extendedProps: { _vacation: true, _hue: hue, ...v }
                 };
             });
             ok([...jobEvents, ...vacEvents]);
@@ -640,12 +642,14 @@ const cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
     },
     eventContent: function(arg) {
         const j = arg.event.extendedProps;
-        // Vacation events: compact top-bar style
+        // Vacation events: compact top-bar style, color per customer
         if (j && j._vacation) {
+            const hue = j._hue || 40;
             const el = document.createElement('div');
             el.style.cssText = 'padding:1px 6px;font-size:10px;line-height:1.3;font-weight:600;' +
-                'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' +
-                'background:#fef3c7;color:#92400e;border-left:3px solid #f59e0b;border-radius:3px;';
+                'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:3px;' +
+                'background:hsl(' + hue + ',70%,90%);color:hsl(' + hue + ',80%,22%);' +
+                'border-left:3px solid hsl(' + hue + ',65%,55%);';
             el.title = (j.customer_name || '') + ' — Urlaub ' + (j.from_date || '') + ' bis ' + (j.to_date || '') + (j.reason ? ' · ' + j.reason : '');
             el.textContent = arg.event.title;
             return { domNodes: [el] };
