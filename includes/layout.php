@@ -46,12 +46,24 @@ $user = me(); $page = $page ?? ''; ?>
     .sidebar-link { transition: all 0.15s ease; }
     .sidebar-link.active { background: linear-gradient(135deg, <?= BRAND ?>, <?= BRAND_DARK ?>); color: white; box-shadow: 0 2px 8px rgba(<?= BRAND_RGB ?>,0.3); }
     .sidebar-link:hover:not(.active) { background: <?= BRAND_LIGHT ?>; color: <?= BRAND_DARK ?>; }
-    .sidebar-group-header {
+    .sidebar-group { margin-top: 6px; }
+    .sidebar-group:first-of-type { margin-top: 0; }
+    .sidebar-group > summary {
+      list-style: none; cursor: pointer;
       font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
-      color: <?= BRAND_DARK ?>; padding: 14px 12px 6px 12px; margin-top: 8px;
+      color: <?= BRAND_DARK ?>; padding: 10px 12px 6px 12px;
       border-top: 1px solid rgba(0,0,0,0.06);
+      display: flex; align-items: center; justify-content: space-between;
+      user-select: none;
     }
-    .sidebar-group-header:first-of-type { border-top: none; margin-top: 0; }
+    .sidebar-group:first-of-type > summary { border-top: none; }
+    .sidebar-group > summary::-webkit-details-marker { display: none; }
+    .sidebar-group > summary::after {
+      content: '›'; font-size: 16px; line-height: 1; color: rgba(0,0,0,0.4);
+      transition: transform 0.2s ease;
+    }
+    .sidebar-group[open] > summary::after { transform: rotate(90deg); }
+    .sidebar-group > summary:hover { background: <?= BRAND_LIGHT ?>; border-radius: 6px; }
     [x-cloak] { display: none !important; }
     /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -325,19 +337,23 @@ $user = me(); $page = $page ?? ''; ?>
         <?php if ($badge): ?><span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"><?= $badge ?></span><?php endif; ?>
       </a>
       <?php endforeach;
-        // Render grouped items — FLAT mit fixen Labels (keine Collapse-Klicks mehr)
+        // Render grouped items as collapsible <details>. Active group auto-open.
         foreach ($groups as $groupName => $items):
+          $isActive = ($activeGroup === $groupName);
       ?>
-      <div class="sidebar-group-header"><?= e($groupName) ?></div>
-      <?php foreach ($items as [$href, $label, $key, $icon, $badge]):
-            $active = $page === $key ? 'active' : '';
-      ?>
-      <a href="<?= $href ?>" class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 <?= $active ?>">
-        <svg class="w-[16px] h-[16px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><?= $icon ?></svg>
-        <span class="flex-1"><?= $label ?></span>
-        <?php if ($badge): ?><span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"><?= $badge ?></span><?php endif; ?>
-      </a>
-      <?php endforeach; endforeach;
+      <details class="sidebar-group" <?= $isActive ? 'open' : '' ?> data-group="<?= e($groupName) ?>">
+        <summary><?= e($groupName) ?></summary>
+        <?php foreach ($items as [$href, $label, $key, $icon, $badge]):
+              $active = $page === $key ? 'active' : '';
+        ?>
+        <a href="<?= $href ?>" class="sidebar-link flex items-center gap-3 px-3 py-1.5 rounded-lg text-[13px] font-medium text-gray-700 <?= $active ?>">
+          <svg class="w-[16px] h-[16px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><?= $icon ?></svg>
+          <span class="flex-1"><?= $label ?></span>
+          <?php if ($badge): ?><span class="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700"><?= $badge ?></span><?php endif; ?>
+        </a>
+        <?php endforeach; ?>
+      </details>
+      <?php endforeach;
       } else {
         // Customer/Employee: flat menu
         foreach ($menu as [$href, $label, $key, $icon, $badge]):
