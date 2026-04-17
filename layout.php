@@ -112,7 +112,7 @@ $user = me(); $page = $page ?? ''; ?>
   <aside x-show="sidebarOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="-translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="-translate-x-full" class="w-64 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col" id="sidebar">
     <div class="p-5 border-b">
       <a href="/admin/" class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center"><span class="text-white font-bold text-sm">F</span></div>
+        <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center"><span class="text-white font-bold text-sm"><?= LOGO_LETTER ?></span></div>
         <div>
           <div class="text-lg font-bold text-gray-900"><?= SITE ?></div>
           <div class="text-[10px] text-gray-400 -mt-0.5"><?= ucfirst($user['type']) ?> Panel</div>

@@ -133,7 +133,7 @@ $user = me(); $page = $page ?? ''; ?>
     <div class="p-5 border-b <?= $user['type'] === 'employee' ? 'bg-gradient-to-r from-brand-light to-transparent' : '' ?>">
       <a href="<?= e($homeLink) ?>" class="flex items-center gap-2.5">
         <div class="w-8 h-8 rounded-lg <?= $brandBg ?> flex items-center justify-center shadow-sm">
-          <span class="text-white font-bold text-sm"><?= $user['type'] === 'employee' ? '👷' : 'F' ?></span>
+          <span class="text-white font-bold text-sm"><?= $user['type'] === 'employee' ? '👷' : LOGO_LETTER ?></span>
         </div>
         <div>
           <div class="text-base font-bold text-gray-900 leading-tight"><?= SITE ?></div>

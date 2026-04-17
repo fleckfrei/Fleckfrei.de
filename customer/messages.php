@@ -171,7 +171,7 @@ include __DIR__ . '/../includes/layout-customer.php';
 
   <!-- Header -->
   <div class="px-4 sm:px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-brand to-brand-dark flex items-center gap-3 text-white">
-    <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg flex-shrink-0">F</div>
+    <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg flex-shrink-0"><?= LOGO_LETTER ?></div>
     <div class="flex-1 min-w-0">
       <div class="font-semibold truncate"><?= SITE ?> Support</div>
       <div class="text-[11px] text-white/80 flex items-center gap-1">
@@ -187,7 +187,7 @@ include __DIR__ . '/../includes/layout-customer.php';
     <template x-if="messages.length === 0">
       <div class="flex flex-col items-center justify-center h-full text-center">
         <div class="bg-white/90 rounded-2xl p-6 max-w-sm shadow-md">
-          <div class="w-14 h-14 mx-auto rounded-full bg-brand text-white flex items-center justify-center text-2xl mb-3">F</div>
+          <div class="w-14 h-14 mx-auto rounded-full bg-brand text-white flex items-center justify-center text-2xl mb-3"><?= LOGO_LETTER ?></div>
           <h3 class="font-bold text-gray-900 mb-1">Willkommen im Chat</h3>
           <p class="text-xs text-gray-500">Senden Sie eine Nachricht, Fotos, Videos oder Sprachnachrichten. Alles wird automatisch an den Partner in seiner Sprache übersetzt.</p>
         </div>

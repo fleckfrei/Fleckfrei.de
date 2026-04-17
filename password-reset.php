@@ -76,7 +76,7 @@ if ($token) {
 <body class="min-h-screen bg-gradient-to-br from-brand-light via-white to-brand/10 flex items-center justify-center p-4">
   <div class="w-full max-w-md">
     <div class="text-center mb-6">
-      <div class="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-brand text-white text-3xl font-extrabold mb-4 shadow-xl shadow-brand/30">F</div>
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-brand text-white text-3xl font-extrabold mb-4 shadow-xl shadow-brand/30"><?= LOGO_LETTER ?></div>
       <h1 class="text-4xl font-extrabold text-gray-900"><?= SITE ?></h1>
       <p class="text-gray-500 mt-1 text-sm">Passwort zurücksetzen</p>
     </div>

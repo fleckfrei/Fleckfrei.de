@@ -95,7 +95,7 @@ function emailTemplate($title, $content, $ctaText = '', $ctaUrl = '') {
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:'Helvetica Neue',Arial,sans-serif">
 <div style="max-width:600px;margin:0 auto;padding:20px">
   <div style="text-align:center;padding:30px 0">
-    <div style="display:inline-block;width:48px;height:48px;line-height:48px;border-radius:12px;background:$brand;color:white;font-size:22px;font-weight:700;text-align:center">F</div>
+    <div style="display:inline-block;width:48px;height:48px;line-height:48px;border-radius:12px;background:$brand;color:white;font-size:22px;font-weight:700;text-align:center">'".LOGO_LETTER."'</div>
     <div style="font-size:20px;font-weight:700;color:#1f2937;margin-top:8px">$site</div>
   </div>
   <div style="background:white;border-radius:16px;padding:40px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">

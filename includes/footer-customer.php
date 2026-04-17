@@ -80,7 +80,7 @@ function installPWA() {
 <!-- PWA Install Banner (hidden by default, shown when browser offers install) -->
 <div id="pwa-install-banner" class="hidden fixed bottom-20 left-4 right-4 sm:left-auto sm:right-5 sm:w-80 z-50 bg-white rounded-2xl shadow-2xl border border-brand/20 p-4 animate-bounce-once">
   <div class="flex items-start gap-3">
-    <div class="w-12 h-12 rounded-xl bg-brand text-white flex items-center justify-center text-xl font-extrabold flex-shrink-0">F</div>
+    <div class="w-12 h-12 rounded-xl bg-brand text-white flex items-center justify-center text-xl font-extrabold flex-shrink-0"><?= LOGO_LETTER ?></div>
     <div class="flex-1 min-w-0">
       <div class="font-bold text-gray-900 text-sm">Fleckfrei als App installieren</div>
       <div class="text-xs text-gray-500 mt-0.5">Schneller Zugriff direkt vom Homescreen — kein App Store nötig.</div>

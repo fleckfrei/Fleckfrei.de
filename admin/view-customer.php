@@ -319,7 +319,7 @@ if ($emailDomain) {
       }
       try { q("UPDATE customer SET personal_slug=? WHERE customer_id=?", [$slug, $c['customer_id']]); $c['personal_slug'] = $slug; } catch (Exception $e) {}
   }
-  $personalLink = 'https://app.fleckfrei.de/p/' . $c['personal_slug'];
+  $personalLink = 'https://app.' . SITE_DOMAIN . '/p/' . $c['personal_slug'];
 
   // Stundensatz bestimmen — wenn Kunde Company/Airbnb/Host → STR/B2B, sonst home_care
   $ctype = $c['customer_type'] ?? 'Private Person';

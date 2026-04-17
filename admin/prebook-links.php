@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
         // Auto-Email senden wenn Checkbox aktiv und Email vorhanden
         $emailSent = 0;
         if (!empty($_POST['auto_send_email']) && !empty($_POST['email']) && function_exists('sendEmail')) {
-            $link = 'https://app.fleckfrei.de/p/' . $token;
+            $link = 'https://app.' . SITE_DOMAIN . '/p/' . $token;
             $n = trim($_POST['name'] ?? '') ?: 'Kunde';
             $html = "<p>Hallo " . e($n) . ",</p><p>vielen Dank für Ihr Interesse an Fleckfrei. Über diesen persönlichen Link können Sie direkt Ihren Termin buchen — Ihre Daten sind bereits vorausgefüllt:</p><p><a href=\"$link\" style=\"background:<?= BRAND ?>;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;display:inline-block\">Jetzt Termin buchen →</a></p><p style=\"color:#666;font-size:13px;margin-top:16px\">Oder Link kopieren: <a href=\"$link\">$link</a></p><p style=\"color:#999;font-size:11px\">Link gültig bis " . date('d.m.Y', strtotime($expires)) . "</p><p>Viele Grüße<br/>Ihr Team von Fleckfrei</p>";
             if (sendEmail(strtolower(trim($_POST['email'])), 'Ihr persönlicher Buchungs-Link — Fleckfrei', $html, null, 'booking')) $emailSent = 1;
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
     if ($act === 'send_email' && function_exists('sendEmail')) {
         $pl = one("SELECT * FROM prebooking_links WHERE pl_id=?", [(int)$_POST['pl_id']]);
         if ($pl && $pl['email']) {
-            $link = 'https://app.fleckfrei.de/p/' . $pl['token'];
+            $link = 'https://app.' . SITE_DOMAIN . '/p/' . $pl['token'];
             $html = "<p>Hallo " . e($pl['name'] ?? '') . ",</p><p>Über diesen persönlichen Link können Sie Ihren Termin direkt bei Fleckfrei buchen — Ihre Daten sind bereits vorausgefüllt:</p><p><a href=\"$link\" style=\"background:<?= BRAND ?>;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700\">Jetzt Termin buchen →</a></p><p style=\"color:#666;font-size:12px\">Link gültig bis " . date('d.m.Y', strtotime($pl['expires_at'])) . "</p>";
             sendEmail($pl['email'], 'Ihr persönlicher Buchungs-Link — Fleckfrei', $html, null, 'booking');
             header("Location: /admin/prebook-links.php?sent=1"); exit;
@@ -98,7 +98,7 @@ include __DIR__ . '/../includes/layout.php';
 
 <?php if (!empty($_GET['created'])):
   $newToken = $_GET['created'];
-  $newLink = 'https://app.fleckfrei.de/p/' . $newToken;
+  $newLink = 'https://app.' . SITE_DOMAIN . '/p/' . $newToken;
 ?>
 <div class="bg-green-50 border-2 border-green-300 rounded-xl p-4 mb-6">
   <div class="font-bold text-green-900 mb-2">✅ Prebooking-Link erstellt<?php if (!empty($_GET['emailed'])): ?> <span class="text-xs font-normal ml-2 text-blue-700">📧 Email an Kunden gesendet</span><?php endif; ?></div>
@@ -217,7 +217,7 @@ include __DIR__ . '/../includes/layout.php';
       </tr></thead>
       <tbody class="divide-y">
       <?php foreach ($links as $pl):
-        $link = 'https://app.fleckfrei.de/p/' . $pl['token'];
+        $link = 'https://app.' . SITE_DOMAIN . '/p/' . $pl['token'];
         $status = $pl['used_at'] ? 'used' : (strtotime($pl['expires_at']) < time() ? 'expired' : 'active');
       ?>
       <tr class="hover:bg-gray-50">

@@ -141,7 +141,7 @@ include __DIR__ . '/../includes/layout.php';
           <div class="flex gap-1">
             <a href="/admin/view-customer.php?id=<?= $row['customer_id'] ?>" class="px-2 py-1 text-xs bg-brand text-white rounded-lg">Öffnen</a>
             <?php if (!empty($row['personal_slug'])):
-              $plink = 'https://app.fleckfrei.de/p/' . $row['personal_slug'];
+              $plink = 'https://app.' . SITE_DOMAIN . '/p/' . $row['personal_slug'];
             ?>
             <button type="button" onclick="navigator.clipboard.writeText('<?= e($plink) ?>').then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='🔗',1500)})" title="Persönlicher Link kopieren: <?= e($plink) ?>" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg">🔗</button>
             <?php endif; ?>
