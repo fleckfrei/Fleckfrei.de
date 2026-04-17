@@ -6,6 +6,61 @@ $me = $_SESSION['uemail'] ?? 'admin';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
     $act = $_POST['action'] ?? '';
+
+    if ($act === 'generate_email_ai') {
+        header('Content-Type: application/json; charset=utf-8');
+        require_once __DIR__ . '/../includes/llm-helpers.php';
+        $plid = (int)($_POST['pl_id'] ?? 0);
+        $pl = $plid ? one("SELECT * FROM prebooking_links WHERE pl_id=?", [$plid]) : null;
+        if (!$pl) { echo json_encode(['error' => 'link not found']); exit; }
+
+        $svcLabels = ['home_care' => 'Reinigung (Home Care)', 'str' => 'Short-Term Rental Reinigung', 'office' => 'Büro-/Business-Reinigung'];
+        $svc = $svcLabels[$pl['service_type']] ?? $pl['service_type'];
+        $link = 'https://app.' . SITE_DOMAIN . '/p/' . $pl['token'];
+        $gross = $pl['custom_hourly_gross'] ? (float)$pl['custom_hourly_gross'] : null;
+        $net = $gross ? round($gross / (1 + TAX_RATE), 2) : null;
+
+        $prompt = "Schreibe eine freundliche, kurze deutsche Email an einen potenziellen Kunden von Fleckfrei (Reinigungsservice Berlin). Enthält den persönlichen Buchungs-Link.\n\n"
+                . "Kunde: " . ($pl['name'] ?: 'Kunde') . "\n"
+                . "Email: " . ($pl['email'] ?: '-') . "\n"
+                . "Adresse: " . trim(($pl['street'] ?? '') . ', ' . ($pl['plz'] ?? '') . ' ' . ($pl['city'] ?? ''), ', ') . "\n"
+                . "Service: $svc\n"
+                . "Dauer: " . (int)$pl['duration'] . " Stunden\n"
+                . ($gross ? "Stundensatz: " . number_format($gross, 2, ',', '.') . " €/h brutto (netto " . number_format($net, 2, ',', '.') . " €/h)\n" : "")
+                . ($pl['voucher_code'] ? "Voucher-Code: " . $pl['voucher_code'] . "\n" : "")
+                . ((int)($pl['travel_tickets'] ?? 0) > 0 ? "BVG-Tickets: " . (int)$pl['travel_tickets'] . " × " . number_format((float)$pl['travel_ticket_price'], 2, ',', '.') . " € bar an Partner\n" : "")
+                . ($pl['notes'] ? "Interne Notiz (nicht in Email erwähnen): " . $pl['notes'] . "\n" : "")
+                . "Gültig bis: " . date('d.m.Y', strtotime($pl['expires_at'])) . "\n"
+                . "Link: $link\n\n"
+                . "Gib AUSSCHLIESSLICH JSON zurück, keine Erklärung, keine Markdown-Blöcke:\n"
+                . '{"subject": "...", "body": "HTML-Body mit <p>, <b>, <a> — keine <html>/<body>-Tags"}' . "\n\n"
+                . "- Subject: max 70 Zeichen, persönlich, mit Vornamen falls vorhanden\n"
+                . "- Body: 3-4 kurze Absätze, herzlicher Ton, konkrete Details (Service, Dauer, Preis falls gesetzt), ein grosser Button-Link (a-Tag mit inline-style padding, background, color, border-radius) zum Link\n"
+                . "- Signatur: 'Herzliche Grüße, Ihr Fleckfrei-Team'";
+
+        $r = groq_chat($prompt, 700);
+        $content = trim($r['content'] ?? '');
+        $content = preg_replace('/^```(?:json)?|```$/m', '', $content);
+        $parsed = json_decode(trim($content), true);
+        if (!is_array($parsed) || empty($parsed['subject']) || empty($parsed['body'])) {
+            echo json_encode(['error' => 'KI-Antwort nicht lesbar', 'raw' => $content]); exit;
+        }
+        echo json_encode(['subject' => $parsed['subject'], 'body' => $parsed['body']]);
+        exit;
+    }
+
+    if ($act === 'send_custom_email' && function_exists('sendEmail')) {
+        $plid = (int)($_POST['pl_id'] ?? 0);
+        $pl = $plid ? one("SELECT * FROM prebooking_links WHERE pl_id=?", [$plid]) : null;
+        $subj = trim($_POST['subject'] ?? '');
+        $body = trim($_POST['body'] ?? '');
+        if (!$pl || !$pl['email'] || $subj === '' || $body === '') {
+            header("Location: /admin/prebook-links.php?err=missing"); exit;
+        }
+        sendEmail($pl['email'], $subj, $body, null, 'booking');
+        header("Location: /admin/prebook-links.php?sent=1"); exit;
+    }
+
     if ($act === 'create_link') {
         // Sanitizer: beliebiger Input → URL-safe slug
         $sanitize = function(string $raw): string {
@@ -166,9 +221,12 @@ include __DIR__ . '/../includes/layout.php';
     </div>
     <div><label class="block text-xs text-gray-500 mb-1">Dauer (h)</label><input type="number" name="duration" value="3" min="2" max="12" class="w-full px-3 py-2 border rounded-lg text-sm"/></div>
     <div>
-      <label class="block text-xs font-semibold text-brand mb-1">💰 Eigener Stundensatz (€ brutto)</label>
-      <input type="number" step="0.01" name="custom_hourly_gross" class="w-full px-3 py-2 border-2 border-brand/30 rounded-lg text-sm bg-brand-light/30" placeholder="z.B. 25.00 — leer = Standard"/>
-      <div class="text-[10px] text-brand-dark mt-0.5">Überschreibt den Preis aus pricing.php. Kein Voucher nötig.</div>
+      <label class="block text-xs font-semibold text-brand mb-1">💰 Eigener Stundensatz (€/h brutto)</label>
+      <div class="relative">
+        <input type="number" step="0.01" name="custom_hourly_gross" id="c_rate" oninput="updNetto('c')" class="w-full px-3 py-2 pr-12 border-2 border-brand/30 rounded-lg text-sm bg-brand-light/30" placeholder="z.B. 25.00 — leer = Standard"/>
+        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">€/h</span>
+      </div>
+      <div class="text-[10px] text-brand-dark mt-0.5">Überschreibt Preis aus pricing.php · <span id="c_netto" class="font-mono">netto —</span> (MwSt <?= (int)(TAX_RATE*100) ?>%)</div>
     </div>
     <div><label class="block text-xs text-gray-500 mb-1">Voucher-Code (optional, zusätzlich)</label><input name="voucher_code" class="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="WELCOME10"/></div>
     <div>
@@ -243,7 +301,8 @@ include __DIR__ . '/../includes/layout.php';
           <button type="button" onclick="openEdit(<?= e(json_encode($pl)) ?>)" class="px-2 py-1 text-[10px] bg-brand/10 text-brand rounded">✏️ edit</button>
           <?php endif; ?>
           <?php if ($status==='active' && $pl['email']): ?>
-          <form method="POST" class="inline"><?= csrfField() ?><input type="hidden" name="action" value="send_email"/><input type="hidden" name="pl_id" value="<?= $pl['pl_id'] ?>"/><button class="px-2 py-1 text-[10px] bg-brand/10 text-brand rounded">📧 senden</button></form>
+          <form method="POST" class="inline"><?= csrfField() ?><input type="hidden" name="action" value="send_email"/><input type="hidden" name="pl_id" value="<?= $pl['pl_id'] ?>"/><button class="px-2 py-1 text-[10px] bg-brand/10 text-brand rounded" title="Standard-Email senden">📧 std</button></form>
+          <button type="button" onclick="openAiMail(<?= e(json_encode(['pl_id'=>$pl['pl_id'],'name'=>$pl['name'],'email'=>$pl['email']])) ?>)" class="px-2 py-1 text-[10px] bg-purple-100 text-purple-700 rounded" title="KI-generierte Email mit Preview">✨ KI-Mail</button>
           <?php endif; ?>
           <?php if ($status !== 'used'): ?>
           <form method="POST" class="inline" onsubmit="return confirm('Link löschen?')"><?= csrfField() ?><input type="hidden" name="action" value="delete_link"/><input type="hidden" name="pl_id" value="<?= $pl['pl_id'] ?>"/><button class="px-2 py-1 text-[10px] bg-red-50 text-red-600 rounded">🗑</button></form>
@@ -271,8 +330,12 @@ include __DIR__ . '/../includes/layout.php';
       <input type="hidden" id="e_pl_id" name="pl_id"/>
       <div class="text-xs text-gray-500">Slug: <code class="font-mono text-brand" id="e_slug"></code> · nicht änderbar</div>
       <div>
-        <label class="block text-xs font-semibold text-brand mb-1">💰 Eigener Stundensatz (€ brutto) — leer = Standard</label>
-        <input type="number" step="0.01" name="custom_hourly_gross" id="e_rate" class="w-full px-3 py-2 border-2 border-brand/30 rounded-lg text-sm bg-brand-light/30"/>
+        <label class="block text-xs font-semibold text-brand mb-1">💰 Eigener Stundensatz (€/h brutto) — leer = Standard</label>
+        <div class="relative">
+          <input type="number" step="0.01" name="custom_hourly_gross" id="e_rate" oninput="updNetto('e')" class="w-full px-3 py-2 pr-12 border-2 border-brand/30 rounded-lg text-sm bg-brand-light/30"/>
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">€/h</span>
+        </div>
+        <div class="text-[10px] text-brand-dark mt-0.5"><span id="e_netto" class="font-mono">netto —</span> (MwSt <?= (int)(TAX_RATE*100) ?>%)</div>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -316,7 +379,84 @@ include __DIR__ . '/../includes/layout.php';
     </form>
   </div>
 </div>
+
+<div id="aiMailModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl max-w-4xl w-full max-h-[92vh] overflow-auto">
+    <div class="sticky top-0 bg-white border-b px-5 py-3 flex justify-between items-center">
+      <h3 class="font-bold text-lg">✨ KI-Email schreiben <span class="text-xs font-normal text-gray-500 ml-2" id="m_to">—</span></h3>
+      <button type="button" onclick="closeAiMail()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+    </div>
+    <form method="POST" class="p-5 space-y-3" onsubmit="return confirm('Email jetzt senden?')">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="send_custom_email"/>
+      <input type="hidden" name="pl_id" id="m_plid"/>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="regenAiMail()" id="m_genBtn" class="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 disabled:opacity-50">🔄 Neu generieren</button>
+        <span id="m_status" class="text-xs text-gray-500"></span>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">Betreff</label>
+        <input name="subject" id="m_subj" required class="w-full px-3 py-2 border rounded-lg text-sm" maxlength="140"/>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Body (HTML — bearbeitbar)</label>
+          <textarea name="body" id="m_body" required rows="14" oninput="renderPreview()" class="w-full px-3 py-2 border rounded-lg text-xs font-mono"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Preview (live)</label>
+          <div id="m_preview" class="border rounded-lg p-4 bg-gray-50 text-sm max-h-[400px] overflow-auto prose prose-sm"></div>
+        </div>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button type="button" onclick="closeAiMail()" class="flex-1 px-4 py-2 border rounded-lg">Abbrechen</button>
+        <button type="submit" class="flex-1 px-4 py-2 bg-brand text-white rounded-lg font-semibold">📧 Jetzt senden</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
+function openAiMail(info) {
+  document.getElementById('aiMailModal').classList.remove('hidden');
+  document.getElementById('aiMailModal').classList.add('flex');
+  document.getElementById('m_plid').value = info.pl_id;
+  document.getElementById('m_to').textContent = '→ ' + (info.name || '') + ' <' + info.email + '>';
+  document.getElementById('m_subj').value = '';
+  document.getElementById('m_body').value = '';
+  document.getElementById('m_preview').innerHTML = '<div class="text-gray-400">Wird generiert…</div>';
+  regenAiMail();
+}
+function closeAiMail() {
+  document.getElementById('aiMailModal').classList.add('hidden');
+  document.getElementById('aiMailModal').classList.remove('flex');
+}
+async function regenAiMail() {
+  const plid = document.getElementById('m_plid').value;
+  const btn = document.getElementById('m_genBtn');
+  const status = document.getElementById('m_status');
+  btn.disabled = true; status.textContent = 'KI denkt nach…';
+  try {
+    const fd = new FormData();
+    fd.append('action', 'generate_email_ai');
+    fd.append('pl_id', plid);
+    fd.append('_csrf', '<?= csrfToken() ?>');
+    const r = await fetch('/admin/prebook-links.php', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.error) { status.textContent = '❌ ' + d.error; btn.disabled = false; return; }
+    document.getElementById('m_subj').value = d.subject || '';
+    document.getElementById('m_body').value = d.body || '';
+    renderPreview();
+    status.textContent = '✅ Fertig — bearbeite nach Bedarf';
+  } catch (e) {
+    status.textContent = '❌ Fehler: ' + e.message;
+  }
+  btn.disabled = false;
+}
+function renderPreview() {
+  document.getElementById('m_preview').innerHTML = document.getElementById('m_body').value || '<div class="text-gray-400">leer</div>';
+}
+
 function prebookForm() {
   return {
     f: { name:'', email:'', phone:'', street:'', plz:'', city:'Berlin', customer_id:'' },
@@ -360,12 +500,23 @@ function prebookForm() {
     },
   };
 }
+const TAX_RATE = <?= (float)TAX_RATE ?>;
+function updNetto(prefix) {
+  const i = document.getElementById(prefix + '_rate');
+  const o = document.getElementById(prefix + '_netto');
+  if (!i || !o) return;
+  const g = parseFloat(i.value);
+  if (!g || g <= 0) { o.textContent = 'netto —'; return; }
+  const n = g / (1 + TAX_RATE);
+  o.textContent = 'netto ' + n.toFixed(2).replace('.', ',') + ' €/h';
+}
 function openEdit(pl) {
   document.getElementById('editModal').classList.remove('hidden');
   document.getElementById('editModal').classList.add('flex');
   document.getElementById('e_pl_id').value = pl.pl_id;
   document.getElementById('e_slug').textContent = '/p/' + pl.token;
   document.getElementById('e_rate').value = pl.custom_hourly_gross || '';
+  updNetto('e');
   document.getElementById('e_dur').value = pl.duration || 3;
   document.getElementById('e_svc').value = pl.service_type || 'home_care';
   document.getElementById('e_voucher').value = pl.voucher_code || '';
