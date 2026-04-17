@@ -110,6 +110,8 @@ include __DIR__ . '/../includes/layout.php';
         <th class="px-2 py-2 text-left text-xs font-medium text-gray-500">Kunde / Service</th>
         <th class="px-2 py-2 text-left text-xs font-medium text-gray-500">Partner</th>
         <th class="px-2 py-2 text-left text-xs font-medium text-gray-500">Zeit</th>
+        <th class="px-2 py-2 text-center text-xs font-medium text-gray-500">Fotos</th>
+        <th class="px-2 py-2 text-left text-xs font-medium text-gray-500">Notiz</th>
         <th class="px-2 py-2 text-right text-xs font-medium text-gray-500">Std (P)</th>
         <th class="px-2 py-2 text-right text-xs font-medium text-gray-500">Std (K)</th>
         <th class="px-2 py-2 text-right text-xs font-medium text-gray-500">Gehalt</th>
@@ -152,13 +154,45 @@ include __DIR__ . '/../includes/layout.php';
           </select>
         </td>
         <td class="px-2 py-2 font-mono text-xs">
-          <div class="flex items-center gap-0.5">
-            <input type="time" value="<?= $j['start_time'] ? substr($j['start_time'],0,5) : '' ?>" onchange="updateJobTime(<?= $j['j_id'] ?>, 'start_time', this.value)" class="bg-transparent border-0 text-xs p-0 w-14 cursor-pointer hover:bg-gray-100 rounded focus:ring-1 focus:ring-brand" title="Startzeit"/>
-            <span>–</span>
-            <input type="time" value="<?= $j['end_time'] ? substr($j['end_time'],0,5) : '' ?>" onchange="updateJobTime(<?= $j['j_id'] ?>, 'end_time', this.value)" class="bg-transparent border-0 text-xs p-0 w-14 cursor-pointer hover:bg-gray-100 rounded focus:ring-1 focus:ring-brand" title="Endzeit"/>
+          <div class="flex flex-col gap-0.5 items-start">
+            <div class="flex items-center gap-0.5">
+              <input type="time" step="1" value="<?= $j['start_time'] ? substr($j['start_time'],0,8) : '' ?>" onchange="updateJobTime(<?= $j['j_id'] ?>, 'start_time', this.value)" class="bg-transparent border-0 text-xs p-0 w-20 cursor-pointer hover:bg-gray-100 rounded focus:ring-1 focus:ring-brand" title="Startzeit"/>
+              <span>–</span>
+              <input type="time" step="1" value="<?= $j['end_time'] ? substr($j['end_time'],0,8) : '' ?>" onchange="updateJobTime(<?= $j['j_id'] ?>, 'end_time', this.value)" class="bg-transparent border-0 text-xs p-0 w-20 cursor-pointer hover:bg-gray-100 rounded focus:ring-1 focus:ring-brand" title="Endzeit"/>
+            </div>
+            <?php if ($realHrs !== null): ?>
+              <div class="text-[10px] text-gray-400">Δ <?= number_format($realHrs, 2) ?>h</div>
+            <?php endif; ?>
           </div>
         </td>
-        <td class="px-2 py-2 text-right text-sm"><?= number_format($empHrs, 1) ?></td>
+        <td class="px-2 py-2 text-center">
+          <?php if (!empty($photos)): ?>
+            <div class="inline-flex items-center gap-1">
+              <?php foreach (array_slice($photos, 0, 3) as $ph):
+                  $src = is_string($ph) ? $ph : ($ph['url'] ?? $ph['path'] ?? '');
+                  if (!$src) continue;
+                  if ($src[0] !== '/' && !str_starts_with($src, 'http')) $src = '/uploads/' . ltrim($src, '/');
+              ?>
+                <a href="<?= e($src) ?>" target="_blank" class="inline-block">
+                  <img src="<?= e($src) ?>" class="w-8 h-8 rounded object-cover border hover:scale-150 transition" loading="lazy" title="<?= e(basename($src)) ?>"/>
+                </a>
+              <?php endforeach; ?>
+              <?php if (count($photos) > 3): ?>
+                <span class="text-[10px] text-gray-500 font-semibold">+<?= count($photos) - 3 ?></span>
+              <?php endif; ?>
+            </div>
+          <?php else: ?>
+            <span class="text-gray-300 text-xs">—</span>
+          <?php endif; ?>
+        </td>
+        <td class="px-2 py-2 text-xs text-gray-600 max-w-[180px]">
+          <?php if (!empty($j['job_note'])): ?>
+            <div class="truncate" title="<?= e($j['job_note']) ?>"><?= e($j['job_note']) ?></div>
+          <?php else: ?>
+            <span class="text-gray-300">—</span>
+          <?php endif; ?>
+        </td>
+        <td class="px-2 py-2 text-right text-sm"><?= number_format($empHrs, 2) ?></td>
         <td class="px-2 py-2 text-right text-sm"><?= number_format($custHrs, 1) ?></td>
         <td class="px-2 py-2 text-right text-red-600 text-sm"><?= money($salary) ?></td>
         <td class="px-2 py-2 text-right text-green-600 text-sm"><?= money($revenue) ?></td>
@@ -167,7 +201,7 @@ include __DIR__ . '/../includes/layout.php';
       </tr>
       <?php endforeach; ?>
       <?php if (empty($jobs)): ?>
-      <tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">Keine erledigten Jobs im Zeitraum.</td></tr>
+      <tr><td colspan="12" class="px-4 py-8 text-center text-gray-400">Keine erledigten Jobs im Zeitraum.</td></tr>
       <?php endif; ?>
       </tbody>
     </table>
