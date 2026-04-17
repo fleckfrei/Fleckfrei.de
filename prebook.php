@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/auth.php';
 
 $token = trim($_GET['t'] ?? '');
 $pl = null;
@@ -18,6 +19,22 @@ if ($token) {
         // 2) Fallback: personal_slug auf customer → dauerhafter Stamm-Kunden-Link
         $cust = one("SELECT customer_id, name, surname, email, phone, customer_type, district, is_premium, personal_slug, travel_tickets, travel_ticket_price FROM customer WHERE personal_slug=? AND status=1 LIMIT 1", [strtolower($token)]);
         if ($cust) {
+            // AUTO-LOGIN existing customer and redirect to dashboard (where they see their jobs, invoices, etc.)
+            // Personal slug acts as a passwordless login token. If they want to book, dashboard has "Jetzt buchen".
+            session_regenerate_id(true);
+            $_SESSION['uid']    = (int) $cust['customer_id'];
+            $_SESSION['uemail'] = $cust['email'];
+            $_SESSION['uname']  = trim(($cust['name'] ?? '') . ' ' . ($cust['surname'] ?? ''));
+            $_SESSION['utype']  = 'customer';
+            $_SESSION['login_via'] = 'personal_slug';
+            audit('auto_login', 'customer', (int)$cust['customer_id'], 'via /p/' . $cust['personal_slug']);
+            // ?book=1 lets us still flow directly into booking when explicitly requested
+            if (!empty($_GET['book'])) {
+                // fall through to booking flow below
+            } else {
+                header('Location: /customer/');
+                exit;
+            }
             $addr = one("SELECT street, number, postal_code, city, country FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC LIMIT 1", [$cust['customer_id']]);
 
             // Service-Type aus customer.customer_type
