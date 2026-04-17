@@ -45,7 +45,13 @@ $user = me(); $page = $page ?? ''; ?>
     /* Sidebar */
     .sidebar-link { transition: all 0.15s ease; }
     .sidebar-link.active { background: linear-gradient(135deg, <?= BRAND ?>, <?= BRAND_DARK ?>); color: white; box-shadow: 0 2px 8px rgba(<?= BRAND_RGB ?>,0.3); }
-    .sidebar-link:hover:not(.active) { background: <?= BRAND_LIGHT ?>; color: <?= BRAND ?>; }
+    .sidebar-link:hover:not(.active) { background: <?= BRAND_LIGHT ?>; color: <?= BRAND_DARK ?>; }
+    .sidebar-group-header {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      color: <?= BRAND_DARK ?>; padding: 14px 12px 6px 12px; margin-top: 8px;
+      border-top: 1px solid rgba(0,0,0,0.06);
+    }
+    .sidebar-group-header:first-of-type { border-top: none; margin-top: 0; }
     [x-cloak] { display: none !important; }
     /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -293,7 +299,7 @@ $user = me(); $page = $page ?? ''; ?>
         // Render grouped items — FLAT mit fixen Labels (keine Collapse-Klicks mehr)
         foreach ($groups as $groupName => $items):
       ?>
-      <div class="pt-3 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-gray-400"><?= e($groupName) ?></div>
+      <div class="sidebar-group-header"><?= e($groupName) ?></div>
       <?php foreach ($items as [$href, $label, $key, $icon, $badge]):
             $active = $page === $key ? 'active' : '';
       ?>
