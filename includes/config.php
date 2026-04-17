@@ -4,6 +4,8 @@ if (basename($_SERVER['SCRIPT_FILENAME'] ?? '') === 'config.php') { http_respons
 
 date_default_timezone_set('Europe/Berlin');
 
+require_once __DIR__ . '/env.php';
+
 // ============================================================
 // WHITE-LABEL CONFIG — Nur diese Sektion ändern für neues Branding
 // ============================================================
@@ -25,8 +27,8 @@ define('CONTACT_EMAIL', 'info@fleckfrei.de');
 // Nuki Smart Lock API Credentials
 // Registriert bei https://web.nuki.io/de/#/admin/web-api
 // Redirect URI muss dort gesetzt sein: https://app.fleckfrei.de/api/nuki-callback.php
-define('NUKI_CLIENT_ID', '');                                             // TODO Max: Client ID von web.nuki.io eintragen (UUID)
-define('NUKI_CLIENT_SECRET', '***REDACTED***');
+define('NUKI_CLIENT_ID', env('NUKI_CLIENT_ID'));                          // TODO Max: Client ID von web.nuki.io eintragen (UUID)
+define('NUKI_CLIENT_SECRET', env('NUKI_CLIENT_SECRET'));
 define('NUKI_REDIRECT_URI', 'https://app.fleckfrei.de/api/nuki-callback.php');
 define('NUKI_SCOPE', 'account notification smartlock smartlock.readOnly smartlock.action smartlock.auth');
 define('NUKI_API_BASE', 'https://api.nuki.io');
@@ -39,19 +41,19 @@ define('LOCALE', 'de');                            // Sprache
 define('TIMEZONE', 'Europe/Berlin');
 
 // ============================================================
-// DATABASE — Direkt La-Renting DB (Master) + lokale DB (Fleckfrei-spezifisch)
+// DATABASE — Credentials loaded from .env
 // ============================================================
 // Master DB (La-Renting auf Hostinger) — Jobs, Kunden, Partner, Services, Rechnungen
-define('DB_HOST', 'localhost');                   // Hostinger MySQL (same server)
-define('DB_NAME', 'u860899303_la_renting');
-define('DB_USER', 'u860899303_root');
-define('DB_PASS', '***REDACTED***');
+define('DB_HOST', env('DB_HOST', 'localhost'));
+define('DB_NAME', env('DB_NAME'));
+define('DB_USER', env('DB_USER'));
+define('DB_PASS', env('DB_PASS'));
 // Lokale DB (GoDaddy) — Messages, Audit, Settings, Fleckfrei-only Tabellen
-define('DB_LOCAL_HOST', 'localhost');
-define('DB_LOCAL_NAME', 'i10205616_zlzy1');
-define('DB_LOCAL_USER', 'i10205616_zlzy1');
-define('DB_LOCAL_PASS', '***REDACTED***');
-define('API_KEY', '***REDACTED***');
+define('DB_LOCAL_HOST', env('DB_LOCAL_HOST', 'localhost'));
+define('DB_LOCAL_NAME', env('DB_LOCAL_NAME'));
+define('DB_LOCAL_USER', env('DB_LOCAL_USER'));
+define('DB_LOCAL_PASS', env('DB_LOCAL_PASS'));
+define('API_KEY', env('API_KEY'));
 
 // ============================================================
 // N8N WEBHOOKS — Pro Installation eigene URLs
@@ -62,11 +64,11 @@ define('N8N_WEBHOOK_NOTIFY', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-no
 define('N8N_WEBHOOK_MESSAGE', 'https://n8n.la-renting.com/webhook/fleckfrei-v2-message');
 
 // ============================================================
-// OSINT API KEYS
+// OSINT API KEYS — loaded from .env
 // ============================================================
-define('SHODAN_API_KEY', '***REDACTED***');
-define('VT_API_KEY', '***REDACTED***');
-define('HUNTER_API_KEY', '***REDACTED***');
+define('SHODAN_API_KEY', env('SHODAN_API_KEY'));
+define('VT_API_KEY', env('VT_API_KEY'));
+define('HUNTER_API_KEY', env('HUNTER_API_KEY'));
 
 // ============================================================
 // FEATURES — An/Aus schalten pro Installation
@@ -74,38 +76,31 @@ define('HUNTER_API_KEY', '***REDACTED***');
 // ============================================================
 // OPEN BANKING — Enable Banking (N26 Auto-Import)
 // ============================================================
-define('OPENBANKING_APP_ID', '681f85da-7d47-492e-9b77-1688b06ca401');
+define('OPENBANKING_APP_ID', env('OPENBANKING_APP_ID'));
 define('OPENBANKING_PEM_PATH', __DIR__ . '/openbanking.pem');
 define('OPENBANKING_ACCOUNT_ID', '');   // N26 Account ID (set after bank linking)
 define('FEATURE_AUTO_BANK', true);
 
 // ============================================================
-// STRIPE — Online Payment (Karte + SEPA)
+// STRIPE — Online Payment (Karte + SEPA) — loaded from .env
 // ============================================================
-// Stripe keys loaded from secrets file (not in git)
-$_stripeSecrets = __DIR__ . '/stripe-keys.php';
-if (file_exists($_stripeSecrets)) { require_once $_stripeSecrets; }
+if (!defined('STRIPE_PK')) define('STRIPE_PK', env('STRIPE_PK'));
+if (!defined('STRIPE_SK')) define('STRIPE_SK', env('STRIPE_SK'));
 
-// LLM API keys — gitignored, manually deployed
-$_llmKeys = __DIR__ . '/llm-keys.php';
-if (file_exists($_llmKeys)) { require_once $_llmKeys; }
+// LLM / Telegram / Apify / Google — kept in separate gitignored key files
+// (include them only if they exist; values accessible via defined()/const)
+foreach (['llm-keys.php', 'telegram-keys.php', 'apify-keys.php', 'google-keys.php'] as $_keyFile) {
+    $_path = __DIR__ . '/' . $_keyFile;
+    if (file_exists($_path)) { require_once $_path; }
+}
 
-$_telegramKeys = __DIR__ . "/telegram-keys.php";
-if (file_exists($_telegramKeys)) { require_once $_telegramKeys; }
-
-$_apifyKeys = __DIR__ . "/apify-keys.php";
-if (file_exists($_apifyKeys)) { require_once $_apifyKeys; }
-if (!defined('STRIPE_PK')) define('STRIPE_PK', '');
-if (!defined('STRIPE_SK')) define('STRIPE_SK', '');
 define('FEATURE_STRIPE', !empty(STRIPE_SK));
 
 // ============================================================
-// PAYPAL — Checkout (Button auf Kundenportal)
+// PAYPAL — Checkout (Button auf Kundenportal) — loaded from .env
 // ============================================================
-$_paypalSecrets = __DIR__ . '/paypal-keys.php';
-if (file_exists($_paypalSecrets)) { require_once $_paypalSecrets; }
-if (!defined('PAYPAL_CLIENT_ID')) define('PAYPAL_CLIENT_ID', '');
-if (!defined('PAYPAL_SECRET')) define('PAYPAL_SECRET', '');
+define('PAYPAL_CLIENT_ID', env('PAYPAL_CLIENT_ID'));
+define('PAYPAL_SECRET', env('PAYPAL_SECRET'));
 define('PAYPAL_MODE', 'live');  // 'sandbox' or 'live'
 define('PAYPAL_BASE', PAYPAL_MODE === 'sandbox' ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com');
 define('FEATURE_PAYPAL', !empty(PAYPAL_CLIENT_ID) && !empty(PAYPAL_SECRET));
@@ -113,7 +108,7 @@ define('FEATURE_PAYPAL', !empty(PAYPAL_CLIENT_ID) && !empty(PAYPAL_SECRET));
 // ============================================================
 // SMOOBU — Channel Manager (Booking.com, VRBO, Agoda, Airbnb)
 // ============================================================
-define('SMOOBU_API_KEY', '');  // Set in Smoobu Dashboard > Settings > API
+define('SMOOBU_API_KEY', env('SMOOBU_API_KEY'));  // Set in Smoobu Dashboard > Settings > API
 define('SMOOBU_BASE', 'https://login.smoobu.com/api');
 define('FEATURE_SMOOBU', !empty(SMOOBU_API_KEY));
 

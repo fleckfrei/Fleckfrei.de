@@ -5,12 +5,24 @@ backups/
 *.sql.gz
 backup-*
 .DS_Store
+
+# Secrets — NEVER commit
+.env
+.env.local
+# But DO track the template so new devs know which vars are needed
+!.env.example
 includes/stripe-keys.php
+includes/paypal-keys.php
 includes/llm-keys.php
+includes/telegram-keys.php
+includes/apify-keys.php
+includes/google-keys.php
+includes/openbanking.pem
+
+# Logs
 scripts/monitor_stdout.log
 scripts/monitor_stderr.log
 scripts/monitor.log
 php_errors.log
-includes/google-keys.php
-includes/telegram-keys.php
-includes/apify-keys.php
+*.log
+error_log
