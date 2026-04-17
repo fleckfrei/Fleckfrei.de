@@ -128,7 +128,7 @@ include __DIR__ . '/../includes/layout.php';
     <a href="https://wa.me/<?= ltrim($ph,'+') ?>" target="_blank" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm">💬 WhatsApp</a>
     <?php endif; ?>
     <a href="mailto:<?= e($c['email']) ?>" class="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50">✉ E-Mail</a>
-    <a href="/admin/customers.php?impersonate=<?= $cid ?>" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">Als Kunde einloggen</a>
+    <form method="POST" action="/admin/customers.php" class="inline"><?= csrfField() ?><input type="hidden" name="action" value="impersonate"/><input type="hidden" name="customer_id" value="<?= $cid ?>"/><button type="submit" class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">Als Kunde einloggen</button></form>
   </div>
 </div>
 
