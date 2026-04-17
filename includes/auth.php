@@ -78,10 +78,13 @@ function customerCan($perm) {
         $raw = val("SELECT email_permissions FROM customer WHERE customer_id=?", [$cid]);
         $defaults = ['dashboard'=>1,'jobs'=>1,'invoices'=>1,'workhours'=>1,'profile'=>1,'booking'=>1,'documents'=>1,'messages'=>1,'cancel'=>1,'recurring'=>0,'rate'=>1,'calendar'=>1,'wh_umsatz'=>1,'wh_fotos'=>1];
         $perms = json_decode($raw ?: '{}', true);
-        if (!is_array($perms)) {
+        // BUG-FIX 2026-04-17: json_decode('{}') returns [] (empty array, NOT null).
+        // Old code only applied defaults when !is_array, so empty-array case leaked through
+        // and customers with empty email_permissions saw NOTHING.
+        if (!is_array($perms) || empty($perms)) {
             $r = trim((string)$raw);
             // Leer oder nur "all" → alle Standard-Rechte
-            if ($r === '' || $r === 'all') {
+            if ($r === '' || $r === 'all' || $r === '{}' || empty($perms)) {
                 $perms = $defaults;
             } else {
                 // Komma-getrennte Liste parsen — "all" als Eintrag = alle Standard-Rechte + extras
