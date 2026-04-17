@@ -2,6 +2,22 @@
 // Block direct access to includes
 if (basename($_SERVER['SCRIPT_FILENAME'] ?? '') === 'config.php') { http_response_code(403); exit; }
 
+// ============================================================
+// GLOBAL REDIRECT: app.la-renting.de → app.fleckfrei.de
+// While Max Co-Host branding is being validated, route all la-renting
+// traffic to the canonical Fleckfrei admin. Remove this block to
+// re-enable Max Co-Host at app.la-renting.de.
+// ============================================================
+$__redirHost = strtolower($_SERVER['HTTP_HOST'] ?? '');
+if (strpos($__redirHost, 'la-renting.de') !== false
+    && !headers_sent()
+    && empty($_GET['no_redirect'])) {
+    $__scheme = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+    $__target = $__scheme . '://app.fleckfrei.de' . ($_SERVER['REQUEST_URI'] ?? '/');
+    header('Location: ' . $__target, true, 302);
+    exit;
+}
+
 date_default_timezone_set('Europe/Berlin');
 
 require_once __DIR__ . '/env.php';
