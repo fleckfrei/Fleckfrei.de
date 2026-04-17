@@ -58,8 +58,20 @@ $isStammkunde = $completedJobs >= 5;
 
 try { $addresses = all("SELECT * FROM customer_address WHERE customer_id_fk=? ORDER BY ca_id DESC", [$cid]); } catch (Exception $e) { $addresses = []; }
 
-// Customer-own services first (full data so we can pre-fill address/codes/etc.), fall back to shared catalog
-$services = all("SELECT s_id, title, price, tax_percentage, total_price, max_guests, street, number, postal_code, city, box_code, client_code, deposit_code, doorbell_name, wa_keyword FROM services WHERE customer_id_fk=? AND status=1 ORDER BY title", [$cid]);
+// Load ALL services assigned to this customer — union of:
+//  (a) services.customer_id_fk = customer_id  (own dedicated service record)
+//  (b) customer_service junction table        (customer subscribed to shared service)
+// Fall back to generic catalog only if customer has ZERO assigned services.
+$services = all("
+    SELECT DISTINCT s.s_id, s.title, s.price, s.tax_percentage, s.total_price,
+                    s.max_guests, s.street, s.number, s.postal_code, s.city,
+                    s.box_code, s.client_code, s.deposit_code, s.doorbell_name, s.wa_keyword
+    FROM services s
+    LEFT JOIN customer_service cs ON cs.s_id_fk = s.s_id AND cs.customer_id_fk = ?
+    WHERE s.status = 1
+      AND (s.customer_id_fk = ? OR cs.customer_id_fk = ?)
+    ORDER BY s.title
+", [$cid, $cid, $cid]);
 if (empty($services)) {
     $services = all("SELECT s_id, title, price, tax_percentage, total_price, max_guests, street, number, postal_code, city, wa_keyword FROM services WHERE (customer_id_fk IS NULL OR customer_id_fk=0) AND status=1 ORDER BY title");
 }
