@@ -7,22 +7,51 @@ date_default_timezone_set('Europe/Berlin');
 require_once __DIR__ . '/env.php';
 
 // ============================================================
-// WHITE-LABEL CONFIG — Nur diese Sektion ändern für neues Branding
+// MULTI-TENANT DETECTION — same codebase serves both fleckfrei + la-renting
+// Tenant is decided by HTTP_HOST so switching is just a DNS / symlink change.
+// Override for CLI/cron: set env TENANT=fleckfrei or TENANT=la-renting.
 // ============================================================
-define('SITE', 'Fleckfrei');                    // Firmenname
-define('SITE_DOMAIN', 'fleckfrei.de');           // Domain
-define('SITE_TAGLINE', 'Smart. Sauber. Zuverlässig.');
-define('BRAND', '#2E7D6B');                      // Hauptfarbe (HEX)
-define('BRAND_DARK', '#235F53');                  // Dunklere Variante
-define('BRAND_LIGHT', '#E8F5F1');                 // Helle Variante
-define('BRAND_RGB', '46,125,107');                // RGB für opacity
-define('LOGO_LETTER', 'F');                       // Buchstabe für Logo-Icon
-// Fleckfrei-Kontaktdaten (Max hat diese URLs bestätigt)
-define('CONTACT_PHONE', '');                                              // Direkter tel: Link — leer = Button versteckt
-define('CONTACT_WHATSAPP_URL', 'https://wa.me/message/OVHQQCZT7WYAH1');   // Offizieller WA Business Click-to-Chat Link
-define('CONTACT_WHATSAPP', 'message/OVHQQCZT7WYAH1');                    // Für wa.me/ Prefix Compatibility
-define('CONTACT_TELEGRAM', '@fleckfrei_bot');                             // Telegram bot username
-define('CONTACT_EMAIL', 'info@fleckfrei.de');
+$__host = strtolower($_SERVER['HTTP_HOST'] ?? '');
+$__envTenant = env('TENANT', '');
+if ($__envTenant === 'la-renting' || str_contains($__host, 'la-renting')) {
+    define('TENANT', 'la-renting');
+} else {
+    define('TENANT', 'fleckfrei');
+}
+
+// ============================================================
+// WHITE-LABEL CONFIG — per-tenant branding
+// ============================================================
+if (TENANT === 'la-renting') {
+    define('SITE', 'La-Renting');
+    define('SITE_DOMAIN', 'la-renting.de');
+    define('SITE_TAGLINE', 'Ihre Ferienwohnung in Berlin');
+    define('BRAND', '#1E5EAA');                      // La-Renting blue
+    define('BRAND_DARK', '#134577');
+    define('BRAND_LIGHT', '#E3EEF9');
+    define('BRAND_RGB', '30,94,170');
+    define('LOGO_LETTER', 'L');
+    define('CONTACT_PHONE', '');
+    define('CONTACT_WHATSAPP_URL', 'https://wa.me/message/OVHQQCZT7WYAH1');
+    define('CONTACT_WHATSAPP', 'message/OVHQQCZT7WYAH1');
+    define('CONTACT_TELEGRAM', '@fleckfrei_bot');
+    define('CONTACT_EMAIL', 'info@la-renting.com');
+} else {
+    define('SITE', 'Fleckfrei');                    // Firmenname
+    define('SITE_DOMAIN', 'fleckfrei.de');           // Domain
+    define('SITE_TAGLINE', 'Smart. Sauber. Zuverlässig.');
+    define('BRAND', '#2E7D6B');                      // Hauptfarbe (HEX)
+    define('BRAND_DARK', '#235F53');                  // Dunklere Variante
+    define('BRAND_LIGHT', '#E8F5F1');                 // Helle Variante
+    define('BRAND_RGB', '46,125,107');                // RGB für opacity
+    define('LOGO_LETTER', 'F');                       // Buchstabe für Logo-Icon
+    // Fleckfrei-Kontaktdaten (Max hat diese URLs bestätigt)
+    define('CONTACT_PHONE', '');                                              // Direkter tel: Link — leer = Button versteckt
+    define('CONTACT_WHATSAPP_URL', 'https://wa.me/message/OVHQQCZT7WYAH1');   // Offizieller WA Business Click-to-Chat Link
+    define('CONTACT_WHATSAPP', 'message/OVHQQCZT7WYAH1');                    // Für wa.me/ Prefix Compatibility
+    define('CONTACT_TELEGRAM', '@fleckfrei_bot');                             // Telegram bot username
+    define('CONTACT_EMAIL', 'info@fleckfrei.de');
+}
 
 // Nuki Smart Lock API Credentials
 // Registriert bei https://web.nuki.io/de/#/admin/web-api

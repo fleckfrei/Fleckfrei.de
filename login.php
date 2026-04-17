@@ -78,7 +78,7 @@ $resetSent = !empty($_GET['reset_sent']);
   <title>Anmelden — <?= SITE ?></title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <script>tailwind.config={theme:{extend:{colors:{brand:'#2E7D6B','brand-dark':'#236153','brand-light':'#E8F2EF'}}}}</script>
+  <script>tailwind.config={theme:{extend:{colors:{brand:'<?= BRAND ?>','brand-dark':'<?= BRAND_DARK ?>','brand-light':'<?= BRAND_LIGHT ?>'}}}}</script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; }
