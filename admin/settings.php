@@ -104,6 +104,28 @@ include __DIR__ . '/../includes/layout.php';
   </div>
 
   
+  <!-- Service-Gebiet (Entfernungs-Limit zum Partner) -->
+  <div class="bg-white rounded-xl border p-5">
+    <h3 class="font-semibold mb-1">📍 Service-Gebiet (Partner-Entfernung)</h3>
+    <p class="text-xs text-gray-500 mb-4">
+      Maximaler Abstand (Luftlinie) zwischen Kunden-Adresse und Partner-Adresse.
+      Liegt der nächste aktive Partner weiter weg, wird die Buchung blockiert.
+      Partner-Adressen werden mit <code>scripts/geocode-partners.php</code> geocodet.
+    </p>
+    <div class="flex items-center gap-3 max-w-md">
+      <div class="flex-1">
+        <label class="block text-xs font-medium text-gray-500 mb-1">Max. Entfernung (km)</label>
+        <input type="number" step="1" min="1" max="200"
+               name="max_distance_km" value="<?= e($s['max_distance_km'] ?? 30) ?>"
+               class="w-full px-3 py-2 border rounded-lg text-sm"/>
+      </div>
+      <div class="text-xs text-gray-500 pt-5">
+        Typisch Berlin: 20–30 km<br>
+        Typisch umliegend: 40–50 km
+      </div>
+    </div>
+  </div>
+
   <!-- Stammkunden-Rabatte -->
   <div class="bg-white rounded-xl border p-5">
     <h3 class="font-semibold mb-1">💰 Stammkunden-Rabatte (Booking)</h3>
