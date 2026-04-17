@@ -156,9 +156,9 @@ include __DIR__ . '/../includes/layout.php';
         <td class="px-2 py-2 font-mono text-xs">
           <div class="flex flex-col gap-0.5 items-start">
             <div class="flex items-center gap-0.5">
-              <input type="time" step="1" value="<?= $j['start_time'] ? substr($j['start_time'],0,8) : '' ?>" onchange="updateJobTime(<?= $j['j_id'] ?>, 'start_time', this.value)" class="bg-transparent border-0 text-xs p-0 w-20 cursor-pointer hover:bg-gray-100 rounded focus:ring-1 focus:ring-brand" title="Startzeit"/>
+              <input type="time" step="60" value="<?= $j['start_time'] ? substr($j['start_time'],0,5) : '' ?>" onchange="updateJobTime(<?= $j['j_id'] ?>, 'start_time', this.value)" class="bg-transparent border-0 text-xs p-0 w-20 cursor-pointer hover:bg-gray-100 rounded focus:ring-1 focus:ring-brand" title="Startzeit"/>
               <span>–</span>
-              <input type="time" step="1" value="<?= $j['end_time'] ? substr($j['end_time'],0,8) : '' ?>" onchange="updateJobTime(<?= $j['j_id'] ?>, 'end_time', this.value)" class="bg-transparent border-0 text-xs p-0 w-20 cursor-pointer hover:bg-gray-100 rounded focus:ring-1 focus:ring-brand" title="Endzeit"/>
+              <input type="time" step="60" value="<?= $j['end_time'] ? substr($j['end_time'],0,5) : '' ?>" onchange="updateJobTime(<?= $j['j_id'] ?>, 'end_time', this.value)" class="bg-transparent border-0 text-xs p-0 w-20 cursor-pointer hover:bg-gray-100 rounded focus:ring-1 focus:ring-brand" title="Endzeit"/>
             </div>
             <?php if ($realHrs !== null): ?>
               <div class="text-[10px] text-gray-400">Δ <?= number_format($realHrs, 2) ?>h</div>
