@@ -630,42 +630,30 @@ const cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
                 { bg:'#ede9fe', border:'#7c3aed', text:'#4c1d95' }, // violet
             ];
             const pickPal = (id) => vacPalette[parseInt(id, 10) % vacPalette.length];
+            // Vacations are NOT rendered as events — they go as thin ribbons via dayCellDidMount
+            // so jobs stay prioritized in the day cell.
             const vacs = (dVacs && dVacs.success && Array.isArray(dVacs.data)) ? dVacs.data : [];
-            const vacEvents = vacs.map(v => {
-                const toDate = new Date(v.to_date);
-                toDate.setDate(toDate.getDate() + 1);
-                const shortName = (v.customer_name || 'Kunde').replace(/^\s+|\s+$/g, '').substring(0, 14);
+            window.__vacByDate = {};
+            vacs.forEach(v => {
                 const pal = pickPal(v.customer_id_fk);
-                return {
-                    id: 'vac-' + v.cv_id,
-                    title: '🏖 ' + shortName,
-                    start: v.from_date,
-                    end: toDate.toISOString().slice(0,10),
-                    allDay: true,
-                    backgroundColor: pal.bg,
-                    borderColor:     pal.border,
-                    textColor:       pal.text,
-                    classNames: ['vac-event'],
-                    extendedProps: { _vacation: true, _pal: pal, ...v }
-                };
+                const from = new Date(v.from_date);
+                const to = new Date(v.to_date);
+                for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+                    const key = d.toISOString().slice(0,10);
+                    (window.__vacByDate[key] = window.__vacByDate[key] || []).push({
+                        name: v.customer_name || 'Kunde',
+                        reason: v.reason || '',
+                        pal: pal
+                    });
+                }
             });
-            ok([...jobEvents, ...vacEvents]);
+            // Re-render ribbons after events settle
+            setTimeout(renderVacRibbons, 50);
+            ok(jobEvents);
         }).catch(fail);
     },
     eventContent: function(arg) {
         const j = arg.event.extendedProps;
-        // Vacation events: compact top-bar style, color per customer (purple/pink/teal palette)
-        if (j && j._vacation) {
-            const pal = j._pal || { bg:'#f3e8ff', border:'#9333ea', text:'#581c87' };
-            const el = document.createElement('div');
-            el.style.cssText = 'padding:1px 6px;font-size:10px;line-height:1.3;font-weight:600;' +
-                'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:3px;' +
-                'background:' + pal.bg + ';color:' + pal.text + ';' +
-                'border-left:3px solid ' + pal.border + ';';
-            el.title = (j.customer_name || '') + ' — Urlaub ' + (j.from_date || '') + ' bis ' + (j.to_date || '') + (j.reason ? ' · ' + j.reason : '');
-            el.textContent = arg.event.title;
-            return { domNodes: [el] };
-        }
         const time = arg.event.start ? arg.event.start.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) : '';
         const cname = j.customer_name || '?';
         const svc = j.service_title || '';
@@ -701,6 +689,36 @@ document.getElementById('typeFilter').onchange = () => cal.refetchEvents();
 
 // Real-time: refresh every 5s for live status updates
 setInterval(() => { cal.refetchEvents(); }, 5000);
+// Render thin vacation ribbons in each day cell — jobs stay priority
+function renderVacRibbons() {
+    document.querySelectorAll('.fc-vac-ribbon').forEach(el => el.remove());
+    const map = window.__vacByDate || {};
+    document.querySelectorAll('.fc-daygrid-day[data-date]').forEach(cell => {
+        const d = cell.dataset.date;
+        const list = map[d];
+        if (!list || !list.length) return;
+        const top = cell.querySelector('.fc-daygrid-day-top') || cell;
+        // Colored dots per customer on vacation, on the right of day number
+        const wrap = document.createElement('div');
+        wrap.className = 'fc-vac-ribbon';
+        wrap.style.cssText = 'position:absolute;top:2px;right:2px;display:flex;gap:3px;z-index:2;align-items:center;';
+        const names = list.map(v => v.name).join(', ');
+        wrap.title = '🏖 Urlaub: ' + names;
+        list.slice(0, 4).forEach(v => {
+            const dot = document.createElement('span');
+            dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' + v.pal.border + ';box-shadow:0 0 0 1.5px white;';
+            wrap.appendChild(dot);
+        });
+        if (list.length > 4) {
+            const plus = document.createElement('span');
+            plus.textContent = '+' + (list.length - 4);
+            plus.style.cssText = 'font-size:9px;color:#6b7280;font-weight:600;';
+            wrap.appendChild(plus);
+        }
+        cell.style.position = 'relative';
+        cell.appendChild(wrap);
+    });
+}
 // Also refresh day panel — store the active date as data attribute for reliable parsing
 let activeDayStr = new Date().toISOString().split('T')[0];
 document.getElementById('dayPanelDate').dataset.iso = activeDayStr;
