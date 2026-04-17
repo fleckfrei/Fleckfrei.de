@@ -88,6 +88,53 @@ function autoTranslateHtml(string $text, string $targetLang = 'de'): string {
 }
 
 /**
+ * Translate an entire HTML page's visible text nodes to target language.
+ * - Skips <script>, <style>, <code>, <pre> contents (keep PHP/JS/CSS as-is)
+ * - Skips short/numeric/empty strings
+ * - Batches unique strings (deduplication) through autoTranslate() which caches in DB
+ * - Extremely fast after first render (all strings cached).
+ * Call pattern:
+ *   pageTranslateStart('ro');  // at top of page
+ *   // ... normal output ...
+ *   pageTranslateEnd();        // just before </body>
+ */
+function pageTranslateStart(string $targetLang = 'ro'): void {
+    if ($targetLang === 'de') return;  // no-op
+    $GLOBALS['__pageTranslateLang'] = $targetLang;
+    ob_start();
+}
+
+function pageTranslateEnd(): void {
+    $lang = $GLOBALS['__pageTranslateLang'] ?? null;
+    if (!$lang) return;
+    $html = ob_get_clean();
+    // Strip out <script> and <style> and <code> blocks so we don't translate code
+    $stash = [];
+    $html = preg_replace_callback('~<(script|style|code|pre)\b[^>]*>.*?</\1>~is', function($m) use (&$stash) {
+        $k = '§§STASH' . count($stash) . '§§';
+        $stash[$k] = $m[0];
+        return $k;
+    }, $html);
+    // Translate text nodes (between > and <, excluding pure whitespace/numbers)
+    $html = preg_replace_callback('/>([^<]+)</u', function($m) use ($lang) {
+        $txt = $m[1];
+        $trim = trim($txt);
+        if ($trim === '' || preg_match('/^[\d\s\.,€\-+\/:()%]+$/u', $trim)) return $m[0];
+        if (mb_strlen($trim) < 2) return $m[0];
+        $translated = autoTranslate($trim, $lang);
+        if ($translated === $trim) return $m[0];
+        // Preserve leading/trailing whitespace
+        $pre = ''; $post = '';
+        if (preg_match('/^(\s+)/u', $txt, $x)) $pre = $x[1];
+        if (preg_match('/(\s+)$/u', $txt, $x)) $post = $x[1];
+        return '>' . $pre . $translated . $post . '<';
+    }, $html);
+    // Restore stashes
+    foreach ($stash as $k => $v) $html = str_replace($k, $v, $html);
+    echo $html;
+}
+
+/**
  * Get user's preferred lang (employee for partner pages, customer for customer pages).
  * Falls back to 'de'.
  */

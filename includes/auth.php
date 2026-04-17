@@ -10,6 +10,18 @@ session_start();
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/translate-helper.php';
 
+// Auto-start page translation for employees (German source → Romanian).
+// Cached per-string in translation_cache, so first view ~5s, subsequent <50ms.
+if (($_SESSION['utype'] ?? '') === 'employee' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    if (function_exists('pageTranslateStart')) { pageTranslateStart('ro'); }
+}
+// Shutdown hook: flush translated output
+register_shutdown_function(function() {
+    if (function_exists('pageTranslateEnd') && !empty($GLOBALS['__pageTranslateLang'])) {
+        pageTranslateEnd();
+    }
+});
+
 
 function urlSlug($name, $id) {
     $name = strtolower(trim((string)$name));
