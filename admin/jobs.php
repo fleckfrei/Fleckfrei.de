@@ -8,7 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCsrf()) { header('Location: /admin/jobs.php'); exit; }
     $act = $_POST['action'] ?? '';
     if ($act === 'edit_job') {
-        $fields = ['j_date','j_time','j_hours','emp_id_fk','customer_id_fk','s_id_fk','address','code_door','no_people','job_for','platform','emp_message','job_status','optional_products','job_note'];
+        $fields = ['j_date','j_time','stop_times','check_in_date','check_in_time','j_hours','emp_id_fk','customer_id_fk','s_id_fk','address','code_door','no_people','job_for','platform','emp_message','job_status','optional_products','job_note'];
         $sets = []; $params = [];
         foreach ($fields as $f) {
             if (isset($_POST[$f])) { $sets[] = "$f=?"; $params[] = $_POST[$f] ?: null; }
@@ -261,14 +261,18 @@ include __DIR__ . '/../includes/layout.php';
       <button onclick="closeQuickEdit()" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
     </div>
     <div class="p-4 space-y-2.5 overflow-y-auto flex-1" id="qeBody">
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-3 gap-3">
         <div>
           <label class="block text-xs font-medium text-gray-500 mb-1">Datum</label>
           <input type="date" id="qe_date" class="w-full px-3 py-2 border rounded-lg text-sm"/>
         </div>
         <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Zeit</label>
-          <input type="time" id="qe_time" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Start-Zeit</label>
+          <input type="time" id="qe_time" step="60" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Ende-Zeit</label>
+          <input type="time" id="qe_stop_time" step="60" class="w-full px-3 py-2 border rounded-lg text-sm"/>
         </div>
       </div>
       <div>
@@ -326,8 +330,36 @@ include __DIR__ . '/../includes/layout.php';
           </select>
         </div>
       </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Check-in Datum (Gast)</label>
+          <input type="date" id="qe_check_in_date" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Check-in Zeit (Gast)</label>
+          <input type="time" id="qe_check_in_time" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+        </div>
+      </div>
       <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1">Notizen</label>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Personen</label>
+        <input type="number" id="qe_no_people" min="1" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Optionale Produkte</label>
+        <div class="flex flex-wrap gap-2 text-sm" id="qe_optional_products_box">
+          <label class="flex items-center gap-1.5"><input type="checkbox" class="qe-opt rounded text-brand" value="Reinigungsmittel"/> Reinigungsmittel</label>
+          <label class="flex items-center gap-1.5"><input type="checkbox" class="qe-opt rounded text-brand" value="Werkzeug"/> Werkzeug</label>
+          <label class="flex items-center gap-1.5"><input type="checkbox" class="qe-opt rounded text-brand" value="Kinderbetten"/> Kinderbetten</label>
+          <label class="flex items-center gap-1.5"><input type="checkbox" class="qe-opt rounded text-brand" value="Bettwaesche"/> Bettwäsche</label>
+          <label class="flex items-center gap-1.5"><input type="checkbox" class="qe-opt rounded text-brand" value="Waescheservice"/> Wäscheservice</label>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Nachricht an Partner</label>
+        <textarea id="qe_emp_message" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm bg-yellow-50"></textarea>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Notizen (intern)</label>
         <textarea id="qe_note" rows="2" class="w-full px-3 py-2 border rounded-lg text-sm"></textarea>
       </div>
       <!-- Start/Stop Info + GPS + Route -->
@@ -685,6 +717,14 @@ function openQuickEdit(j) {
     document.getElementById('qe_code').value = j.code_door || '';
     setSelect('qe_platform', j.platform || 'admin');
     document.getElementById('qe_note').value = j.job_note || '';
+    document.getElementById('qe_stop_time').value = j.stop_times ? j.stop_times.slice(0,5) : '';
+    document.getElementById('qe_check_in_date').value = j.check_in_date || '';
+    document.getElementById('qe_check_in_time').value = j.check_in_time ? j.check_in_time.slice(0,5) : '';
+    document.getElementById('qe_no_people').value = j.no_people || '';
+    document.getElementById('qe_emp_message').value = j.emp_message || '';
+    // Populate optional_products checkboxes
+    const opts = (j.optional_products || '').split(',').map(s => s.trim()).filter(Boolean);
+    document.querySelectorAll('.qe-opt').forEach(cb => { cb.checked = opts.includes(cb.value); });
     document.getElementById('qeFullEdit').href = '/admin/jobs.php?view=' + j.j_id;
     currentJobFor = j.job_for || '';
 
@@ -905,16 +945,23 @@ function adminPauseJob() {
 
 function saveQuickEdit() {
     if (!currentEditId) return;
+    const checkedOpts = Array.from(document.querySelectorAll('.qe-opt:checked')).map(cb => cb.value).join(',');
     const fields = {
         j_date: document.getElementById('qe_date').value,
         j_time: document.getElementById('qe_time').value,
+        stop_times: document.getElementById('qe_stop_time').value || null,
+        check_in_date: document.getElementById('qe_check_in_date').value || null,
+        check_in_time: document.getElementById('qe_check_in_time').value || null,
         customer_id_fk: document.getElementById('qe_customer').value,
         s_id_fk: document.getElementById('qe_service').value,
         j_hours: document.getElementById('qe_hours').value,
+        no_people: document.getElementById('qe_no_people').value || 1,
         job_status: document.getElementById('qe_status').value,
         address: document.getElementById('qe_address').value,
         code_door: document.getElementById('qe_code').value,
         platform: document.getElementById('qe_platform').value,
+        optional_products: checkedOpts,
+        emp_message: document.getElementById('qe_emp_message').value,
         job_note: document.getElementById('qe_note').value
     };
     const empId = document.getElementById('qe_employee').value;
