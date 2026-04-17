@@ -173,10 +173,10 @@ $user = me(); $page = $page ?? ''; ?>
         $menu = [
           ['/admin/', 'Dashboard', 'dashboard', $iconHome, ''],
           ['/admin/jobs.php', 'Jobs Kalender', 'jobs', $iconCal, $badgePending > 0 ? $badgePending : ''],
-          ['/admin/route-planner.php', '🗺 Route-Planner', 'route-planner', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>', ''],
-          ['/admin/prebook-links.php', '🔗 Prebook-Links', 'prebook-links', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>', ''],
-          ['/admin/vacations.php', '🏖 Kunden-Urlaube', 'vacations', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>', ''],
-          ['/admin/blocked-days.php', '🚫 Tage sperren', 'blocked-days', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>', ''],
+          ['/admin/route-planner.php', 'Route-Planner', 'route-planner', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>', ''],
+          ['/admin/prebook-links.php', 'Prebook-Links', 'prebook-links', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>', ''],
+          ['/admin/vacations.php', 'Kunden-Urlaube', 'vacations', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>', ''],
+          ['/admin/blocked-days.php', 'Tage sperren', 'blocked-days', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>', ''],
           ['/admin/customers.php', 'Kunden', 'customers', $iconUser, ''],
           ['/admin/leads.php', 'Leads', 'leads', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>', ''],
           ['/admin/keys.php', 'Schlüssel', 'keys', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>', ''],
@@ -195,7 +195,7 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/live-map.php', 'Live-Karte', 'live-map', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>', ''],
           ['/admin/partners-live.php', 'Partner Live', 'partners-live', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>', ''],
           ['/admin/arrivals.php', 'Ankünfte Berlin', 'arrivals', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>', ''],
-          ['/admin/doc-scanner.php', '📜 Doc-Scanner AI', 'doc-scanner', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>', ''],
+          ['/admin/doc-scanner.php', 'Doc-Scanner AI', 'doc-scanner', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>', ''],
           ['/admin/audit.php', 'Protokoll', 'audit', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>', ''],
           ['/admin/consent-log.php', 'DSGVO Consent', 'consent-log', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>', ''],
           ['/admin/api-tokens.php', 'API-Tokens', 'api-tokens', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>', ''],
@@ -246,37 +246,61 @@ $user = me(); $page = $page ?? ''; ?>
       }
       if ($user['type'] === 'admin') {
         // Group admin menu items into collapsible sections
-        // Cleaner grouping — fewer, tighter sections, everything mapped (no _ungrouped).
+        // Clean, strictly ordered groups. Group order matters (PHP preserves insertion).
+        // Workflow flows top→bottom: daily ops first, then setup, tools, system.
+        $groupOrder = ['Termine', 'Planung', 'Kunden', 'Partner', 'Zugang',
+                       'Services', 'Finanzen', 'Kommunikation', 'Tools', 'System'];
         $groupMap = [
           'dashboard' => '_top',
-          // Termine (appointments) — everything calendar/scheduling related
-          'jobs' => 'Termine', 'bookings' => 'Termine', 'route-planner' => 'Termine',
-          'prebook-links' => 'Termine', 'availability' => 'Termine',
-          'booking-priority' => 'Termine', 'vacations' => 'Termine',
-          'blocked-days' => 'Termine', 'arrivals' => 'Termine',
+          // Termine — daily calendar/work
+          'jobs'             => 'Termine',
+          'route-planner'    => 'Termine',
+          'bookings'         => 'Termine',
+          // Planung — scheduling config (prebook, availability, blocked, vacations)
+          'prebook-links'    => 'Planung',
+          'availability'     => 'Planung',
+          'blocked-days'     => 'Planung',
+          'vacations'        => 'Planung',
+          'booking-priority' => 'Planung',
+          'arrivals'         => 'Planung',
           // Kunden
-          'customers' => 'Kunden', 'leads' => 'Kunden', 'consent-log' => 'Kunden',
+          'customers'        => 'Kunden',
+          'leads'            => 'Kunden',
+          'consent-log'      => 'Kunden',
           // Partner
-          'employees' => 'Partner', 'work-hours' => 'Partner',
-          'live-map' => 'Partner', 'partners-live' => 'Partner',
-          // Zugang (access / keys)
-          'keys' => 'Zugang', 'locks' => 'Zugang',
-          // Services (catalog + pricing)
-          'services' => 'Services', 'checklists' => 'Services',
-          'optional-products' => 'Services', 'pricing' => 'Services',
-          'photo-scores' => 'Services',
+          'employees'        => 'Partner',
+          'work-hours'       => 'Partner',
+          'live-map'         => 'Partner',
+          'partners-live'    => 'Partner',
+          // Zugang (keys / locks)
+          'keys'             => 'Zugang',
+          'locks'            => 'Zugang',
+          // Services
+          'services'         => 'Services',
+          'checklists'       => 'Services',
+          'pricing'          => 'Services',
+          'optional-products'=> 'Services',
+          'photo-scores'     => 'Services',
           // Finanzen
-          'invoices' => 'Finanzen', 'reports' => 'Finanzen',
-          'gutscheine' => 'Finanzen',
+          'invoices'         => 'Finanzen',
+          'reports'          => 'Finanzen',
+          'gutscheine'       => 'Finanzen',
           // Kommunikation
-          'messages' => 'Kommunikation', 'whatsapp' => 'Kommunikation',
-          'email-inbox' => 'Kommunikation', 'notifications' => 'Kommunikation',
-          // Tools / scanner
-          'scanner' => 'Tools', 'doc-scanner' => 'Tools',
-          // System (admin & config) — texts + tenants now live here (were ungrouped)
-          'texts' => 'System', 'tenants' => 'System',
-          'audit' => 'System', 'health' => 'System',
-          'settings' => 'System', 'api-tokens' => 'System', 'sync' => 'System',
+          'messages'         => 'Kommunikation',
+          'whatsapp'         => 'Kommunikation',
+          'email-inbox'      => 'Kommunikation',
+          'notifications'    => 'Kommunikation',
+          // Tools
+          'scanner'          => 'Tools',
+          'doc-scanner'      => 'Tools',
+          'texts'            => 'Tools',
+          // System
+          'tenants'          => 'System',
+          'settings'         => 'System',
+          'audit'            => 'System',
+          'health'           => 'System',
+          'api-tokens'       => 'System',
+          'sync'             => 'System',
         ];
         $groups = []; $topItems = [];
         foreach ($menu as $item) {
@@ -284,6 +308,11 @@ $user = me(); $page = $page ?? ''; ?>
           if ($grp === '_top') { $topItems[] = $item; }
           else { $groups[$grp][] = $item; }
         }
+        // Reorder groups per $groupOrder (fallback: preserve original for anything missing)
+        $orderedGroups = [];
+        foreach ($groupOrder as $g) { if (isset($groups[$g])) $orderedGroups[$g] = $groups[$g]; }
+        foreach ($groups as $g => $items) { if (!isset($orderedGroups[$g])) $orderedGroups[$g] = $items; }
+        $groups = $orderedGroups;
         // Check if current page is in a group (to auto-open it)
         $activeGroup = $groupMap[$page] ?? '';
         // Render top items (Dashboard)
