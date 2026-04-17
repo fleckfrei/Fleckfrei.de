@@ -259,7 +259,7 @@ try {
         $action === 'jobs/update' && $method === 'POST' => (function() use ($body) {
             $jid = (int)($body['j_id'] ?? 0);
             if (!$jid || empty($body['field'])) throw new Exception('Need j_id + field');
-            $allowed = ['j_date','j_time','j_hours','customer_id_fk','s_id_fk','address','code_door','platform','job_for','emp_message','job_note','job_status','no_people','start_time','end_time','total_hours'];
+            $allowed = ['j_date','j_time','stop_times','check_in_date','check_in_time','j_hours','customer_id_fk','s_id_fk','address','code_door','platform','job_for','emp_message','job_note','job_status','no_people','optional_products','start_time','end_time','total_hours'];
             if (!in_array($body['field'], $allowed)) throw new Exception('Field not editable: '.$body['field']);
             $val = $body['value'] ?: null;
             q("UPDATE jobs SET {$body['field']}=? WHERE j_id=?", [$val, $jid]);
