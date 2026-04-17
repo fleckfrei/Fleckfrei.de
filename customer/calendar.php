@@ -645,7 +645,7 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
   </div>
 
   <!-- Calendar grid — 6 weeks × 7 days -->
-  <div class="grid grid-cols-7">
+  <div class="grid grid-cols-7 calendar-grid">
     <?php
     for ($i = 0; $i < 42; $i++):
         $cellTs = strtotime("+$i days", $gridStart);
@@ -765,7 +765,9 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         // Empty future/today cells → direct booking link with prefilled date
         $bookingUrl = '/customer/booking.php?date=' . $cellDate;
     ?>
-    <div class="min-h-[100px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1 sm:p-2 relative group <?= $hasVac ? 'bg-amber-50' : ($isCurrentMonth ? 'bg-white' : 'bg-gray-50/50') ?> <?= !$isPast ? 'cursor-pointer hover:bg-brand/5 transition' : '' ?>"
+    <div class="day-cell min-h-[100px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1 sm:p-2 relative group <?= $hasVac ? 'bg-amber-50' : ($isCurrentMonth ? 'bg-white' : 'bg-gray-50/50') ?> <?= !$isPast ? 'cursor-pointer hover:bg-brand/5 transition' : '' ?>"
+         data-day="<?= $cellDate ?>"
+         <?php if ($isPast): ?>data-past="1"<?php endif; ?>
          <?php if (!$isPast): ?>
          <?php if ($hasEvents): ?>
          @click="selected = <?= htmlspecialchars(json_encode($payload), ENT_QUOTES) ?>; selectedDate = '<?= date('d.m.Y', $cellTs) ?>'; selectedDateIso = '<?= $cellDate ?>'"
@@ -1102,3 +1104,112 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
     </div>
   </div>
 </div>
+
+<!-- Urlaub drag-to-select: Shift+click + drag OR long-press on mobile -->
+<style>
+  .vac-preview { background: rgba(251, 191, 36, 0.35) !important; box-shadow: inset 0 0 0 2px #f59e0b; }
+  .vac-hint {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+    background: #f59e0b; color: white; padding: 8px 16px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); pointer-events: none;
+    display: none;
+  }
+  .vac-mode .vac-hint { display: block; }
+  .vac-mode .day-cell:not([data-past]) { cursor: crosshair !important; }
+</style>
+<div class="vac-hint">🏖 Urlaub-Modus: Tage wählen durch Klick oder Ziehen · ESC zum Abbrechen</div>
+<script>
+(function() {
+  const grid = document.querySelector('.calendar-grid');
+  if (!grid) return;
+  const today = '<?= date('Y-m-d') ?>';
+  let mode = false;
+  let startDate = null, endDate = null, dragging = false;
+
+  function cellDate(el) {
+    const c = el.closest('.day-cell');
+    return (c && !c.dataset.past) ? c.dataset.day : null;
+  }
+  function clearHL() {
+    document.querySelectorAll('.day-cell.vac-preview').forEach(el => el.classList.remove('vac-preview'));
+  }
+  function highlight() {
+    clearHL();
+    if (!startDate || !endDate) return;
+    const [a, b] = [startDate, endDate].sort();
+    document.querySelectorAll('.day-cell').forEach(el => {
+      const d = el.dataset.day;
+      if (d && d >= a && d <= b && !el.dataset.past) el.classList.add('vac-preview');
+    });
+  }
+  function openModal(from, to) {
+    const root = document.querySelector('[x-data*="showVacation"]');
+    if (!root || !window.Alpine) return;
+    Alpine.$data(root).showVacation = true;
+    setTimeout(() => {
+      const form = document.querySelector('form[action="/customer/vacations.php"]');
+      if (form) {
+        form.querySelector('[name=from_date]').value = from;
+        form.querySelector('[name=to_date]').value   = to;
+      }
+    }, 50);
+  }
+  function enterMode() { mode = true; document.body.classList.add('vac-mode'); }
+  function exitMode()  { mode = false; document.body.classList.remove('vac-mode'); clearHL(); startDate = endDate = null; }
+
+  // Hook the "🏖 Urlaub" button to start drag-select mode instead of opening empty modal
+  document.querySelectorAll('button').forEach(btn => {
+    if (btn.textContent.trim().startsWith('🏖')) {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        enterMode();
+      }, true);
+    }
+  });
+
+  grid.addEventListener('mousedown', e => {
+    if (!mode) return;
+    if (e.target.closest('a,button,input,select,textarea')) return;
+    const d = cellDate(e.target);
+    if (!d || d < today) return;
+    dragging = true; startDate = d; endDate = d;
+    highlight();
+    e.preventDefault();
+  });
+  grid.addEventListener('mouseover', e => {
+    if (!mode || !dragging) return;
+    const d = cellDate(e.target);
+    if (d && d >= today) { endDate = d; highlight(); }
+  });
+  // Touch support
+  grid.addEventListener('touchstart', e => {
+    if (!mode) return;
+    const t = e.touches[0]; if (!t) return;
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    const d = cellDate(el || e.target);
+    if (!d || d < today) return;
+    dragging = true; startDate = d; endDate = d; highlight();
+  }, {passive: true});
+  grid.addEventListener('touchmove', e => {
+    if (!mode || !dragging) return;
+    const t = e.touches[0]; if (!t) return;
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    const d = cellDate(el);
+    if (d && d >= today) { endDate = d; highlight(); }
+  }, {passive: true});
+
+  function finishSelect() {
+    if (!mode || !dragging) return;
+    dragging = false;
+    if (startDate && endDate) {
+      const [a, b] = [startDate, endDate].sort();
+      exitMode();
+      openModal(a, b);
+    }
+  }
+  document.addEventListener('mouseup', finishSelect);
+  document.addEventListener('touchend', finishSelect);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') exitMode(); });
+})();
+</script>
