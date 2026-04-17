@@ -590,27 +590,49 @@ const cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
         }).catch(() => { info.revert(); });
     },
     events: function(info, ok, fail) {
-        const p = new URLSearchParams({ action:'jobs', start:info.startStr.split('T')[0], end:info.endStr.split('T')[0], _t:Date.now() });
+        const startStr = info.startStr.split('T')[0];
+        const endStr   = info.endStr.split('T')[0];
+        const p = new URLSearchParams({ action:'jobs', start:startStr, end:endStr, _t:Date.now() });
         const ef = document.getElementById('empFilter').value;
         const sf = document.getElementById('statusFilter').value;
         const tf = document.getElementById('typeFilter').value;
         if (ef) p.set('emp_id', ef);
         if (sf) p.set('status', sf);
-        fetch(API + '?' + p, { headers:{'X-API-Key':KEY}, cache:'no-store' })
-            .then(r=>r.json()).then(d => {
-                if (!d.success) return fail();
-                let data = d.data;
-                if (tf) data = data.filter(j => j.customer_type === tf);
-                allEvents = data;
-                ok(data.map(j => ({
-                    id: j.j_id,
-                    title: j.customer_name || 'Unbekannt',
-                    start: j.j_date+'T'+j.j_time,
-                    end: j.j_date+'T'+ new Date(new Date('2000-01-01T'+j.j_time).getTime()+(j.j_hours||2)*3600000).toTimeString().slice(0,8),
-                    color: jobColor(j),
-                    extendedProps: j
-                })));
-            }).catch(fail);
+        // Parallel fetch: jobs + customer vacations (as background events)
+        const vp = new URLSearchParams({ action:'vacations', start:startStr, end:endStr, _t:Date.now() });
+        Promise.all([
+            fetch(API + '?' + p,  { headers:{'X-API-Key':KEY}, cache:'no-store' }).then(r=>r.json()),
+            fetch(API + '?' + vp, { headers:{'X-API-Key':KEY}, cache:'no-store' }).then(r=>r.json()).catch(()=>({success:true,data:[]}))
+        ]).then(([dJobs, dVacs]) => {
+            if (!dJobs.success) return fail();
+            let data = dJobs.data;
+            if (tf) data = data.filter(j => j.customer_type === tf);
+            allEvents = data;
+            const jobEvents = data.map(j => ({
+                id: j.j_id,
+                title: j.customer_name || 'Unbekannt',
+                start: j.j_date+'T'+j.j_time,
+                end: j.j_date+'T'+ new Date(new Date('2000-01-01T'+j.j_time).getTime()+(j.j_hours||2)*3600000).toTimeString().slice(0,8),
+                color: jobColor(j),
+                extendedProps: j
+            }));
+            const vacs = (dVacs && dVacs.success && Array.isArray(dVacs.data)) ? dVacs.data : [];
+            const vacEvents = vacs.map(v => {
+                const toDate = new Date(v.to_date);
+                toDate.setDate(toDate.getDate() + 1); // FullCalendar end is exclusive
+                return {
+                    id: 'vac-' + v.cv_id,
+                    title: '🏖 ' + (v.customer_name || 'Kunde') + ' — Urlaub',
+                    start: v.from_date,
+                    end: toDate.toISOString().slice(0,10),
+                    allDay: true,
+                    display: 'background',
+                    color: '#fde68a',
+                    extendedProps: { _vacation: true, ...v }
+                };
+            });
+            ok([...jobEvents, ...vacEvents]);
+        }).catch(fail);
     },
     eventContent: function(arg) {
         const j = arg.event.extendedProps;

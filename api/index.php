@@ -147,6 +147,23 @@ try {
             return all($sql, $p);
         })(),
 
+        // Customer vacations in date range (for calendar overlay)
+        $action === 'vacations' && $method === 'GET' => (function() {
+            $start = $_GET['start'] ?? date('Y-m-01');
+            $end   = $_GET['end']   ?? date('Y-m-t');
+            return all("
+                SELECT cv.cv_id, cv.customer_id_fk, cv.from_date, cv.to_date,
+                       cv.reason, cv.auto_skip_jobs,
+                       c.name AS customer_name, c.customer_type
+                FROM customer_vacations cv
+                LEFT JOIN customer c ON cv.customer_id_fk = c.customer_id
+                WHERE cv.status = 'active'
+                  AND cv.to_date   >= ?
+                  AND cv.from_date <= ?
+                ORDER BY cv.from_date
+            ", [$start, $end]);
+        })(),
+
         // Create job (with recurring support)
         $action === 'jobs' && $method === 'POST' => (function() use ($body) {
             $d = $body;
