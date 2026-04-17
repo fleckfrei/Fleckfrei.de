@@ -147,6 +147,41 @@ try {
             return all($sql, $p);
         })(),
 
+        // Distance / partners-in-range check: given customer lat+lng, return nearest partner
+        // and distance (km). Used by customer booking to block out-of-area submissions.
+        $action === 'partners-in-range' && $method === 'GET' => (function() {
+            $lat = (float)($_GET['lat'] ?? 0);
+            $lng = (float)($_GET['lng'] ?? 0);
+            if ($lat === 0.0 || $lng === 0.0) throw new Exception('Need lat+lng');
+            $maxKm = (int) (val("SELECT max_distance_km FROM settings LIMIT 1") ?: 30);
+            // Haversine in SQL: 6371 km * acos(...)
+            $rows = all("
+                SELECT e.emp_id, e.name AS ename, e.surname,
+                       ea.lat, ea.lng,
+                       (6371 * acos(
+                         cos(radians(?)) * cos(radians(ea.lat)) *
+                         cos(radians(ea.lng) - radians(?)) +
+                         sin(radians(?)) * sin(radians(ea.lat))
+                       )) AS distance_km
+                FROM employee e
+                JOIN employee_address ea ON ea.emp_id_fk = e.emp_id
+                WHERE e.status = 1
+                  AND ea.lat IS NOT NULL AND ea.lng IS NOT NULL
+                HAVING distance_km <= ?
+                ORDER BY distance_km ASC
+            ", [$lat, $lng, $lat, $maxKm]);
+            return [
+                'max_distance_km' => $maxKm,
+                'partners_in_range' => count($rows),
+                'nearest_km' => $rows ? round((float)$rows[0]['distance_km'], 1) : null,
+                'partners' => array_map(fn($r) => [
+                    'emp_id' => (int)$r['emp_id'],
+                    'name' => trim(($r['ename'] ?? '') . ' ' . ($r['surname'] ?? '')),
+                    'distance_km' => round((float)$r['distance_km'], 1),
+                ], $rows),
+            ];
+        })(),
+
         // Customer vacations in date range (for calendar overlay)
         $action === 'vacations' && $method === 'GET' => (function() {
             $start = $_GET['start'] ?? date('Y-m-01');
@@ -2174,7 +2209,7 @@ try {
             $targetAddress = trim($_GET['address'] ?? ''); // optional: für geo-check
             $customerId = (int)($_GET['customer_id'] ?? 0);
             $basePrice = (float)($_GET['base_price'] ?? 0);
-            $MAX_TRAVEL_KM = 25;
+            $MAX_TRAVEL_KM = (int) (val("SELECT max_distance_km FROM settings LIMIT 1") ?: 30);
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) throw new Exception('Invalid date format');
             if ($date < date('Y-m-d')) throw new Exception('Date in the past');
 
@@ -2661,7 +2696,7 @@ try {
             $targetAddress = trim($_GET['address'] ?? '');
             $customerId = (int)($_GET['customer_id'] ?? 0);
             $basePrice = (float)($_GET['base_price'] ?? 0); // Stundenpreis €/h
-            $MAX_TRAVEL_KM = 25;
+            $MAX_TRAVEL_KM = (int) (val("SELECT max_distance_km FROM settings LIMIT 1") ?: 30);
             $TRAVEL_BUFFER_H = 0.5;
 
             // Stammkunden-Check + Host/Airbnb = beide Festpreis
