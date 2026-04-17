@@ -148,6 +148,22 @@ foreach ($jobs as $j) {
     $jobsByDate[$j['j_date']][] = $j;
 }
 
+// Customer vacations overlapping this month → mark each covered day
+$myVacs = all("SELECT cv_id, from_date, to_date, reason FROM customer_vacations
+               WHERE customer_id_fk = ? AND status = 'active'
+                 AND to_date >= ? AND from_date <= ?
+               ORDER BY from_date",
+              [$cid, date('Y-m-d', $gridStart), date('Y-m-d', $gridEnd)]);
+$vacsByDate = [];
+foreach ($myVacs as $v) {
+    $d = max(strtotime($v['from_date']), $gridStart);
+    $eEnd = min(strtotime($v['to_date']), $gridEnd);
+    while ($d <= $eEnd) {
+        $vacsByDate[date('Y-m-d', $d)][] = $v;
+        $d = strtotime('+1 day', $d);
+    }
+}
+
 // AVAILABILITY: capacity per day (all customers, not just this one)
 $totalPartners = max(1, (int) val("SELECT COUNT(*) FROM employee WHERE status=1"));
 $busyByDate = [];
@@ -422,12 +438,15 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
 </div>
 
 <!-- View switcher -->
-<div class="flex items-center gap-2 mb-4">
+<div class="flex items-center gap-2 mb-4 flex-wrap">
   <a href="?view=week&w=<?= e($weekAnchor) ?>" class="px-4 py-2 rounded-xl text-sm font-semibold transition <?= $view === 'week' ? 'bg-brand text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:border-brand' ?>">
     📆 Woche
   </a>
   <a href="?view=month&m=<?= e($month) ?>" class="px-4 py-2 rounded-xl text-sm font-semibold transition <?= $view === 'month' ? 'bg-brand text-white shadow' : 'bg-white border border-gray-200 text-gray-600 hover:border-brand' ?>">
     📅 Monat
+  </a>
+  <a href="/customer/vacations.php" class="px-4 py-2 rounded-xl text-sm font-semibold transition bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300 ml-auto">
+    🏖 Urlaub anmelden
   </a>
 </div>
 
@@ -598,10 +617,12 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         $cellExt = $externalEvents[$cellDate] ?? [];
         $cellSugg = $suggestionsByDate[$cellDate] ?? [];
         $cellManual = $manualByDate[$cellDate] ?? [];
+        $cellVacs = $vacsByDate[$cellDate] ?? [];
         $hasJobs = !empty($cellJobs);
         $hasExt = !empty($cellExt);
         $hasSugg = !empty($cellSugg);
         $hasManual = !empty($cellManual);
+        $hasVac = !empty($cellVacs);
         $isClickable = $hasJobs || $hasExt || $hasSugg || $hasManual;
 
         // For each external event, determine if THIS day is check-in or check-out
@@ -705,7 +726,7 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         // Empty future/today cells → direct booking link with prefilled date
         $bookingUrl = '/customer/booking.php?date=' . $cellDate;
     ?>
-    <div class="min-h-[100px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1 sm:p-2 relative group <?= $isCurrentMonth ? 'bg-white' : 'bg-gray-50/50' ?> <?= !$isPast ? 'cursor-pointer hover:bg-brand/5 transition' : '' ?>"
+    <div class="min-h-[100px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1 sm:p-2 relative group <?= $hasVac ? 'bg-amber-50' : ($isCurrentMonth ? 'bg-white' : 'bg-gray-50/50') ?> <?= !$isPast ? 'cursor-pointer hover:bg-brand/5 transition' : '' ?>"
          <?php if (!$isPast): ?>
          <?php if ($hasEvents): ?>
          @click="selected = <?= htmlspecialchars(json_encode($payload), ENT_QUOTES) ?>; selectedDate = '<?= date('d.m.Y', $cellTs) ?>'; selectedDateIso = '<?= $cellDate ?>'"
@@ -719,6 +740,9 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         <span class="text-xs sm:text-sm font-semibold <?= $isToday ? 'w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-brand text-white flex items-center justify-center' : ($isCurrentMonth ? 'text-gray-900' : 'text-gray-400') ?>">
           <?= (int) date('j', $cellTs) ?>
         </span>
+        <?php if ($hasVac): ?>
+          <span class="text-[9px] px-1 py-0.5 bg-amber-200 text-amber-900 rounded font-bold" title="<?= e($cellVacs[0]['reason'] ?? 'Urlaub') ?>">🏖 Urlaub</span>
+        <?php endif; ?>
         <?php
         // Availability indicator for future days
         if (!$isPast && $isCurrentMonth) {
