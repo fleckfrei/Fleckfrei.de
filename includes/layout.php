@@ -180,7 +180,6 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/checklists.php', 'Checklisten', 'checklists', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>', ''],
           ['/admin/photo-scores.php', 'KI Foto-Scores', 'photo-scores', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>', ''],
           ['/admin/optional-products.php', 'Optionale Produkte', 'optional-products', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>', ''],
-          ['/admin/pricing.php', 'Preis-Strategie', 'pricing', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/>', ''],
           ['/admin/gutscheine.php', 'Gutscheine', 'gutscheine', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-7l-4 4z"/>', ''],
           ['/admin/invoices.php', 'Rechnungen', 'invoices', $iconInv, $badgeUnpaid > 0 ? $badgeUnpaid : ''],
           ['/admin/messages.php', 'Nachrichten', 'messages', $iconMsg, $badgeMsgs > 0 ? $badgeMsgs : ''],
@@ -211,7 +210,6 @@ $user = me(); $page = $page ?? ''; ?>
           ['/admin/osi.php', 'OSI', 'scanner', $iconSearch, ''],
         ]);
         array_splice($menu, -2, 0, [
-          ['/admin/pricing.php', 'Pricing', 'pricing', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', ''],
           ['/admin/email-inbox.php', 'Email', 'email-inbox', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>', ''],
           ['/admin/reports.php', 'Reports', 'reports', '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>', ''],
         ]);
@@ -242,21 +240,37 @@ $user = me(); $page = $page ?? ''; ?>
       }
       if ($user['type'] === 'admin') {
         // Group admin menu items into collapsible sections
+        // Cleaner grouping — fewer, tighter sections, everything mapped (no _ungrouped).
         $groupMap = [
           'dashboard' => '_top',
-          'jobs' => 'Termine', 'bookings' => 'Termine', 'availability' => 'Termine', 'booking-priority' => 'Termine',
+          // Termine (appointments) — everything calendar/scheduling related
+          'jobs' => 'Termine', 'bookings' => 'Termine', 'route-planner' => 'Termine',
+          'prebook-links' => 'Termine', 'availability' => 'Termine',
+          'booking-priority' => 'Termine', 'vacations' => 'Termine',
+          'blocked-days' => 'Termine', 'arrivals' => 'Termine',
+          // Kunden
           'customers' => 'Kunden', 'leads' => 'Kunden', 'consent-log' => 'Kunden',
+          // Partner
           'employees' => 'Partner', 'work-hours' => 'Partner',
+          'live-map' => 'Partner', 'partners-live' => 'Partner',
+          // Zugang (access / keys)
           'keys' => 'Zugang', 'locks' => 'Zugang',
-          'services' => 'Services', 'checklists' => 'Services', 'photo-scores' => 'Services', 'optional-products' => 'Services', 'pricing' => 'Services',
-          'invoices' => 'Finanzen', 'reports' => 'Finanzen', 'gutscheine' => 'Finanzen',
-          'messages' => 'Kommunikation', 'whatsapp' => 'Kommunikation', 'email-inbox' => 'Kommunikation', 'notifications' => 'Kommunikation',
-          'live-map' => 'Tools', 'arrivals' => 'Tools', 'scanner' => 'Tools', 'partners-live' => 'Tools', 'doc-scanner' => 'Tools',
-          'audit' => 'System', 'health' => 'System', 'settings' => 'System', 'api-tokens' => 'System', 'sync' => 'System',
-          'route-planner' => 'Termine',
-          'prebook-links' => 'Termine',
-          'vacations' => 'Termine',
-          'blocked-days' => 'Termine',
+          // Services (catalog + pricing)
+          'services' => 'Services', 'checklists' => 'Services',
+          'optional-products' => 'Services', 'pricing' => 'Services',
+          'photo-scores' => 'Services',
+          // Finanzen
+          'invoices' => 'Finanzen', 'reports' => 'Finanzen',
+          'gutscheine' => 'Finanzen',
+          // Kommunikation
+          'messages' => 'Kommunikation', 'whatsapp' => 'Kommunikation',
+          'email-inbox' => 'Kommunikation', 'notifications' => 'Kommunikation',
+          // Tools / scanner
+          'scanner' => 'Tools', 'doc-scanner' => 'Tools',
+          // System (admin & config) — texts + tenants now live here (were ungrouped)
+          'texts' => 'System', 'tenants' => 'System',
+          'audit' => 'System', 'health' => 'System',
+          'settings' => 'System', 'api-tokens' => 'System', 'sync' => 'System',
         ];
         $groups = []; $topItems = [];
         foreach ($menu as $item) {
