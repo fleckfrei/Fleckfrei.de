@@ -348,8 +348,15 @@ $TRANSLATIONS = [
     ],
 ];
 
+function currentLocale(): string {
+    // Employee accounts default to Romanian; override via $_SESSION['locale'] if set
+    if (!empty($_SESSION['locale'])) return $_SESSION['locale'];
+    if (($_SESSION['utype'] ?? '') === 'employee') return 'ro';
+    return defined('LOCALE') ? LOCALE : 'de';
+}
+
 function t($key) {
     global $TRANSLATIONS;
-    $lang = LOCALE;
+    $lang = currentLocale();
     return $TRANSLATIONS[$lang][$key] ?? $TRANSLATIONS['de'][$key] ?? $key;
 }
