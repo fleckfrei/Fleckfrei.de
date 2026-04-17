@@ -616,25 +616,37 @@ const cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
                 color: jobColor(j),
                 extendedProps: j
             }));
-            // Stable color-per-customer using golden-angle hue spread
-            const customerHue = (id) => (parseInt(id, 10) * 137.508) % 360;
+            // Vacation palette — PURPLE/PINK/TEAL range only.
+            // Avoids job status colors: yellow (Kein Partner), blue (zugewiesen),
+            // orange (Bearbeitung), green (Erledigt), red (Storniert).
+            const vacPalette = [
+                { bg:'#f3e8ff', border:'#9333ea', text:'#581c87' }, // purple
+                { bg:'#fce7f3', border:'#db2777', text:'#9d174d' }, // pink
+                { bg:'#ccfbf1', border:'#0d9488', text:'#134e4a' }, // teal
+                { bg:'#fae8ff', border:'#c026d3', text:'#701a75' }, // fuchsia
+                { bg:'#e0f2fe', border:'#0284c7', text:'#0c4a6e' }, // sky (clearly different from job blue)
+                { bg:'#ecfccb', border:'#65a30d', text:'#365314' }, // lime (distinct from job green)
+                { bg:'#ffe4e6', border:'#e11d48', text:'#881337' }, // rose
+                { bg:'#ede9fe', border:'#7c3aed', text:'#4c1d95' }, // violet
+            ];
+            const pickPal = (id) => vacPalette[parseInt(id, 10) % vacPalette.length];
             const vacs = (dVacs && dVacs.success && Array.isArray(dVacs.data)) ? dVacs.data : [];
             const vacEvents = vacs.map(v => {
                 const toDate = new Date(v.to_date);
                 toDate.setDate(toDate.getDate() + 1);
                 const shortName = (v.customer_name || 'Kunde').replace(/^\s+|\s+$/g, '').substring(0, 14);
-                const hue = customerHue(v.customer_id_fk);
+                const pal = pickPal(v.customer_id_fk);
                 return {
                     id: 'vac-' + v.cv_id,
                     title: '🏖 ' + shortName,
                     start: v.from_date,
                     end: toDate.toISOString().slice(0,10),
                     allDay: true,
-                    backgroundColor: `hsl(${hue}, 70%, 90%)`,
-                    borderColor:     `hsl(${hue}, 65%, 55%)`,
-                    textColor:       `hsl(${hue}, 80%, 22%)`,
+                    backgroundColor: pal.bg,
+                    borderColor:     pal.border,
+                    textColor:       pal.text,
                     classNames: ['vac-event'],
-                    extendedProps: { _vacation: true, _hue: hue, ...v }
+                    extendedProps: { _vacation: true, _pal: pal, ...v }
                 };
             });
             ok([...jobEvents, ...vacEvents]);
@@ -642,14 +654,14 @@ const cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
     },
     eventContent: function(arg) {
         const j = arg.event.extendedProps;
-        // Vacation events: compact top-bar style, color per customer
+        // Vacation events: compact top-bar style, color per customer (purple/pink/teal palette)
         if (j && j._vacation) {
-            const hue = j._hue || 40;
+            const pal = j._pal || { bg:'#f3e8ff', border:'#9333ea', text:'#581c87' };
             const el = document.createElement('div');
             el.style.cssText = 'padding:1px 6px;font-size:10px;line-height:1.3;font-weight:600;' +
                 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:3px;' +
-                'background:hsl(' + hue + ',70%,90%);color:hsl(' + hue + ',80%,22%);' +
-                'border-left:3px solid hsl(' + hue + ',65%,55%);';
+                'background:' + pal.bg + ';color:' + pal.text + ';' +
+                'border-left:3px solid ' + pal.border + ';';
             el.title = (j.customer_name || '') + ' — Urlaub ' + (j.from_date || '') + ' bis ' + (j.to_date || '') + (j.reason ? ' · ' + j.reason : '');
             el.textContent = arg.event.title;
             return { domNodes: [el] };
