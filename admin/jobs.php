@@ -737,18 +737,29 @@ function loadDayPanel(dateStr) {
     document.getElementById('dayPanelTitle').textContent = dayNames[dateObj.getDay()];
     document.getElementById('dayPanelDate').textContent = dateObj.toLocaleDateString('de-DE');
 
+    // Vacations for this specific day (from pre-loaded map)
+    const vacs = (window.__vacByDate && window.__vacByDate[dateStr]) || [];
+    const vacHTML = vacs.length ? (
+        '<div class="mb-3"><div class="text-[10px] font-bold uppercase text-gray-400 mb-1 px-1">🏖 Urlaub (' + vacs.length + ')</div>' +
+        vacs.map(v => (
+            '<div class="px-2.5 py-1.5 rounded-lg mb-1 text-[11px]" style="background:' + v.pal.bg + ';color:' + v.pal.text + ';border-left:3px solid ' + v.pal.border + ';" title="' + (v.reason || '').replace(/"/g,'&quot;') + '">' +
+                '<b>' + v.name + '</b>' + (v.reason ? ' · <span style="opacity:0.7;">' + v.reason + '</span>' : '') +
+            '</div>'
+        )).join('') + '</div>'
+    ) : '';
+
     // Fetch jobs for this specific day
     fetch(API + '?action=jobs&start=' + dateStr + '&end=' + dateStr + '&_t=' + Date.now(), { headers:{'X-API-Key':KEY}, cache:'no-store' })
         .then(r=>r.json()).then(d => {
             if (!d.success || !d.data.length) {
-                panel.innerHTML = '<div class="text-center text-gray-400 text-sm py-6">Keine Jobs</div>';
+                panel.innerHTML = vacHTML + '<div class="text-center text-gray-400 text-sm py-6">Keine Jobs</div>';
                 document.getElementById('dayPanelCount').textContent = '0 Jobs';
                 document.getElementById('dayPanelHours').textContent = '0h';
                 return;
             }
             const jobs = d.data.sort((a,b) => a.j_time.localeCompare(b.j_time));
             let totalH = 0;
-            panel.innerHTML = jobs.map(j => {
+            const jobsHTML = jobs.map(j => {
                 totalH += parseFloat(j.j_hours) || 0;
                 const col = jobColor(j);
                 const emp = j.emp_name ? j.emp_name.charAt(0) + '.' : '⚠';
@@ -766,6 +777,7 @@ function loadDayPanel(dateStr) {
                     '</div>' +
                 '</div>';
             }).join('');
+            panel.innerHTML = (vacHTML ? vacHTML + '<div class="text-[10px] font-bold uppercase text-gray-400 mb-1 px-1">Jobs</div>' : '') + jobsHTML;
             document.getElementById('dayPanelCount').textContent = jobs.length + ' Jobs';
             document.getElementById('dayPanelHours').textContent = totalH + 'h';
         });
