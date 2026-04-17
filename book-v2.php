@@ -26,13 +26,13 @@ $prefill = [
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Termin buchen · Fleckfrei</title>
-<meta name="theme-color" content="#2E7D6B"/>
+<meta name="theme-color" content="<?= BRAND ?>"/>
 <link rel="icon" href="https://fleckfrei.de/img/logo/favicon.svg"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <script>
-tailwind.config = { theme: { extend: { colors: { brand: '#2E7D6B', 'brand-dark': '#1e5a4c', 'brand-light': '#E8F5F1' }, fontFamily: { sans: ['Inter','sans-serif'] } } } }
+tailwind.config = { theme: { extend: { colors: { brand: '<?= BRAND ?>', 'brand-dark': '<?= BRAND_DARK ?>', 'brand-light': '<?= BRAND_LIGHT ?>' }, fontFamily: { sans: ['Inter','sans-serif'] } } } }
 </script>
 <style>
   body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased}
@@ -41,10 +41,10 @@ tailwind.config = { theme: { extend: { colors: { brand: '#2E7D6B', 'brand-dark':
   .animate-pulse-slow { animation: pulseSlow 1.6s ease-in-out infinite; display: inline-block; }
   .slot{transition:all .15s ease}
   .slot-free{background:#fff;border:1px solid #E5E7EB;color:#111827;cursor:pointer}
-  .slot-free:hover{border-color:#2E7D6B;background:#E8F5F1;color:#1e5a4c}
+  .slot-free:hover{border-color:<?= BRAND ?>;background:<?= BRAND_LIGHT ?>;color:<?= BRAND_DARK ?>}
   .slot-busy{background:#F9FAFB;border:1px solid #E5E7EB;color:#9CA3AF;cursor:not-allowed}
   .slot-past{background:#FAFAFA;border:1px solid #F3F4F6;color:#D1D5DB;cursor:not-allowed}
-  .slot-selected{background:#2E7D6B !important;border-color:#2E7D6B !important;color:#fff !important}
+  .slot-selected{background:<?= BRAND ?> !important;border-color:<?= BRAND ?> !important;color:#fff !important}
   .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,0.04)}
 </style>
 </head>

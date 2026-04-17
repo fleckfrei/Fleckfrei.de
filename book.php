@@ -8,21 +8,21 @@ require_once __DIR__ . '/includes/config.php';
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Jetzt buchen · Fleckfrei</title>
 <meta name="description" content="Fleckfrei Home Care in Berlin — online buchen in 3 Minuten. Fair. Kein Abo."/>
-<meta name="theme-color" content="#2E7D6B"/>
+<meta name="theme-color" content="<?= BRAND ?>"/>
 <link rel="icon" href="https://fleckfrei.de/img/logo/favicon.svg"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <script>
-tailwind.config = { theme: { extend: { colors: { brand: '#2E7D6B', 'brand-dark': '#1e5a4c' }, fontFamily: { sans: ['Inter','sans-serif'] } } } }
+tailwind.config = { theme: { extend: { colors: { brand: '<?= BRAND ?>', 'brand-dark': '<?= BRAND_DARK ?>' }, fontFamily: { sans: ['Inter','sans-serif'] } } } }
 </script>
 <style>
 body{font-family:'Inter',sans-serif}
 .step-dot{width:10px;height:10px;border-radius:50%;background:#e5e7eb;transition:all .3s}
-.step-dot.active{background:#2E7D6B;width:28px;border-radius:5px}
+.step-dot.active{background:<?= BRAND ?>;width:28px;border-radius:5px}
 .step-line{flex:1;height:2px;background:#e5e7eb;transition:background .5s}
-.step-line.done{background:#2E7D6B}
+.step-line.done{background:<?= BRAND ?>}
 [x-cloak]{display:none !important}
 </style>
 </head>

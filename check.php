@@ -15,11 +15,11 @@ require_once __DIR__ . '/includes/config.php';
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <script>
-tailwind.config = { theme: { extend: { colors: { brand: '#2E7D6B', 'brand-dark': '#1e5a4c' }, fontFamily: { sans: ['Inter','sans-serif'] } } } }
+tailwind.config = { theme: { extend: { colors: { brand: '<?= BRAND ?>', 'brand-dark': '<?= BRAND_DARK ?>' }, fontFamily: { sans: ['Inter','sans-serif'] } } } }
 </script>
 <style>
 body{font-family:'Inter',sans-serif}
-.gradient-header{background:linear-gradient(135deg,#2E7D6B 0%,#1e5a4c 100%)}
+.gradient-header{background:linear-gradient(135deg,<?= BRAND ?> 0%,<?= BRAND_DARK ?> 100%)}
 .pulse-cta{animation:pulse-brand 2s ease-in-out infinite}
 @keyframes pulse-brand{0%,100%{box-shadow:0 0 0 0 rgba(46,125,107,.7)}50%{box-shadow:0 0 0 14px rgba(46,125,107,0)}}
 </style>

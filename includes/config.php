@@ -23,27 +23,32 @@ if ($__envTenant === 'la-renting' || str_contains($__host, 'la-renting')) {
 // WHITE-LABEL CONFIG — per-tenant branding
 // ============================================================
 if (TENANT === 'la-renting') {
-    define('SITE', 'La-Renting');
+    define('SITE', 'Max Co-Host');                   // Brand name (Max Co-Host = La-Renting Agency SRL Cluj)
     define('SITE_DOMAIN', 'la-renting.de');
-    define('SITE_TAGLINE', 'Ihre Ferienwohnung in Berlin');
-    define('BRAND', '#1E5EAA');                      // La-Renting blue
-    define('BRAND_DARK', '#134577');
-    define('BRAND_LIGHT', '#E3EEF9');
-    define('BRAND_RGB', '30,94,170');
-    define('LOGO_LETTER', 'L');
+    define('SITE_TAGLINE', 'Your Smart Co-Host for Every Stay');
+    define('LEGAL_NAME', 'La-Renting Agency SRL Cluj');
+    // Max Co-Host palette (matches maxcohost.host)
+    define('BRAND', '#FFC734');                      // Yellow primary
+    define('BRAND_DARK', '#1D4F64');                  // Dark teal (contrast + text)
+    define('BRAND_LIGHT', '#FFFAE8');                 // Pale yellow tint
+    define('BRAND_RGB', '255,199,52');
+    define('BRAND_ACCENT', '#1D4F64');                // Secondary (for text on yellow bg)
+    define('LOGO_LETTER', 'M');
     define('CONTACT_PHONE', '');
     define('CONTACT_WHATSAPP_URL', 'https://wa.me/message/OVHQQCZT7WYAH1');
     define('CONTACT_WHATSAPP', 'message/OVHQQCZT7WYAH1');
     define('CONTACT_TELEGRAM', '@fleckfrei_bot');
-    define('CONTACT_EMAIL', 'info@la-renting.com');
+    define('CONTACT_EMAIL', 'info@maxcohost.host');
 } else {
     define('SITE', 'Fleckfrei');                    // Firmenname
     define('SITE_DOMAIN', 'fleckfrei.de');           // Domain
     define('SITE_TAGLINE', 'Smart. Sauber. Zuverlässig.');
+    define('LEGAL_NAME', 'Fleckfrei GmbH');
     define('BRAND', '#2E7D6B');                      // Hauptfarbe (HEX)
     define('BRAND_DARK', '#235F53');                  // Dunklere Variante
     define('BRAND_LIGHT', '#E8F5F1');                 // Helle Variante
     define('BRAND_RGB', '46,125,107');                // RGB für opacity
+    define('BRAND_ACCENT', '#235F53');                // Accent (für CTA, gleich wie dark)
     define('LOGO_LETTER', 'F');                       // Buchstabe für Logo-Icon
     // Fleckfrei-Kontaktdaten (Max hat diese URLs bestätigt)
     define('CONTACT_PHONE', '');                                              // Direkter tel: Link — leer = Button versteckt
