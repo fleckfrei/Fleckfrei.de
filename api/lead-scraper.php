@@ -100,6 +100,60 @@ function extractPhone(string $text): ?string {
     if (preg_match('/(\+49|0)\s?[\d\s\-\/]{8,}/', $text, $m)) return trim($m[0]);
     return null;
 }
+/**
+ * Fetch single ad page and extract contact info + full description.
+ * Returns ['email','phone','name','district','full_text'] or null on failure.
+ */
+function fetchLeadDetails(string $url): ?array {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+        CURLOPT_TIMEOUT => 12,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_HTTPHEADER => ['Accept-Language: de-DE,de;q=0.9'],
+    ]);
+    $html = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($code !== 200 || !$html) return null;
+
+    // Beschreibung aus #viewad-description-text
+    $fullText = '';
+    if (preg_match('#<p[^>]*id="viewad-description-text"[^>]*>(.*?)</p>#is', $html, $m)) {
+        $fullText = html_entity_decode(trim(strip_tags($m[1])), ENT_QUOTES, 'UTF-8');
+    } elseif (preg_match('#<section[^>]*class="[^"]*viewad-description[^"]*"[^>]*>(.*?)</section>#is', $html, $m)) {
+        $fullText = html_entity_decode(trim(strip_tags($m[1])), ENT_QUOTES, 'UTF-8');
+    }
+
+    // Kontakt-Name
+    $name = null;
+    if (preg_match('#<span[^>]*class="[^"]*userprofile-vip[^"]*"[^>]*>(.*?)</span>#is', $html, $m)) {
+        $name = trim(strip_tags($m[1]));
+    } elseif (preg_match('#<a[^>]*href="/s-bestandsliste\.html[^"]*"[^>]*>([^<]+)</a>#i', $html, $m)) {
+        $name = trim($m[1]);
+    }
+
+    // Bezirk / Ort
+    $district = null;
+    if (preg_match('#<span[^>]*id="viewad-locality"[^>]*>(.*?)</span>#is', $html, $m)) {
+        $district = trim(strip_tags($m[1]));
+    }
+
+    // Email + Phone aus Volltext (oft im Body versteckt)
+    $combined = $fullText . ' ' . $html;
+    $email = extractEmail($fullText); // nur aus sichtbarem Text
+    $phone = extractPhone($fullText);
+
+    return [
+        'email' => $email,
+        'phone' => $phone,
+        'name'  => $name,
+        'district' => $district,
+        'full_text' => $fullText,
+    ];
+}
 
 // ============================================================
 // Run scraping
@@ -165,12 +219,21 @@ foreach ($kleinanzeigenSearches as $category => $terms) {
                 }
 
                 try {
+                    // OSINT-Enrichment: Ad-Seite fetchen und Kontaktdaten extrahieren
+                    $details = fetchLeadDetails($leadUrl);
+                    usleep(300000); // 0.3s throttle pro Ad-Fetch
+                    $email = $details['email'] ?? null;
+                    $phone = $details['phone'] ?? null;
+                    $district = $details['district'] ?? null;
+                    $contactName = $details['name'] ?? null;
+                    $fullText = $details['full_text'] ?? $snippet;
+
                     $seg = ($category === 'buero') ? 'B2B' : 'B2C';
-                    $notes = "[$seg]" . ($postedAt ? " [POSTED:$postedAt]" : '');
-                    q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES (?, ?, ?, ?, NULL, NULL, 'Berlin', ?, ?)",
-                      ['kleinanzeigen.de', $leadUrl, $category, $title, $notes, substr($snippet, 0, 500)]);
+                    $notes = "[$seg]" . ($postedAt ? " [POSTED:$postedAt]" : '') . ($district ? " [BEZIRK:$district]" : '') . ($contactName ? " [KONTAKT:$contactName]" : '');
+                    q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES (?, ?, ?, ?, ?, ?, 'Berlin', ?, ?)",
+                      ['kleinanzeigen.de', $leadUrl, $category, $title, $email, $phone, $notes, substr($fullText, 0, 1500)]);
                     $totalNew++;
-                    $results[] = ['category'=>$category, 'title'=>substr($title,0,80), 'url'=>$leadUrl, 'posted_at'=>$postedAt, 'has_contact'=>false];
+                    $results[] = ['category'=>$category, 'title'=>substr($title,0,80), 'url'=>$leadUrl, 'posted_at'=>$postedAt, 'has_contact'=>(bool)($email || $phone)];
                 } catch (Exception $e) {}
             }
         }

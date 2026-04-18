@@ -8,6 +8,122 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = $_POST['action'] ?? '';
     $lid = (int)($_POST['lead_id'] ?? 0);
 
+    // Background Check: Perplexity OSINT-Lookup über Person/Business hinter der Anzeige
+    if ($act === 'background_check' && $lid) {
+        header('Content-Type: application/json; charset=utf-8');
+        require_once __DIR__ . '/../includes/llm-helpers.php';
+        $lead = one("SELECT * FROM leads WHERE lead_id=?", [$lid]);
+        if (!$lead) { echo json_encode(['error'=>'not found']); exit; }
+
+        // Kontaktname aus notes
+        $contactName = null; $district = null;
+        if (!empty($lead['notes'])) {
+            if (preg_match('/\[KONTAKT:([^\]]+)\]/', $lead['notes'], $m)) $contactName = trim($m[1]);
+            if (preg_match('/\[BEZIRK:([^\]]+)\]/', $lead['notes'], $m)) $district = trim($m[1]);
+        }
+
+        $queryParts = [];
+        if ($contactName) $queryParts[] = $contactName;
+        if ($lead['email']) $queryParts[] = $lead['email'];
+        if ($lead['phone']) $queryParts[] = $lead['phone'];
+        $queryParts[] = 'Berlin';
+        if ($district) $queryParts[] = $district;
+        $query = implode(' ', $queryParts);
+        if (count($queryParts) < 2) { echo json_encode(['error'=>'zu wenig Infos für OSINT — erst "OSINT anreichern" klicken']); exit; }
+
+        // Erst: Perplexity via VPS (wenn verfügbar)
+        $osintSummary = '';
+        try {
+            $perp = vps_call('perplexity', [
+                'query' => "Wer ist $query? Such öffentliche Infos: Business, Website, LinkedIn, Beruf, Tätigkeit. Nur verifizierbare Fakten. Antworte DEUTSCH in 3-5 Stichpunkten + Quellen-Links.",
+                'max_tokens' => 500,
+            ], true);
+            if (is_array($perp) && !empty($perp['answer'])) {
+                $osintSummary = $perp['answer'];
+            }
+        } catch (Exception $e) {}
+
+        // Fallback: Groq-Analyse des Anzeigen-Texts
+        if (!$osintSummary) {
+            $prompt = "Analysiere diese Kleinanzeige für einen möglichen Kunden einer Reinigungsfirma:\n\n"
+                   . "Titel: {$lead['name']}\n"
+                   . "Beschreibung: " . substr($lead['raw_snippet'] ?? '', 0, 2000) . "\n"
+                   . ($contactName ? "Kontaktname: $contactName\n" : '')
+                   . ($district ? "Bezirk: $district\n" : '')
+                   . "\nAntworte DEUTSCH in strukturierten Stichpunkten:\n"
+                   . "• Was sucht die Person konkret?\n"
+                   . "• Geschätzter Typ (Privatkunde / Hausverwaltung / Unternehmen / Airbnb-Host)?\n"
+                   . "• Dringlichkeit (sofort / flexibel)?\n"
+                   . "• Budget-Signal (sparsam / mittel / hochpreisig)?\n"
+                   . "• Empfohlenes Sales-Vorgehen für Fleckfrei?";
+            $r = groq_chat($prompt, 500);
+            $osintSummary = trim($r['content'] ?? '');
+        }
+
+        // WhatsApp / Telegram / Signal Detection
+        $phone = $lead['phone'] ?? '';
+        $phoneClean = preg_replace('/[^0-9]/', '', $phone);
+        $text = ($lead['raw_snippet'] ?? '') . ' ' . ($lead['notes'] ?? '');
+        $hasWA = (bool)($phoneClean && preg_match('/^(49|0049|49)/', $phoneClean)) || preg_match('/whatsapp|whats\s?app|wa\.me|wa\s*nr/i', $text);
+        $hasTg = (bool)preg_match('/telegram|@[a-z0-9_]{4,32}|t\.me\//i', $text);
+        $hasSignal = (bool)preg_match('/signal\s*(app|messenger|kontakt)/i', $text);
+
+        // Business-Website aus raw_snippet fischen
+        $businessUrl = null;
+        if (preg_match_all('#https?://[^\s"<>\']+#i', $text, $urls)) {
+            foreach ($urls[0] as $u) {
+                if (strpos($u, 'kleinanzeigen') === false && strpos($u, 'fleckfrei') === false) { $businessUrl = $u; break; }
+            }
+        }
+
+        echo json_encode([
+            'success' => true,
+            'summary' => $osintSummary,
+            'contact_name' => $contactName,
+            'district' => $district,
+            'business_url' => $businessUrl,
+            'channels' => [
+                'whatsapp' => $hasWA,
+                'telegram' => $hasTg,
+                'signal' => $hasSignal,
+                'phone' => $phone,
+                'wa_link' => $phoneClean ? "https://wa.me/$phoneClean" : null,
+            ],
+        ]);
+        exit;
+    }
+
+    // On-demand OSINT-Enrichment: Ad-Seite fetchen und Kontakt-Daten nachladen
+    if ($act === 'enrich' && $lid) {
+        header('Content-Type: application/json; charset=utf-8');
+        require_once __DIR__ . '/../api/lead-scraper.php';
+        $lead = one("SELECT * FROM leads WHERE lead_id=?", [$lid]);
+        if (!$lead) { echo json_encode(['error'=>'not found']); exit; }
+        if (!function_exists('fetchLeadDetails')) { echo json_encode(['error'=>'fetchLeadDetails not loaded']); exit; }
+        $d = fetchLeadDetails($lead['source_url']);
+        if (!$d) { echo json_encode(['error'=>'Ad-Seite nicht erreichbar (Cloudflare?)']); exit; }
+        $newEmail = $d['email'] ?: $lead['email'];
+        $newPhone = $d['phone'] ?: $lead['phone'];
+        $notes = $lead['notes'] ?: '';
+        if ($d['district'] && strpos($notes, '[BEZIRK:') === false) $notes .= " [BEZIRK:{$d['district']}]";
+        if ($d['name'] && strpos($notes, '[KONTAKT:') === false) $notes .= " [KONTAKT:{$d['name']}]";
+        q("UPDATE leads SET email=?, phone=?, notes=?, raw_snippet=? WHERE lead_id=?",
+          [$newEmail, $newPhone, $notes, substr($d['full_text'] ?: $lead['raw_snippet'], 0, 1500), $lid]);
+        echo json_encode(['success'=>true,'email'=>$newEmail,'phone'=>$newPhone,'district'=>$d['district'],'contact_name'=>$d['name']]);
+        exit;
+    }
+
+    // Lead-Feld inline bearbeiten
+    if ($act === 'update_lead' && $lid) {
+        header('Content-Type: application/json; charset=utf-8');
+        $field = $_POST['field'] ?? '';
+        $value = trim($_POST['value'] ?? '');
+        if (!in_array($field, ['email','phone','name'], true)) { echo json_encode(['error'=>'invalid field']); exit; }
+        q("UPDATE leads SET $field=? WHERE lead_id=?", [$value ?: null, $lid]);
+        echo json_encode(['success'=>true]);
+        exit;
+    }
+
     // KI-Pitch generieren (AJAX → JSON)
     if ($act === 'generate_pitch' && $lid) {
         header('Content-Type: application/json; charset=utf-8');
@@ -411,18 +527,33 @@ include __DIR__ . '/../includes/layout.php';
           <p class="text-xs text-gray-600 mt-1 line-clamp-2"><?= e($l['raw_snippet']) ?></p>
           <?php endif; ?>
 
-          <!-- Contact info -->
-          <div class="flex flex-wrap items-center gap-3 mt-3 text-xs">
-            <a href="<?= e($l['source_url']) ?>" target="_blank" rel="noopener" class="text-brand hover:underline truncate max-w-xs">🔗 Quelle öffnen</a>
-            <?php if ($l['email']): ?>
-            <a href="mailto:<?= e($l['email']) ?>" class="text-blue-600 hover:underline">📧 <?= e($l['email']) ?></a>
-            <?php endif; ?>
+          <!-- Contact info (inline-editable) -->
+          <div class="flex flex-wrap items-center gap-2 mt-3 text-xs">
+            <a href="<?= e($l['source_url']) ?>" target="_blank" rel="noopener" class="text-brand hover:underline font-semibold" title="<?= e($l['source_url']) ?>">🔗 Anzeige öffnen</a>
+            <span class="text-gray-300">·</span>
+            <span class="inline-flex items-center gap-1">
+              📧 <input type="email" value="<?= e($l['email'] ?? '') ?>" placeholder="email@..." onblur="saveLeadField(<?= $l['lead_id'] ?>,'email',this.value,this)" class="px-1 py-0.5 border border-transparent hover:border-gray-300 rounded text-xs w-48 focus:border-brand focus:outline-none"/>
+            </span>
+            <span class="inline-flex items-center gap-1">
+              📞 <input type="tel" value="<?= e($l['phone'] ?? '') ?>" placeholder="+49..." onblur="saveLeadField(<?= $l['lead_id'] ?>,'phone',this.value,this)" class="px-1 py-0.5 border border-transparent hover:border-gray-300 rounded text-xs w-36 focus:border-brand focus:outline-none"/>
+            </span>
             <?php if ($l['phone']): ?>
-            <a href="tel:<?= e($l['phone']) ?>" class="text-green-600 hover:underline">📞 <?= e($l['phone']) ?></a>
-            <a href="https://wa.me/<?= preg_replace('/[^0-9]/', '', $l['phone']) ?>" target="_blank" class="text-green-700 hover:underline">💬 WhatsApp</a>
+            <a href="https://wa.me/<?= preg_replace('/[^0-9]/', '', $l['phone']) ?>" target="_blank" class="text-green-700 hover:underline">💬 WA</a>
+            <?php endif; ?>
+            <?php
+              $district = null; $contactName = null;
+              if (!empty($l['notes'])) {
+                  if (preg_match('/\[BEZIRK:([^\]]+)\]/', $l['notes'], $dm)) $district = trim($dm[1]);
+                  if (preg_match('/\[KONTAKT:([^\]]+)\]/', $l['notes'], $km)) $contactName = trim($km[1]);
+              }
+              if ($contactName): ?>
+              <span class="text-gray-500">👤 <?= e($contactName) ?></span>
+            <?php endif;
+              if ($district): ?>
+              <span class="text-gray-500">📍 <?= e($district) ?></span>
             <?php endif; ?>
             <?php if (!$l['email'] && !$l['phone']): ?>
-            <span class="text-gray-400">⚠ Keine Kontaktdaten — OSINT erforderlich</span>
+            <span class="text-amber-600 font-semibold">⚠ OSINT nötig — klick "🔍 OSINT anreichern"</span>
             <?php endif; ?>
           </div>
         </div>
@@ -430,11 +561,15 @@ include __DIR__ . '/../includes/layout.php';
         <!-- Status actions -->
         <div class="flex flex-col gap-1 flex-shrink-0 min-w-[180px]">
           <?php if ($l['status'] !== 'converted'): ?>
-          <?php if (!empty($l['email'])): ?>
-          <button type="button" onclick='openPitch(<?= e(json_encode(["lead_id"=>$l["lead_id"],"name"=>$l["name"],"email"=>$l["email"],"category"=>$l["category"]])) ?>)' class="w-full px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold">
-            ✉️ KI-Pitch schreiben
+          <button type="button" onclick="enrichLead(<?= $l['lead_id'] ?>, this)" class="w-full px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold">
+            🔍 OSINT anreichern
           </button>
-          <?php endif; ?>
+          <button type="button" onclick="bgCheck(<?= $l['lead_id'] ?>)" class="w-full px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold">
+            👤 Background-Check
+          </button>
+          <button type="button" onclick='openPitch(<?= e(json_encode(["lead_id"=>$l["lead_id"],"name"=>$l["name"],"email"=>$l["email"] ?? '',"phone"=>$l["phone"] ?? '',"category"=>$l["category"]])) ?>)' class="w-full px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold">
+            ✉️ KI-Pitch (Preview)
+          </button>
           <form method="POST" onsubmit="return confirm('Lead → Kunde umwandeln (ohne Email)?');">
             <?= csrfField() ?>
             <input type="hidden" name="action" value="convert"/>
@@ -507,7 +642,111 @@ include __DIR__ . '/../includes/layout.php';
   </div>
 </div>
 
+<!-- Background-Check Modal -->
+<div id="bgModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+    <div class="sticky top-0 bg-white border-b px-5 py-3 flex justify-between items-center">
+      <h3 class="font-bold text-lg">👤 Background-Check <span id="bgTitle" class="text-xs font-normal text-gray-500 ml-2"></span></h3>
+      <button type="button" onclick="closeBg()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+    </div>
+    <div class="p-5 space-y-4" id="bgContent">
+      <div class="text-gray-500 text-center py-8">🔍 OSINT-Recherche läuft…</div>
+    </div>
+  </div>
+</div>
+
 <script>
+// Inline Lead-Feld speichern (email, phone)
+function saveLeadField(id, field, value, el) {
+  const orig = el.defaultValue;
+  if (value === orig) return;
+  el.style.background = '#fef3c7';
+  const fd = new FormData();
+  fd.append('action', 'update_lead');
+  fd.append('lead_id', id);
+  fd.append('field', field);
+  fd.append('value', value);
+  fd.append('_csrf', '<?= csrfToken() ?>');
+  fetch('/admin/leads.php', { method: 'POST', body: fd })
+    .then(r => r.json()).then(d => {
+      if (d.success) { el.style.background = '#dcfce7'; el.defaultValue = value; setTimeout(()=>{el.style.background='';}, 900); }
+      else { el.style.background = '#fee2e2'; alert(d.error || 'Fehler'); }
+    });
+}
+
+// OSINT-Enrichment (Ad-Seite fetchen für Kontakt/Bezirk/Name)
+function enrichLead(id, btn) {
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = '… lädt';
+  const fd = new FormData();
+  fd.append('action', 'enrich');
+  fd.append('lead_id', id);
+  fd.append('_csrf', '<?= csrfToken() ?>');
+  fetch('/admin/leads.php', { method: 'POST', body: fd })
+    .then(r => r.json()).then(d => {
+      btn.disabled = false; btn.textContent = origText;
+      if (d.error) { alert('OSINT Fehler: ' + d.error); return; }
+      let msg = '✅ Angereichert:';
+      if (d.email) msg += '\n📧 ' + d.email;
+      if (d.phone) msg += '\n📞 ' + d.phone;
+      if (d.contact_name) msg += '\n👤 ' + d.contact_name;
+      if (d.district) msg += '\n📍 ' + d.district;
+      if (!d.email && !d.phone && !d.contact_name) msg = '⚠ Nix gefunden — Ad-Seite evtl. durch Cloudflare geschützt';
+      alert(msg);
+      location.reload();
+    }).catch(e => { btn.disabled = false; btn.textContent = origText; alert('Netzwerk-Fehler'); });
+}
+
+// Background-Check: Perplexity-OSINT + WA/Telegram-Detection
+function bgCheck(id) {
+  document.getElementById('bgModal').classList.remove('hidden');
+  document.getElementById('bgModal').classList.add('flex');
+  document.getElementById('bgTitle').textContent = 'Lead #' + id;
+  document.getElementById('bgContent').innerHTML = '<div class="text-gray-500 text-center py-8">🔍 OSINT-Recherche läuft (5-15s)…</div>';
+  const fd = new FormData();
+  fd.append('action', 'background_check');
+  fd.append('lead_id', id);
+  fd.append('_csrf', '<?= csrfToken() ?>');
+  fetch('/admin/leads.php', { method: 'POST', body: fd })
+    .then(r => r.json()).then(d => {
+      if (d.error) {
+        document.getElementById('bgContent').innerHTML = '<div class="bg-red-50 border border-red-300 text-red-700 p-4 rounded-lg">❌ ' + d.error + '</div>';
+        return;
+      }
+      const ch = d.channels || {};
+      const waBtn = ch.whatsapp && ch.wa_link
+        ? `<a href="${ch.wa_link}" target="_blank" class="inline-flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700">💬 WhatsApp öffnen</a>`
+        : '<span class="px-3 py-2 bg-gray-100 text-gray-500 rounded-lg text-sm">💬 WhatsApp nicht erkennbar</span>';
+      const tgBtn = ch.telegram
+        ? '<span class="inline-flex items-center gap-1 px-3 py-2 bg-sky-600 text-white rounded-lg text-sm font-semibold">✈️ Telegram erwähnt im Text</span>'
+        : '<span class="px-3 py-2 bg-gray-100 text-gray-500 rounded-lg text-sm">✈️ Telegram nicht erkennbar</span>';
+      const sigBtn = ch.signal
+        ? '<span class="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold">📡 Signal erwähnt</span>'
+        : '';
+      const bizRow = d.business_url
+        ? `<div class="flex items-center gap-2"><span class="text-xs font-semibold text-gray-600">🌐 BUSINESS-SEITE</span><a href="${d.business_url}" target="_blank" class="text-brand hover:underline text-sm truncate">${d.business_url}</a></div>`
+        : '';
+      const nameRow = d.contact_name ? `<div><span class="text-xs font-semibold text-gray-600">👤 KONTAKT</span><div class="text-sm font-semibold">${d.contact_name}</div></div>` : '';
+      const distRow = d.district ? `<div><span class="text-xs font-semibold text-gray-600">📍 BEZIRK</span><div class="text-sm">${d.district}</div></div>` : '';
+      const summary = (d.summary || '').replace(/</g, '&lt;').replace(/\n/g, '<br/>');
+      document.getElementById('bgContent').innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${nameRow}${distRow}</div>
+        ${bizRow}
+        <div>
+          <div class="text-xs font-semibold text-gray-600 mb-1">📱 KOMMUNIKATIONS-KANÄLE</div>
+          <div class="flex flex-wrap gap-2">${waBtn}${tgBtn}${sigBtn}</div>
+        </div>
+        <div>
+          <div class="text-xs font-semibold text-gray-600 mb-1">🧠 OSINT-ANALYSE</div>
+          <div class="bg-gray-50 border rounded-lg p-3 text-sm leading-relaxed">${summary || '<em class="text-gray-400">Keine Analyse verfügbar</em>'}</div>
+        </div>`;
+    });
+}
+function closeBg() {
+  document.getElementById('bgModal').classList.add('hidden');
+  document.getElementById('bgModal').classList.remove('flex');
+}
+
 let _pitchLead = null;
 function openPitch(lead) {
   _pitchLead = lead;
