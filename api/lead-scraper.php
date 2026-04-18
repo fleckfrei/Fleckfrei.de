@@ -395,14 +395,99 @@ foreach ($kleinanzeigenSearches as $category => $terms) {
 }
 
 // ============================================================
-// GOOGLE PLACES (B2B-Leads): Berlin-Businesses die potentiell
-// Reinigung brauchen — Airbnb/Hotels/Büros/Praxen. Outbound-Leads.
-// Benötigt GOOGLE_PLACES_API_KEY in includes/google-keys.php.
+// CUSTOMER HUNTING (das was Geld bringt): Airbnb-Hosts, Booking-Properties,
+// Hotels, Ferienwohnungen, Business-Adressen in Berlin die REGELMÄSSIG
+// Reinigung/Transport/Reparatur brauchen.
+// Fleckfrei.de verkauft — sucht nicht Subcontractoren.
 // ============================================================
+
+// --- AIRBNB Berlin Hosts via Apify (jedes Listing = potentieller Kunde)
+if (defined('APIFY_API_TOKEN') && APIFY_API_TOKEN) {
+    // tri_angle/new-fast-airbnb-scraper — Berlin, ersten 100 Listings
+    $apiUrl = 'https://api.apify.com/v2/acts/tri_angle~new-fast-airbnb-scraper/run-sync-get-dataset-items?token=' . APIFY_API_TOKEN . '&timeout=120';
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 130,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode([
+            'startUrls' => [['url' => 'https://www.airbnb.de/s/Berlin--Germany/homes']],
+            'currency' => 'EUR', 'locale' => 'de-DE', 'maxListings' => 60,
+            'proxyConfig' => ['useApifyProxy' => true, 'apifyProxyGroups' => ['RESIDENTIAL']],
+        ]),
+    ]);
+    $resp = curl_exec($ch); curl_close($ch);
+    $items = json_decode($resp, true);
+    if (is_array($items)) {
+        foreach ($items as $p) {
+            $totalSeen++;
+            $listUrl = $p['url'] ?? ($p['link'] ?? '');
+            if (!$listUrl) continue;
+            if (val("SELECT lead_id FROM leads WHERE source_url=? LIMIT 1", [$listUrl])) continue;
+            $title = $p['name'] ?? $p['title'] ?? 'Airbnb Berlin';
+            $hostName = $p['primaryHost']['name'] ?? $p['host']['name'] ?? '';
+            $district = $p['location']['city'] ?? ($p['locationDetails']['subdistrict'] ?? 'Berlin');
+            $price = $p['pricing']['price'] ?? ($p['price'] ?? 0);
+            $beds = $p['beds'] ?? 0;
+            $rating = $p['stars'] ?? ($p['rating'] ?? 0);
+            $reviews = $p['numberOfReviews'] ?? ($p['reviewsCount'] ?? 0);
+            $snippet = "$title · Host: $hostName · $beds Beds · €$price/Nacht · ⭐$rating ($reviews Bewertungen)";
+            $notes = "[B2C] [SOURCE:airbnb]" . ($hostName ? " [HOST:$hostName]" : '') . ($district ? " [BEZIRK:$district]" : '');
+            try {
+                q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES ('airbnb', ?, 'airbnb', ?, NULL, NULL, 'Berlin', ?, ?)",
+                  [$listUrl, substr($title, 0, 200), $notes, substr($snippet, 0, 600)]);
+                $totalNew++;
+                $results[] = ['category'=>'airbnb','title'=>$title,'url'=>$listUrl,'source'=>'airbnb','has_contact'=>false];
+            } catch (Exception $e) {}
+        }
+    }
+}
+
+// --- BOOKING.COM Berlin Properties via Apify
+if (defined('APIFY_API_TOKEN') && APIFY_API_TOKEN) {
+    $apiUrl = 'https://api.apify.com/v2/acts/voyager~booking-scraper/run-sync-get-dataset-items?token=' . APIFY_API_TOKEN . '&timeout=120';
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 130,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode([
+            'search' => 'Berlin', 'destType' => 'city', 'maxPages' => 2,
+            'currency' => 'EUR', 'language' => 'de',
+            'proxyConfig' => ['useApifyProxy' => true, 'apifyProxyGroups' => ['RESIDENTIAL']],
+        ]),
+    ]);
+    $resp = curl_exec($ch); curl_close($ch);
+    $items = json_decode($resp, true);
+    if (is_array($items)) {
+        foreach ($items as $p) {
+            $totalSeen++;
+            $pUrl = $p['url'] ?? '';
+            if (!$pUrl) continue;
+            if (val("SELECT lead_id FROM leads WHERE source_url=? LIMIT 1", [$pUrl])) continue;
+            $title = $p['name'] ?? 'Booking-Property Berlin';
+            $type = $p['type'] ?? '';
+            $stars = $p['stars'] ?? 0;
+            $rating = $p['rating'] ?? 0;
+            $price = $p['price'] ?? 0;
+            $addr = $p['address']['full'] ?? ($p['address']['street'] ?? '');
+            $district = $p['address']['city'] ?? 'Berlin';
+            $category = $type && stripos($type, 'hotel') !== false ? 'buero' : 'airbnb';
+            $snippet = "$title · $type · $district · €$price · ⭐$rating · $stars★";
+            $notes = "[B2B] [SOURCE:booking]" . ($district ? " [BEZIRK:$district]" : '') . ($addr ? " [ADDR:$addr]" : '');
+            try {
+                q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES ('booking.com', ?, ?, ?, NULL, NULL, 'Berlin', ?, ?)",
+                  [$pUrl, $category, substr($title, 0, 200), $notes, substr($snippet, 0, 600)]);
+                $totalNew++;
+                $results[] = ['category'=>$category,'title'=>$title,'url'=>$pUrl,'source'=>'booking.com','has_contact'=>false];
+            } catch (Exception $e) {}
+        }
+    }
+}
+
+// --- GOOGLE PLACES (Business-Leads): Hotels, Ferienwohnungen, Coworking, Praxen, Kanzleien
 if (defined('GOOGLE_PLACES_API_KEY') && GOOGLE_PLACES_API_KEY) {
     $placesSearches = [
-        'airbnb' => ['Ferienwohnung Berlin', 'Airbnb Berlin Mitte', 'Apartments kurzzeit Berlin'],
-        'buero'  => ['Coworking Berlin', 'Bürogemeinschaft Berlin Mitte', 'Arztpraxis Berlin Mitte', 'Anwaltskanzlei Berlin'],
+        'airbnb' => ['Ferienwohnung Berlin', 'Apartments Berlin Mitte', 'Short Term Rental Berlin', 'Aparthotel Berlin', 'Serviced Apartments Berlin'],
+        'buero'  => ['Hotel Berlin Mitte', 'Hotel Berlin Charlottenburg', 'Hostel Berlin', 'Pension Berlin', 'Coworking Berlin', 'Arztpraxis Berlin Mitte', 'Anwaltskanzlei Berlin', 'Yoga Studio Berlin'],
     ];
     foreach ($placesSearches as $category => $qs) {
         foreach ($qs as $q) {

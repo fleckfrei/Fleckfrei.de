@@ -459,6 +459,9 @@ if ($segment === 'B2B') {
     $where[] = "category IN ('buero','event')";
 } elseif ($segment === 'B2C') {
     $where[] = "category IN ('haushalt','airbnb','cohost','umzug')";
+} elseif ($segment === 'TARGET') {
+    // Nur hochwertige Outbound-Target-Leads: Hosts, Hotels, Ferienwohnungen, Booking
+    $where[] = "source IN ('airbnb','booking.com','google_places')";
 }
 // Freshness-Filter: nur Anzeigen die KÜRZLICH gepostet wurden (via [POSTED:YYYY-MM-DD] in notes)
 $fresh = $_GET['fresh'] ?? ''; // 7d / 30d / all
@@ -596,11 +599,12 @@ include __DIR__ . '/../includes/layout.php';
   <a href="<?= $freshUrl('') ?>" class="px-3 py-1 rounded-lg text-xs font-bold <?= $fresh === '' ? 'bg-gray-700 text-white' : 'bg-white border text-gray-700 hover:border-gray-700' ?>">alle</a>
 </div>
 
-<!-- B2B / B2C Segment-Tabs -->
+<!-- B2B / B2C / TARGET Segment-Tabs -->
 <?php $segUrl = function($seg) use ($filter, $category) { return '?filter=' . urlencode($filter) . '&segment=' . urlencode($seg) . ($category ? '&category=' . urlencode($category) : ''); }; ?>
 <div class="flex gap-2 mb-3 flex-wrap">
   <a href="<?= $segUrl('') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === '' ? 'bg-gray-800 text-white' : 'bg-white border text-gray-600 hover:border-gray-800' ?>">Alle Leads</a>
-  <a href="<?= $segUrl('B2C') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2C' ? 'bg-indigo-600 text-white' : 'bg-white border text-indigo-700 hover:border-indigo-600' ?>">👤 B2C (Privat + Airbnb + Co-Host)</a>
+  <a href="<?= $segUrl('TARGET') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'TARGET' ? 'bg-brand text-white' : 'bg-white border-2 border-brand text-brand hover:bg-brand-light' ?>">🎯 Target-Kunden (Airbnb + Booking + Hotels)</a>
+  <a href="<?= $segUrl('B2C') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2C' ? 'bg-indigo-600 text-white' : 'bg-white border text-indigo-700 hover:border-indigo-600' ?>">👤 B2C</a>
   <a href="<?= $segUrl('B2B') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2B' ? 'bg-amber-600 text-white' : 'bg-white border text-amber-700 hover:border-amber-600' ?>">🏢 B2B (Büro + Event)</a>
 </div>
 
