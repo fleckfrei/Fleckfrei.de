@@ -28,22 +28,31 @@ if (!$isAdmin && $cronSecret !== 'flk_scrape_2026') {
 // ============================================================
 // Search queries by category
 // ============================================================
+// Gezielt auf Kleinanzeigen-Plattformen, wo echte Leute Hilfe suchen
 $queries = [
     'haushalt' => [
-        '"suche Reinigungskraft" Berlin',
-        '"brauche Putzhilfe" Berlin',
-        '"suche Putzhilfe" Berlin',
-        'Haushaltshilfe gesucht Berlin',
+        'site:kleinanzeigen.de "Putzhilfe" Berlin',
+        'site:kleinanzeigen.de "Reinigungskraft" Berlin gesucht',
+        'site:kleinanzeigen.de "Haushaltshilfe" Berlin',
+        'site:quoka.de Reinigung Berlin gesucht',
+        'site:nebenan.de "Putzhilfe gesucht" Berlin',
+        '"suche Putzhilfe" Berlin 2026',
     ],
     'airbnb' => [
-        '"Airbnb Reinigung" Berlin gesucht',
-        '"Turnover cleaning" Berlin Airbnb',
-        '"Reinigung zwischen Gästen" Berlin',
+        'site:kleinanzeigen.de Airbnb Reinigung Berlin',
+        '"Turnover cleaning" Berlin Airbnb 2026',
+        '"Ferienwohnung Reinigung" Berlin gesucht',
+        'site:facebook.com/groups Berlin Airbnb Reinigung',
     ],
     'buero' => [
-        '"Büroreinigung" Berlin gesucht',
-        '"Office cleaning" Berlin company',
-        '"Praxis Reinigung" Berlin',
+        'site:kleinanzeigen.de Büroreinigung Berlin',
+        '"Büroreinigung gesucht" Berlin',
+        '"Praxis Reinigung" Berlin gesucht',
+        'site:gelbeseiten.de Büroreinigung Berlin new',
+    ],
+    'event' => [
+        '"Event Reinigung" Berlin gesucht',
+        '"Veranstaltung Reinigung" Berlin',
     ],
 ];
 

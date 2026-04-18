@@ -19,6 +19,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         q("DELETE FROM leads WHERE lead_id=?", [$lid]);
         header('Location: /admin/leads.php?saved=1'); exit;
     }
+
+    // 1-Klick-Conversion: Lead → Kunde + Prebook-Link + Redirect
+    if ($act === 'convert' && $lid) {
+        global $db;
+        $lead = one("SELECT * FROM leads WHERE lead_id=?", [$lid]);
+        if (!$lead) { header('Location: /admin/leads.php'); exit; }
+
+        $name = trim($lead['name']) ?: 'Lead-Kunde';
+        $email = strtolower(trim($lead['email'] ?? ''));
+        $phone = trim($lead['phone'] ?? '');
+
+        // Mapping Kategorie → customer_type
+        $typeMap = ['airbnb'=>'Airbnb','buero'=>'Company','haushalt'=>'Private Person','event'=>'Private Person','umzug'=>'Private Person'];
+        $cType = $typeMap[$lead['category']] ?? 'Private Person';
+
+        // Existiert Kunde schon (email/phone)?
+        $cust = null;
+        if ($email) $cust = one("SELECT * FROM customer WHERE LOWER(email)=?", [$email]);
+        if (!$cust && $phone) $cust = one("SELECT * FROM customer WHERE phone=?", [$phone]);
+
+        if ($cust) {
+            $cid = (int)$cust['customer_id'];
+        } else {
+            q("INSERT INTO customer (name, email, phone, customer_type, password, status, email_permissions, notes)
+               VALUES (?, ?, ?, ?, '0000', 1, 'all', ?)",
+               [$name, $email ?: null, $phone ?: null, $cType, "Aus Lead #$lid · Quelle: " . ($lead['source'] ?? '—')]);
+            $cid = (int) $db->lastInsertId();
+            if ($email) q("INSERT IGNORE INTO users (email, type) VALUES (?, 'customer')", [$email]);
+        }
+
+        // Prebook-Link generieren (falls noch keiner)
+        $slugSrc = strtolower(preg_replace('/[^a-z0-9]+/i', '-', trim($name . '-' . $cid)));
+        $slugSrc = trim(substr($slugSrc, 0, 40), '-') ?: 'lead-' . $cid;
+        $token = $slugSrc;
+        $n = 0;
+        while (val("SELECT pl_id FROM prebooking_links WHERE token=?", [$token])) {
+            $token = $slugSrc . '-' . substr(bin2hex(random_bytes(2)), 0, 4);
+            if (++$n > 5) break;
+        }
+        $svcType = ['airbnb'=>'str','buero'=>'office','haushalt'=>'home_care'][$lead['category']] ?? 'home_care';
+        q("INSERT INTO prebooking_links (token, email, name, phone, service_type, duration, created_by, expires_at)
+           VALUES (?, ?, ?, ?, ?, 3, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))",
+           [$token, $email ?: null, $name, $phone ?: null, $svcType, $_SESSION['uemail'] ?? 'admin']);
+
+        q("UPDATE leads SET status='converted', contacted_at=NOW() WHERE lead_id=?", [$lid]);
+        if (function_exists('audit')) audit('convert', 'leads', $lid, "→ customer #$cid + prebook /p/$token");
+
+        header("Location: /admin/view-customer.php?id=$cid&converted=1&token=" . urlencode($token));
+        exit;
+    }
 }
 
 $filter = $_GET['filter'] ?? 'new';
@@ -131,7 +181,17 @@ include __DIR__ . '/../includes/layout.php';
         </div>
 
         <!-- Status actions -->
-        <div class="flex flex-col gap-1 flex-shrink-0">
+        <div class="flex flex-col gap-1 flex-shrink-0 min-w-[180px]">
+          <?php if ($l['status'] !== 'converted'): ?>
+          <form method="POST" onsubmit="return confirm('Lead → Kunde umwandeln?\n\nAutomatisch angelegt:\n• Kunden-Konto\n• Persönlicher Buchungs-Link\n• Redirect zur Kunden-Seite');">
+            <?= csrfField() ?>
+            <input type="hidden" name="action" value="convert"/>
+            <input type="hidden" name="lead_id" value="<?= $l['lead_id'] ?>"/>
+            <button type="submit" class="w-full px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold">
+              ✨ In Kunde umwandeln →
+            </button>
+          </form>
+          <?php endif; ?>
           <form method="POST" class="flex flex-col gap-1">
             <?= csrfField() ?>
             <input type="hidden" name="action" value="update_status"/>
@@ -142,6 +202,12 @@ include __DIR__ . '/../includes/layout.php';
               <option value="converted" <?= $l['status'] === 'converted' ? 'selected' : '' ?>>✅ Gewonnen</option>
               <option value="rejected" <?= $l['status'] === 'rejected' ? 'selected' : '' ?>>❌ Abgelehnt</option>
             </select>
+          </form>
+          <form method="POST" onsubmit="return confirm('Lead wirklich löschen?')">
+            <?= csrfField() ?>
+            <input type="hidden" name="action" value="delete"/>
+            <input type="hidden" name="lead_id" value="<?= $l['lead_id'] ?>"/>
+            <button type="submit" class="w-full px-3 py-1 text-[11px] text-red-600 hover:bg-red-50 rounded">🗑 Löschen</button>
           </form>
         </div>
       </div>
