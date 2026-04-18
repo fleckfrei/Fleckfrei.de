@@ -257,7 +257,7 @@ include __DIR__ . '/../includes/layout.php';
 
 <?php
 $apiKey = API_KEY;
-$script = <<<JS
+$script = <<<'JS'
 function filterRows(q){q=q.toLowerCase();document.querySelectorAll('#tbl tbody tr').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(q)?'':'none'})}
 
 // Click-to-sort columns
@@ -386,5 +386,6 @@ function updateCustStatus(id, val, el) {
     });
 }
 JS;
+$script = str_replace('$apiKey', $apiKey, $script);
 include __DIR__ . '/../includes/footer.php';
 ?>
