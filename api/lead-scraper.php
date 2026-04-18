@@ -120,17 +120,32 @@ function browserHeaders(): array {
     ];
 }
 
+/**
+ * Configure curl to route through Apify Residential Proxy (deutsche IPs).
+ * Bypasses Cloudflare bot detection by using real household IPs.
+ * Falls back to direct connection if APIFY_PROXY_PASSWORD not set.
+ */
+function applyApifyProxy($ch): void {
+    if (!defined('APIFY_PROXY_PASSWORD') || !APIFY_PROXY_PASSWORD) return;
+    $proxyUser = 'groups-RESIDENTIAL,country-DE';
+    $proxyPass = APIFY_PROXY_PASSWORD;
+    curl_setopt($ch, CURLOPT_PROXY, 'http://proxy.apify.com:8000');
+    curl_setopt($ch, CURLOPT_PROXYUSERPWD, "$proxyUser:$proxyPass");
+    curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+}
+
 function fetchLeadDetails(string $url): ?array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        CURLOPT_ENCODING => '', // accept gzip
-        CURLOPT_TIMEOUT => 12,
+        CURLOPT_ENCODING => '',
+        CURLOPT_TIMEOUT => 20,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_HTTPHEADER => browserHeaders(),
     ]);
+    applyApifyProxy($ch);
     $html = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
@@ -199,9 +214,10 @@ foreach ($checkBatch as $ld) {
         CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         CURLOPT_ENCODING => '',
-        CURLOPT_TIMEOUT => 5, CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_TIMEOUT => 12, CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_HTTPHEADER => browserHeaders(),
     ]);
+    applyApifyProxy($ch);
     $h = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
@@ -241,10 +257,11 @@ foreach ($kleinanzeigenSearches as $category => $terms) {
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             CURLOPT_ENCODING => '',
-            CURLOPT_TIMEOUT => 10,
+            CURLOPT_TIMEOUT => 20,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_HTTPHEADER => browserHeaders(),
         ]);
+        applyApifyProxy($ch);
         $html = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
