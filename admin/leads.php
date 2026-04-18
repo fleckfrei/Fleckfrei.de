@@ -354,6 +354,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /admin/leads.php?saved=1&purged=1'); exit;
     }
 
+    // Nuclear: ALLE Leads löschen (Reset)
+    if ($act === 'nuke_all') {
+        if (($_POST['confirm'] ?? '') !== 'LOESCHE ALLES') {
+            header('Location: /admin/leads.php?err=confirm'); exit;
+        }
+        $n = (int) val("SELECT COUNT(*) FROM leads");
+        q("TRUNCATE TABLE leads");
+        header("Location: /admin/leads.php?saved=1&nuked=$n"); exit;
+    }
+
     if ($act === 'add_manual') {
         $name = trim($_POST['m_name'] ?? '');
         if ($name !== '') {
@@ -492,7 +502,12 @@ include __DIR__ . '/../includes/layout.php';
 <?php endif; ?>
 <?php if (isset($_GET['dead'])): ?>
 <div class="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-xl mb-4">
-  🧹 <b><?= (int)$_GET['dead'] ?></b> tote Anzeigen entfernt (von <?= (int)($_GET['checked'] ?? 0) ?> geprüft). Nochmal klicken für die nächsten 150.
+  🧹 <b><?= (int)$_GET['dead'] ?></b> tote Anzeigen entfernt (von <?= (int)($_GET['checked'] ?? 0) ?> geprüft).
+</div>
+<?php endif; ?>
+<?php if (isset($_GET['nuked'])): ?>
+<div class="bg-rose-50 border border-rose-300 text-rose-900 px-4 py-3 rounded-xl mb-4">
+  💥 <b><?= (int)$_GET['nuked'] ?></b> Leads komplett gelöscht. Datenbank ist leer.
 </div>
 <?php endif; ?>
 
@@ -525,6 +540,15 @@ include __DIR__ . '/../includes/layout.php';
       <button type="submit" class="px-4 py-2 bg-white border-2 border-rose-600 text-rose-700 hover:bg-rose-50 rounded-xl text-sm font-semibold flex items-center gap-1.5">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
         Junk löschen
+      </button>
+    </form>
+    <form method="POST" class="inline" onsubmit="const c = prompt('ALLE Leads werden unwiderruflich gelöscht. Tippe LOESCHE ALLES zum Bestätigen:'); if (c !== 'LOESCHE ALLES') return false; this.confirm.value = c;">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="nuke_all"/>
+      <input type="hidden" name="confirm" value=""/>
+      <button type="submit" class="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        Alle löschen
       </button>
     </form>
     <div x-show="scanResult" x-cloak class="text-xs basis-full">

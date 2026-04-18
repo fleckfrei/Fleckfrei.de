@@ -296,6 +296,14 @@ foreach ($queries as $category => $queryList) {
             $snippet = $r['snippet'] ?? $r['content'] ?? '';
             if ($url === '' || $title === '') continue;
 
+            // QUALITÄTS-FILTER: nur akzeptieren wenn URL eindeutig eine
+            // Kleinanzeigen-Einzel-Anzeige ODER nebenan.de/quoka-Anzeige ist
+            $isRealAd =
+                preg_match('#kleinanzeigen\.de/s-anzeige/#', $url) ||
+                preg_match('#quoka\.de/cat_[0-9]+/[a-z0-9_-]+#', $url) ||
+                preg_match('#nebenan\.de/(feed_items|content)/#', $url);
+            if (!$isRealAd) continue;
+
             // Skip aggregator/spam/competitor/government/job-board domains
             $skipDomains = [
                 // Suchmaschinen + Portale
