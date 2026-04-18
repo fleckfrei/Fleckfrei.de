@@ -309,8 +309,14 @@ function audit($action, $entity, $entityId, $details='') {
         shadow_log($entity, $action, ['id' => $entityId, 'user' => $user, 'ip' => $ip, 'details' => $details]);
     }
 }
+// Plattform-weiter Job-Status-Farb-Standard (= /admin/jobs.php Legende, 2026-04-13):
+//   Kein Partner (UNASSIGNED)        → yellow
+//   Partner zugewiesen (PENDING etc) → blue
+//   Partner in Bearbeitung (RUNNING) → orange
+//   Erledigt (COMPLETED)             → green
+//   Storniert (CANCELLED)            → red
 function badge($status) {
-    $c = ['PENDING'=>'yellow','CONFIRMED'=>'blue','RUNNING'=>'indigo','STARTED'=>'indigo','COMPLETED'=>'green','CANCELLED'=>'red'];
+    $c = ['PENDING'=>'blue','CONFIRMED'=>'blue','NEW'=>'blue','RUNNING'=>'orange','STARTED'=>'orange','COMPLETED'=>'green','CANCELLED'=>'red'];
     $col = $c[$status] ?? 'gray';
     $labels = ['PENDING'=>'Offen','CONFIRMED'=>'Bestätigt','RUNNING'=>'Laufend','STARTED'=>'Gestartet','COMPLETED'=>'Erledigt','CANCELLED'=>'Storniert'];
     $label = $labels[$status] ?? $status;

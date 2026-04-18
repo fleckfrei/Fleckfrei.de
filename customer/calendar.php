@@ -252,13 +252,19 @@ $prevMonth = date('Y-m', strtotime("$month-01 -1 month"));
 $nextMonth = date('Y-m', strtotime("$month-01 +1 month"));
 $today = date('Y-m-d');
 
-function statusBadgeClass(string $status): string {
-    return match($status) {
+// Plattform-weiter Job-Status-Farb-Standard (= admin/jobs.php Legende):
+//  🟡 Kein Partner (UNASSIGNED / no emp)      — bg-yellow-500
+//  🔵 Partner zugewiesen (PENDING/CONFIRMED)   — bg-blue-600
+//  🟠 Partner in Bearbeitung (RUNNING/STARTED) — bg-orange-600
+//  🟢 Erledigt (COMPLETED)                     — bg-green-500
+//  🔴 Storniert (CANCELLED)                    — bg-red-600
+function statusBadgeClass(string $status, ?int $empId = null): string {
+    return match(strtoupper($status)) {
         'COMPLETED' => 'bg-green-500',
-        'CANCELLED' => 'bg-gray-400',
-        'IN_PROGRESS' => 'bg-amber-500',
-        'CONFIRMED' => 'bg-brand',
-        default => 'bg-blue-400',
+        'CANCELLED' => 'bg-red-600',
+        'RUNNING', 'STARTED', 'IN_PROGRESS' => 'bg-orange-600',
+        'CONFIRMED', 'PENDING', 'NEW' => $empId ? 'bg-blue-600' : 'bg-yellow-500',
+        default => $empId ? 'bg-blue-600' : 'bg-yellow-500',
     };
 }
 
@@ -618,11 +624,13 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
 
         <?php foreach ($dayJobs as $j):
           $status = $j['job_status'] ?? 'NEW';
-          $bgCls = match($status) {
-            'COMPLETED' => 'bg-green-50 border-green-200 text-green-900',
-            'RUNNING'   => 'bg-amber-50 border-amber-300 text-amber-900 ring-2 ring-amber-200',
-            'CANCELLED' => 'bg-gray-50 border-gray-200 text-gray-400 line-through',
-            default     => 'bg-brand-light border-brand/20 text-gray-900',
+          $_hasEmp = !empty($j['emp_id_fk']);
+          $bgCls = match(strtoupper($status)) {
+            'COMPLETED' => 'bg-green-50 border-green-500 text-green-900',
+            'CANCELLED' => 'bg-red-50 border-red-600 text-red-700 line-through',
+            'RUNNING','STARTED','IN_PROGRESS' => 'bg-orange-50 border-orange-600 text-orange-900 ring-2 ring-orange-200',
+            'PENDING','CONFIRMED','NEW' => $_hasEmp ? 'bg-blue-50 border-blue-600 text-blue-900' : 'bg-yellow-50 border-yellow-500 text-yellow-900',
+            default => $_hasEmp ? 'bg-blue-50 border-blue-600 text-blue-900' : 'bg-yellow-50 border-yellow-500 text-yellow-900',
           };
         ?>
         <div class="flex items-center gap-3 p-2.5 rounded-lg border <?= $bgCls ?>">
@@ -662,11 +670,11 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
 
   <!-- Farb-Legende -->
   <div class="flex items-center flex-wrap gap-3 px-4 py-2 text-[10px] font-medium text-gray-700 bg-white border-b border-gray-100">
-    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-yellow-400"></span>Kein Partner</div>
-    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-blue-500"></span>Partner zugewiesen</div>
-    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-orange-500"></span>Läuft</div>
+    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-yellow-500"></span>Kein Partner</div>
+    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-blue-600"></span>Partner zugewiesen</div>
+    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-orange-600"></span>Partner in Bearbeitung</div>
     <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-green-500"></span>Erledigt</div>
-    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-gray-200"></span>Storniert</div>
+    <div class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-red-600"></span>Storniert</div>
   </div>
 
   <!-- Weekday header -->
