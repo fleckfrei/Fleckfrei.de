@@ -68,6 +68,29 @@ $typeParams = $typeFilter ? [$typeFilter] : [];
 // Stellt sicher dass display_name-Spalte existiert (gitignored Migration, idempotent)
 try { q("ALTER TABLE employee ADD COLUMN display_name VARCHAR(100) NULL AFTER surname"); } catch (Exception $e) {}
 
+// Partner-Invite-Tabelle (selbst-registrierende Partner über Token-Link)
+try { q("CREATE TABLE IF NOT EXISTS partner_invites (
+    pi_id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    token VARCHAR(64) UNIQUE NOT NULL,
+    email VARCHAR(255) NULL,
+    created_by VARCHAR(100) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    used_at TIMESTAMP NULL,
+    emp_id_fk INT UNSIGNED NULL,
+    expires_at TIMESTAMP NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"); } catch (Exception $e) {}
+
+// Einladungs-Token generieren → zeigt Link zurück
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_invite' && verifyCsrf()) {
+    $email = strtolower(trim($_POST['invite_email'] ?? ''));
+    $token = substr(bin2hex(random_bytes(12)), 0, 20);
+    q("INSERT INTO partner_invites (token, email, created_by, expires_at)
+       VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 14 DAY))",
+       [$token, $email ?: null, $_SESSION['uemail'] ?? 'admin']);
+    $link = 'https://app.' . SITE_DOMAIN . '/p-signup/' . $token;
+    header("Location: /admin/employees.php?invited=" . urlencode($link) . ($email ? '&ie=' . urlencode($email) : '')); exit;
+}
+
 // Bulk-Action: automatisch Kunden-Namen für alle die leer sind generieren
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'autofill_display_names' && verifyCsrf()) {
     $empsNeedFill = all("SELECT emp_id, name, surname FROM employee WHERE (display_name IS NULL OR display_name='')");
@@ -159,12 +182,32 @@ include __DIR__ . '/../includes/layout.php';
 <div class="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-3 rounded-xl mb-4">✓ <?= (int)$_GET['autofilled'] ?> Kunden-Namen automatisch gesetzt (Vorname + Initial Nachname).</div>
 <?php endif; ?>
 
-<div x-data="{ editOpen:false, emp:{} }" class="bg-white rounded-xl border">
+<?php if (!empty($_GET['invited'])): $lnk = $_GET['invited']; $ie = $_GET['ie'] ?? ''; ?>
+<div class="bg-brand-light border-2 border-brand text-gray-900 px-5 py-4 rounded-xl mb-4">
+  <div class="font-bold text-brand-dark mb-2">✉️ Einladungs-Link erstellt <?= $ie ? 'für '.htmlspecialchars($ie) : '' ?> — gültig 14 Tage</div>
+  <div class="flex gap-2 items-center">
+    <input type="text" readonly value="<?= htmlspecialchars($lnk) ?>" onclick="this.select()" class="flex-1 px-3 py-2 bg-white border rounded-lg font-mono text-xs"/>
+    <button onclick="navigator.clipboard.writeText('<?= htmlspecialchars($lnk) ?>').then(()=>{this.textContent='✓ Kopiert'})" class="px-3 py-2 bg-brand text-white rounded-lg text-sm font-semibold">📋 Kopieren</button>
+    <?php if ($ie): ?><a href="mailto:<?= htmlspecialchars($ie) ?>?subject=<?= urlencode('Fleckfrei Partner-Einladung') ?>&body=<?= urlencode("Hallo,\n\nwir würden dich gerne als Partner bei Fleckfrei begrüßen. Fülle bitte das Onboarding-Formular aus:\n\n$lnk\n\nViele Grüße,\nFleckfrei-Team") ?>" class="px-3 py-2 bg-white border rounded-lg text-sm font-semibold">📧 Mailen</a><?php endif; ?>
+    <?php if ($ie): ?>
+      <?php $phTo = ''; ?>
+      <a href="https://wa.me/?text=<?= urlencode("Hi! Hier dein Fleckfrei-Partner-Onboarding-Link:\n$lnk") ?>" target="_blank" class="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold">💬 WhatsApp</a>
+    <?php endif; ?>
+  </div>
+  <div class="text-[11px] text-gray-600 mt-2">Partner klickt Link → füllt 12-Schritt-Formular aus → erscheint hier als "Pending" → du bestätigst.</div>
+</div>
+<?php endif; ?>
+
+<div x-data="{ editOpen:false, inviteOpen:false, emp:{} }" class="bg-white rounded-xl border">
   <div class="p-5 border-b flex items-center justify-between">
     <h3 class="font-semibold"><?= $tab==='archive' ? 'Archivierte' : 'Aktive' ?> Partner (<?= count($employees) ?>)</h3>
     <div class="flex gap-3">
       <input type="text" placeholder="Suchen..." class="px-3 py-2 border rounded-lg text-sm w-64" oninput="filterRows(this.value)"/>
       <?php if ($tab === 'active'): ?>
+      <button @click="inviteOpen=true" class="px-4 py-2 bg-white border-2 border-brand text-brand hover:bg-brand-light rounded-xl text-sm font-semibold flex items-center gap-1.5" title="Link zum Selbst-Registrieren senden">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+        Per Link einladen
+      </button>
       <button @click="emp={status:'1',tariff:'13'}; editOpen=true" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium">+ Neuer Partner</button>
       <?php endif; ?>
     </div>
@@ -318,6 +361,29 @@ include __DIR__ . '/../includes/layout.php';
           <div><label class="block text-sm font-medium text-gray-600 mb-1">Notizen</label><textarea name="notes" x-text="emp.notes" rows="2" class="w-full px-3 py-2.5 border rounded-xl"></textarea></div>
           <div x-show="!emp.emp_id"><label class="block text-sm font-medium text-gray-600 mb-1">Passwort</label><input name="password" value="<?= bin2hex(random_bytes(4)) ?>" class="w-full px-3 py-2.5 border rounded-xl"/></div>
           <div class="flex gap-3"><button type="button" @click="editOpen=false" class="flex-1 px-4 py-2.5 border rounded-xl">Abbrechen</button><button type="submit" class="flex-1 px-4 py-2.5 bg-brand text-white rounded-xl font-medium">Speichern</button></div>
+        </form>
+      </div>
+    </div>
+  </template>
+
+  <!-- Invite-Modal: Selbst-Registrierung per Link -->
+  <template x-if="inviteOpen">
+    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" @click.self="inviteOpen=false">
+      <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-bold">🔗 Partner per Link einladen</h3>
+          <button @click="inviteOpen=false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <p class="text-sm text-gray-600 mb-4">Wir erstellen einen Einmal-Link (14 Tage gültig). Schick ihn per Mail/WhatsApp an den Interessenten — er füllt selbst das 12-Schritt-Onboarding-Formular aus.</p>
+        <form method="POST">
+          <?= csrfField() ?>
+          <input type="hidden" name="action" value="create_invite"/>
+          <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">E-Mail (optional, für vorab-Adressierung)</label>
+          <input type="email" name="invite_email" placeholder="max@example.de" class="w-full px-3 py-2.5 border rounded-xl mb-4"/>
+          <div class="flex gap-3">
+            <button type="button" @click="inviteOpen=false" class="flex-1 px-4 py-2.5 border rounded-xl">Abbrechen</button>
+            <button type="submit" class="flex-1 px-4 py-2.5 bg-brand text-white rounded-xl font-semibold">✨ Link erstellen</button>
+          </div>
         </form>
       </div>
     </div>

@@ -57,6 +57,9 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
 # Personal prebook links: /p/slug → /prebook.php?t=slug
 RewriteRule ^p/([a-zA-Z0-9_-]+)/?$ /prebook.php?t=$1 [L,QSA]
 
+# Partner-Signup Einladungs-Token: /p-signup/<token> → /partner-signup.php?t=<token>
+RewriteRule ^p-signup/([a-zA-Z0-9_-]+)/?$ /partner-signup.php?t=$1 [L,QSA]
+
 # === Performance 2026-04-14 ===
 <IfModule mod_deflate.c>
   AddOutputFilterByType DEFLATE text/html text/css text/javascript application/javascript application/json application/xml image/svg+xml font/woff2 font/woff
