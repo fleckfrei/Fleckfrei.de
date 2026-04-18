@@ -164,6 +164,38 @@ foreach ($myVacs as $v) {
     }
 }
 
+// Admin-Sperren für diesen Zeitraum → als rote Banderole
+$blockedByDate = [];
+try {
+    $_gridFrom = date('Y-m-d', $gridStart);
+    $_gridTo   = date('Y-m-d', $gridEnd);
+    $_isPrem   = (int) val("SELECT is_premium FROM customer WHERE customer_id=?", [$cid]);
+    $_bRows    = all("SELECT date_from, date_to, applies_to, customer_id_fk, prebook_token, weekday_mask, reason
+                      FROM admin_blocked_days WHERE date_to >= ? AND date_from <= ?", [$_gridFrom, $_gridTo]);
+    foreach ($_bRows as $_bl) {
+        if (!empty($_bl['prebook_token'])) continue;
+        $_allowed = !empty($_bl['weekday_mask']) ? array_map('intval', explode(',', $_bl['weekday_mask'])) : null;
+        if (!empty($_bl['customer_id_fk'])) {
+            if ((int)$_bl['customer_id_fk'] !== (int)$cid) continue;
+        } else {
+            $_a = $_bl['applies_to'] ?? 'all';
+            if ($_a === 'premium_only' && !$_isPrem) continue;
+            if ($_a === 'non_premium' && $_isPrem) continue;
+            if ($_a === 'prebook_only') continue;
+        }
+        $_dStart = max(strtotime($_bl['date_from']), $gridStart);
+        $_dEnd   = min(strtotime($_bl['date_to']), $gridEnd);
+        $_d = $_dStart;
+        while ($_d <= $_dEnd) {
+            $_wd = (int) date('N', $_d);
+            if ($_allowed === null || in_array($_wd, $_allowed, true)) {
+                $blockedByDate[date('Y-m-d', $_d)] = $_bl['reason'] ?: 'gesperrt';
+            }
+            $_d = strtotime('+1 day', $_d);
+        }
+    }
+} catch (Exception $e) {}
+
 // AVAILABILITY: capacity per day (all customers, not just this one)
 $totalPartners = max(1, (int) val("SELECT COUNT(*) FROM employee WHERE status=1"));
 $busyByDate = [];
@@ -765,16 +797,21 @@ $syncMinAgo = $lastSync ? round((time() - strtotime($lastSync)) / 60) : null;
         // Empty future/today cells → direct booking link with prefilled date
         $bookingUrl = '/customer/booking.php?date=' . $cellDate;
     ?>
-    <div class="day-cell min-h-[100px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1 sm:p-2 relative group <?= $hasVac ? 'bg-amber-50' : ($isCurrentMonth ? 'bg-white' : 'bg-gray-50/50') ?> <?= !$isPast ? 'cursor-pointer hover:bg-brand/5 transition' : '' ?>"
+    <?php $isBlocked = isset($blockedByDate[$cellDate]); $blockReason = $blockedByDate[$cellDate] ?? ''; ?>
+    <div class="day-cell min-h-[100px] sm:min-h-[110px] border-r border-b border-gray-100 last:border-r-0 p-1 sm:p-2 relative group <?= $isBlocked ? 'bg-red-50' : ($hasVac ? 'bg-amber-50' : ($isCurrentMonth ? 'bg-white' : 'bg-gray-50/50')) ?> <?= (!$isPast && !$isBlocked) ? 'cursor-pointer hover:bg-brand/5 transition' : ($isBlocked ? 'cursor-not-allowed' : '') ?>"
          data-day="<?= $cellDate ?>"
          <?php if ($isPast): ?>data-past="1"<?php endif; ?>
-         <?php if (!$isPast): ?>
+         <?php if ($isBlocked): ?>title="🚫 Gesperrt<?= $blockReason ? ': '.e($blockReason) : '' ?>"<?php endif; ?>
+         <?php if (!$isPast && !$isBlocked): ?>
          <?php if ($hasEvents): ?>
          @click="selected = <?= htmlspecialchars(json_encode($payload), ENT_QUOTES) ?>; selectedDate = '<?= date('d.m.Y', $cellTs) ?>'; selectedDateIso = '<?= $cellDate ?>'"
          <?php else: ?>
          onclick="window.location.href='<?= $bookingUrl ?>'"
          <?php endif; ?>
          <?php endif; ?>>
+      <?php if ($isBlocked): ?>
+        <div class="absolute top-1 right-1 text-[9px] px-1 py-0.5 bg-red-200 text-red-900 rounded font-bold" title="<?= e($blockReason) ?>">🚫 gesperrt</div>
+      <?php endif; ?>
 
       <!-- Top: day number + external indicator strip -->
       <div class="flex items-center justify-between mb-1">

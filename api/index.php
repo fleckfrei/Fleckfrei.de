@@ -1024,6 +1024,31 @@ try {
                 }
             }
 
+            // Admin-Sperre prüfen: wenn Datum gesperrt ist → ablehnen
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                $pbTok = trim($d['prebook_token'] ?? $d['voucher_code'] ?? '');
+                $isPrem = (int) val("SELECT is_premium FROM customer WHERE customer_id=?", [$cid]);
+                $wdIso = (int) date('N', strtotime($date));
+                $bRows = all("SELECT applies_to, customer_id_fk, prebook_token, weekday_mask, reason
+                              FROM admin_blocked_days WHERE ? BETWEEN date_from AND date_to", [$date]);
+                foreach ($bRows as $bl) {
+                    if (!empty($bl['prebook_token']) && $bl['prebook_token'] !== $pbTok) continue;
+                    if (!empty($bl['weekday_mask'])) {
+                        $allowed = array_map('intval', explode(',', $bl['weekday_mask']));
+                        if (!in_array($wdIso, $allowed, true)) continue;
+                    }
+                    if (!empty($bl['customer_id_fk'])) {
+                        if ((int)$bl['customer_id_fk'] !== (int)$cid) continue;
+                    } else {
+                        $a = $bl['applies_to'] ?? 'all';
+                        if ($a === 'premium_only' && !$isPrem) continue;
+                        if ($a === 'non_premium' && $isPrem) continue;
+                        if ($a === 'prebook_only' && !$pbTok) continue;
+                    }
+                    throw new Exception('Dieses Datum ist leider gesperrt' . ($bl['reason'] ? ' ('.$bl['reason'].')' : '') . '. Bitte wähle ein anderes.');
+                }
+            }
+
             // Create job with ALL fields
             q("INSERT INTO jobs (customer_id_fk, s_id_fk, j_date, j_time, stop_times, check_in_date, check_in_time,
                 j_hours, job_for, address, optional_products, emp_message, no_people, code_door,

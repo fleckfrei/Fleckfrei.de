@@ -13,6 +13,41 @@ $discountMonthly = (float)($_st['discount_monthly'] ?? 3);
 $user = me();
 
 $customer = one("SELECT * FROM customer WHERE customer_id=?", [$cid]);
+
+// Admin-Sperren für die nächsten 180 Tage berechnen — damit der Kunde beim Datumswählen gewarnt wird.
+$blockedDates = [];
+$blockedReasons = [];
+try {
+    $_bFrom = date('Y-m-d');
+    $_bTo = date('Y-m-d', strtotime('+180 days'));
+    $_isPrem = (int)($customer['is_premium'] ?? 0);
+    $_bRows = all("SELECT date_from, date_to, applies_to, customer_id_fk, prebook_token, weekday_mask, reason
+                   FROM admin_blocked_days WHERE date_to >= ? AND date_from <= ?", [$_bFrom, $_bTo]);
+    foreach ($_bRows as $_bl) {
+        if (!empty($_bl['prebook_token'])) continue; // nur prebook-spezifisch — hier nicht relevant
+        $_allowed = !empty($_bl['weekday_mask']) ? array_map('intval', explode(',', $_bl['weekday_mask'])) : null;
+        if (!empty($_bl['customer_id_fk'])) {
+            if ((int)$_bl['customer_id_fk'] !== (int)$cid) continue;
+        } else {
+            $_a = $_bl['applies_to'] ?? 'all';
+            if ($_a === 'premium_only' && !$_isPrem) continue;
+            if ($_a === 'non_premium' && $_isPrem) continue;
+            if ($_a === 'prebook_only') continue;
+        }
+        $_d = max($_bl['date_from'], $_bFrom);
+        $_end = min($_bl['date_to'], $_bTo);
+        while ($_d <= $_end) {
+            $_wd = (int) date('N', strtotime($_d));
+            if ($_allowed === null || in_array($_wd, $_allowed, true)) {
+                $blockedDates[$_d] = true;
+                if (!empty($_bl['reason'])) $blockedReasons[$_d] = $_bl['reason'];
+            }
+            $_d = date('Y-m-d', strtotime("$_d +1 day"));
+        }
+    }
+} catch (Exception $e) {}
+$blockedDates = array_keys($blockedDates);
+
 $isAirbnb = in_array($customer['customer_type'] ?? '', ['Airbnb', 'Booking', 'Short-Term Rental', 'Company', 'Host']);
 $customerTypeKey = match(true) {
     in_array($customer['customer_type'] ?? '', ['Airbnb', 'Booking', 'Short-Term Rental', 'Host']) => 'airbnb',
@@ -249,8 +284,15 @@ include __DIR__ . '/../includes/layout-customer.php';
         <!-- Datum -->
         <div>
           <label class="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wider">Datum</label>
-          <input type="date" x-model="form.date" required min="<?= date('Y-m-d') ?>"
-                 class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+          <input type="date" x-model="form.date" @change="checkBlocked()" required min="<?= date('Y-m-d') ?>"
+                 :class="blockedError ? 'border-red-400 bg-red-50' : 'border-gray-200'"
+                 class="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-brand focus:border-brand outline-none"/>
+          <div x-show="blockedError" class="mt-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            🚫 <span x-text="blockedError"></span>
+          </div>
+          <?php if (!empty($blockedDates)): ?>
+          <div class="mt-1 text-[11px] text-gray-500">An bestimmten Tagen nehmen wir keine Buchungen an — du wirst gewarnt, wenn du einen solchen Tag wählst.</div>
+          <?php endif; ?>
         </div>
 
         <!-- Hinweis wenn noch kein Service gewählt -->
@@ -823,6 +865,19 @@ function bookingForm() {
     timeslots: [],
     timeslotsLoading: false,
     timeslotsStats: null,
+    blockedDates: <?= json_encode($blockedDates) ?>,
+    blockedReasons: <?= json_encode($blockedReasons, JSON_UNESCAPED_UNICODE) ?>,
+    blockedError: null,
+    checkBlocked() {
+      const d = this.form.date;
+      if (!d) { this.blockedError = null; return; }
+      if (this.blockedDates.includes(d)) {
+        const r = this.blockedReasons[d];
+        this.blockedError = 'Dieses Datum ist leider gesperrt' + (r ? ' (' + r + ')' : '') + '. Bitte wähle ein anderes.';
+      } else {
+        this.blockedError = null;
+      }
+    },
     formatDateDe(iso) {
       if (!iso) return '';
       const [y, m, d] = iso.split('-');
@@ -1152,6 +1207,8 @@ function bookingForm() {
     },
     submit() {
       if (!this.canSubmit()) { this.error = 'Bitte Service, Datum, Uhrzeit und Adresse ausfüllen.'; return; }
+      this.checkBlocked();
+      if (this.blockedError) { this.error = this.blockedError; return; }
       this.loading = true; this.error = null;
       const payload = { ...this.form };
       payload.optional_products = this.form.optional_products.join(', ');
