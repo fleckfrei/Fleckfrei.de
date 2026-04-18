@@ -619,15 +619,33 @@ include __DIR__ . '/../includes/layout.php';
         Junk löschen
       </button>
     </form>
-    <form method="POST" class="inline" onsubmit="const c = prompt('ALLE Leads werden unwiderruflich gelöscht. Tippe LOESCHE ALLES zum Bestätigen:'); if (c !== 'LOESCHE ALLES') return false; this.confirm.value = c;">
+    <form method="POST" class="inline" id="nukeForm">
       <?= csrfField() ?>
       <input type="hidden" name="action" value="nuke_all"/>
-      <input type="hidden" name="confirm" value=""/>
-      <button type="submit" class="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5">
+      <input type="hidden" name="confirm" value="LOESCHE ALLES"/>
+      <button type="button" id="nukeBtn" onclick="nukeConfirm(this)" class="px-4 py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        Alle löschen
+        <span>Alle löschen</span>
       </button>
     </form>
+    <script>
+    let nukeArmed = false, nukeTimer = null;
+    function nukeConfirm(btn) {
+      if (!nukeArmed) {
+        nukeArmed = true;
+        btn.querySelector('span').textContent = '⚠ Nochmal klicken zum bestätigen';
+        btn.classList.add('ring-4','ring-rose-300','animate-pulse');
+        nukeTimer = setTimeout(() => {
+          nukeArmed = false;
+          btn.querySelector('span').textContent = 'Alle löschen';
+          btn.classList.remove('ring-4','ring-rose-300','animate-pulse');
+        }, 3500);
+      } else {
+        clearTimeout(nukeTimer);
+        document.getElementById('nukeForm').submit();
+      }
+    }
+    </script>
     <div x-show="scanResult" x-cloak class="text-xs basis-full">
       <template x-if="scanResult?.success">
         <div>
