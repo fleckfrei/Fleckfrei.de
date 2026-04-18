@@ -8,6 +8,107 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = $_POST['action'] ?? '';
     $lid = (int)($_POST['lead_id'] ?? 0);
 
+    // KI-Pitch generieren (AJAX → JSON)
+    if ($act === 'generate_pitch' && $lid) {
+        header('Content-Type: application/json; charset=utf-8');
+        require_once __DIR__ . '/../includes/llm-helpers.php';
+        $lead = one("SELECT * FROM leads WHERE lead_id=?", [$lid]);
+        if (!$lead) { echo json_encode(['error' => 'not found']); exit; }
+
+        $catPitch = [
+            'airbnb' => "Airbnb/Ferienwohnungs-Host in Berlin. Fleckfrei ist spezialisiert auf SCHNELLE Turnover-Reinigung zwischen Gästen (11-16 Uhr STR-Fenster), 5-Sterne-Quality-Checks mit Foto-Beweis, flexible Last-Minute-Buchung, Wäsche-Service optional. Konzentriere auf: Review-Boost, Zeitersparnis, kein Stress bei kurzen Wechsel-Fenstern.",
+            'cohost' => "Airbnb Co-Host / Vermieter-Support. Fleckfrei bietet Full-Service Ferienwohnungs-Management: Turnover-Reinigung, Gäste-Kommunikation, Check-In/Check-Out via Nuki-Schloss, Wäsche, Beschwerde-Handling. Für Vermieter die ihre Zeit zurück wollen.",
+            'haushalt' => "Privathaushalt in Berlin sucht verlässliche Putz-/Haushaltshilfe. Fleckfrei bietet regelmäßige wöchentliche/14-tägliche/monatliche Reinigung mit festem Partner, Loyalty-Bonus nach 3 Monaten, transparente Preise, alle Versicherungen. Konzentriere auf: Verlässlichkeit, persönlicher fester Ansprechpartner, keine wechselnden Gesichter.",
+            'buero' => "B2B Büroreinigung Berlin. Fleckfrei reinigt Büros, Praxen, Kanzleien abends/morgens außerhalb der Geschäftszeiten, monatliche Rechnung, Versicherung, Schlüssel-Übergabe dokumentiert. Konzentriere auf: Zuverlässigkeit, Diskretion, Bürozeiten-freundlich.",
+            'event' => "Event- & Baustellenreinigung in Berlin. Fleckfrei kommt kurzfristig, bringt eigenes Equipment, arbeitet auch Wochenende. Konzentriere auf: Schnelligkeit, Flexibilität.",
+            'umzug' => "Endreinigung nach Umzug / Mietwohnung. Fleckfrei macht die besen-reine Übergabe, garantiert vom Vermieter akzeptiert. Konzentriere auf: Geld-zurück-Garantie bei nicht-Abnahme.",
+        ];
+
+        $name = $lead['name'] ?: 'Lead';
+        $snippet = $lead['raw_snippet'] ?: '';
+        $sourceUrl = $lead['source_url'] ?? '';
+        $cat = $lead['category'] ?? 'haushalt';
+        $pitchCtx = $catPitch[$cat] ?? $catPitch['haushalt'];
+
+        $prompt = "Du schreibst eine personalisierte Verkaufs-Email von Fleckfrei (Reinigungs-Service Berlin, fleckfrei.de) an einen potenziellen Kunden. "
+                . "Wir haben seine Anzeige/Post gefunden und wollen ihn überzeugen, uns zu wählen.\n\n"
+                . "Kunde-Info:\n"
+                . "- Titel/Name: $name\n"
+                . "- Anzeigen-Text: " . substr($snippet, 0, 500) . "\n"
+                . "- Quelle: $sourceUrl\n"
+                . "- Kategorie: $cat\n\n"
+                . "Kontext zu Fleckfrei für diese Kategorie:\n$pitchCtx\n\n"
+                . "Gib AUSSCHLIESSLICH JSON zurück, keine Markdown:\n"
+                . '{"subject": "...", "body": "<p>...</p>HTML-Body mit <p>, <b>, <a>-Tags"}' . "\n\n"
+                . "- Subject: max 70 Zeichen, persönlich, mit konkretem Nutzen (nicht generisch)\n"
+                . "- Body: 4-5 kurze Absätze, warm und menschlich, keine Floskeln:\n"
+                . "  1. Persönlicher Einstieg (bezug auf seine Anzeige — wenn Name bekannt, nutze ihn)\n"
+                . "  2. Was Fleckfrei für SEINEN Fall konkret anbietet (kategorie-spezifisch)\n"
+                . "  3. 2-3 konkrete Benefits als Liste oder Fließtext (keine Buzzwords — konkret)\n"
+                . "  4. Ein grosser Button-Link: <a href=\"{{LINK}}\" style=\"background:#2E7D6B;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;display:inline-block\">Jetzt unverbindliches Angebot ansehen →</a>\n"
+                . "  5. Signatur: 'Viele Grüße, Fleckfrei-Team · 030-xxx · info@fleckfrei.de'\n"
+                . "- Platzhalter {{LINK}} wird später durch den persönlichen Buchungs-Link ersetzt.\n"
+                . "- Keine aggressive Sprache, kein 'gratis', keine Emojis im Subject.";
+
+        $r = groq_chat($prompt, 900);
+        $content = trim($r['content'] ?? '');
+        $content = preg_replace('/^```(?:json)?|```$/m', '', $content);
+        $parsed = json_decode(trim($content), true);
+        if (!is_array($parsed) || empty($parsed['subject']) || empty($parsed['body'])) {
+            echo json_encode(['error' => 'KI-Antwort nicht lesbar', 'raw' => substr($content, 0, 400)]); exit;
+        }
+        echo json_encode(['subject' => $parsed['subject'], 'body' => $parsed['body']]);
+        exit;
+    }
+
+    // Pitch senden + Lead konvertieren in einem Schritt
+    if ($act === 'send_pitch' && $lid) {
+        global $db;
+        $lead = one("SELECT * FROM leads WHERE lead_id=?", [$lid]);
+        $subject = trim($_POST['subject'] ?? '');
+        $body = trim($_POST['body'] ?? '');
+        if (!$lead || $subject === '' || $body === '' || empty($lead['email'])) {
+            header('Location: /admin/leads.php?err=missing'); exit;
+        }
+        // Kunde + Prebook-Link anlegen (gleiche Logik wie convert)
+        $name = trim($lead['name']) ?: 'Lead-Kunde';
+        $email = strtolower(trim($lead['email']));
+        $phone = trim($lead['phone'] ?? '');
+        $typeMap = ['airbnb'=>'Airbnb','cohost'=>'Host','buero'=>'Company','haushalt'=>'Private Person','event'=>'Private Person','umzug'=>'Private Person'];
+        $cType = $typeMap[$lead['category']] ?? 'Private Person';
+        $cust = one("SELECT * FROM customer WHERE LOWER(email)=?", [$email]);
+        if ($cust) { $cid = (int)$cust['customer_id']; }
+        else {
+            q("INSERT INTO customer (name, email, phone, customer_type, password, status, email_permissions, notes)
+               VALUES (?, ?, ?, ?, '0000', 1, 'all', ?)",
+               [$name, $email, $phone ?: null, $cType, "Aus Lead #$lid (KI-Pitch) · Quelle: " . ($lead['source'] ?? '—')]);
+            $cid = (int) $db->lastInsertId();
+            q("INSERT IGNORE INTO users (email, type) VALUES (?, 'customer')", [$email]);
+        }
+        $slugSrc = strtolower(preg_replace('/[^a-z0-9]+/i', '-', trim($name . '-' . $cid)));
+        $slugSrc = trim(substr($slugSrc, 0, 40), '-') ?: 'lead-' . $cid;
+        $token = $slugSrc;
+        $n = 0;
+        while (val("SELECT pl_id FROM prebooking_links WHERE token=?", [$token])) {
+            $token = $slugSrc . '-' . substr(bin2hex(random_bytes(2)), 0, 4);
+            if (++$n > 5) break;
+        }
+        $svcType = ['airbnb'=>'str','cohost'=>'str','buero'=>'office','haushalt'=>'home_care'][$lead['category']] ?? 'home_care';
+        q("INSERT INTO prebooking_links (token, email, name, phone, service_type, duration, created_by, expires_at)
+           VALUES (?, ?, ?, ?, ?, 3, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))",
+           [$token, $email, $name, $phone ?: null, $svcType, $_SESSION['uemail'] ?? 'admin']);
+
+        $link = 'https://app.' . SITE_DOMAIN . '/p/' . $token;
+        $body = str_replace('{{LINK}}', $link, $body);
+
+        if (function_exists('sendEmail')) {
+            sendEmail($email, $subject, $body, null, 'lead_pitch');
+        }
+        q("UPDATE leads SET status='contacted', contacted_at=NOW() WHERE lead_id=?", [$lid]);
+        if (function_exists('audit')) audit('pitch_sent', 'leads', $lid, "→ customer #$cid + /p/$token · Subject: " . substr($subject, 0, 60));
+        header("Location: /admin/leads.php?saved=1&sent=1"); exit;
+    }
+
     if ($act === 'add_manual') {
         $name = trim($_POST['m_name'] ?? '');
         if ($name !== '') {
@@ -249,12 +350,17 @@ include __DIR__ . '/../includes/layout.php';
         <!-- Status actions -->
         <div class="flex flex-col gap-1 flex-shrink-0 min-w-[180px]">
           <?php if ($l['status'] !== 'converted'): ?>
-          <form method="POST" onsubmit="return confirm('Lead → Kunde umwandeln?\n\nAutomatisch angelegt:\n• Kunden-Konto\n• Persönlicher Buchungs-Link\n• Redirect zur Kunden-Seite');">
+          <?php if (!empty($l['email'])): ?>
+          <button type="button" onclick='openPitch(<?= e(json_encode(["lead_id"=>$l["lead_id"],"name"=>$l["name"],"email"=>$l["email"],"category"=>$l["category"]])) ?>)' class="w-full px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold">
+            ✉️ KI-Pitch schreiben
+          </button>
+          <?php endif; ?>
+          <form method="POST" onsubmit="return confirm('Lead → Kunde umwandeln (ohne Email)?');">
             <?= csrfField() ?>
             <input type="hidden" name="action" value="convert"/>
             <input type="hidden" name="lead_id" value="<?= $l['lead_id'] ?>"/>
             <button type="submit" class="w-full px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold">
-              ✨ In Kunde umwandeln →
+              ✨ Nur umwandeln →
             </button>
           </form>
           <?php endif; ?>
@@ -282,3 +388,86 @@ include __DIR__ . '/../includes/layout.php';
   </div>
   <?php endif; ?>
 </div>
+
+<!-- KI-Pitch Modal -->
+<div id="pitchModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-xl max-w-5xl w-full max-h-[94vh] overflow-auto">
+    <div class="sticky top-0 bg-white border-b px-5 py-3 flex justify-between items-center">
+      <h3 class="font-bold text-lg">✉️ KI-Pitch an Lead <span class="text-xs font-normal text-gray-500 ml-2" id="pitchTo">—</span></h3>
+      <button type="button" onclick="closePitch()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+    </div>
+    <form method="POST" class="p-5 space-y-3" onsubmit="return confirm('Email jetzt senden + Lead in Kunde umwandeln?');">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="send_pitch"/>
+      <input type="hidden" name="lead_id" id="pitchLid"/>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="regenPitch()" id="pitchGenBtn" class="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 disabled:opacity-50">🔄 KI neu generieren</button>
+        <span id="pitchStatus" class="text-xs text-gray-500"></span>
+        <span class="text-[11px] text-gray-400 ml-auto">Platzhalter <code class="bg-gray-100 px-1 rounded">{{LINK}}</code> wird beim Senden durch persönlichen Prebook-Link ersetzt.</span>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-700 mb-1">Betreff</label>
+        <input name="subject" id="pitchSubj" required maxlength="140" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Body (HTML — bearbeitbar)</label>
+          <textarea name="body" id="pitchBody" required rows="16" oninput="renderPitchPreview()" class="w-full px-3 py-2 border rounded-lg text-xs font-mono"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Live-Preview</label>
+          <div id="pitchPreview" class="border rounded-lg p-4 bg-gray-50 text-sm max-h-[480px] overflow-auto"></div>
+        </div>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button type="button" onclick="closePitch()" class="flex-1 px-4 py-2 border rounded-lg">Abbrechen</button>
+        <button type="submit" class="flex-1 px-4 py-2 bg-brand text-white rounded-lg font-semibold">📧 Senden + Kunde anlegen</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let _pitchLead = null;
+function openPitch(lead) {
+  _pitchLead = lead;
+  document.getElementById('pitchModal').classList.remove('hidden');
+  document.getElementById('pitchModal').classList.add('flex');
+  document.getElementById('pitchLid').value = lead.lead_id;
+  document.getElementById('pitchTo').textContent = '→ ' + (lead.name || '') + ' <' + lead.email + '> · ' + lead.category;
+  document.getElementById('pitchSubj').value = '';
+  document.getElementById('pitchBody').value = '';
+  document.getElementById('pitchPreview').innerHTML = '<div class="text-gray-400">Wird generiert…</div>';
+  regenPitch();
+}
+function closePitch() {
+  document.getElementById('pitchModal').classList.add('hidden');
+  document.getElementById('pitchModal').classList.remove('flex');
+  _pitchLead = null;
+}
+async function regenPitch() {
+  if (!_pitchLead) return;
+  const btn = document.getElementById('pitchGenBtn');
+  const status = document.getElementById('pitchStatus');
+  btn.disabled = true; status.textContent = 'KI denkt nach…';
+  const fd = new FormData();
+  fd.append('action', 'generate_pitch');
+  fd.append('lead_id', _pitchLead.lead_id);
+  fd.append('_csrf', '<?= csrfToken() ?>');
+  try {
+    const r = await fetch('/admin/leads.php', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.error) { status.textContent = '❌ ' + d.error; btn.disabled = false; return; }
+    document.getElementById('pitchSubj').value = d.subject || '';
+    document.getElementById('pitchBody').value = d.body || '';
+    renderPitchPreview();
+    status.textContent = '✅ Fertig — bearbeite und sende';
+  } catch (e) { status.textContent = '❌ ' + e.message; }
+  btn.disabled = false;
+}
+function renderPitchPreview() {
+  const body = document.getElementById('pitchBody').value || '';
+  const preview = body.replace(/\{\{LINK\}\}/g, 'https://app.fleckfrei.de/p/preview-link');
+  document.getElementById('pitchPreview').innerHTML = preview || '<div class="text-gray-400">leer</div>';
+}
+</script>
