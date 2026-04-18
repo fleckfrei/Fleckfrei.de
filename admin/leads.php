@@ -409,16 +409,22 @@ include __DIR__ . '/../includes/layout.php';
     <button
       @click="scanning = true; scanResult = null; fetch('/api/lead-scraper.php?cron=flk_scrape_2026').then(r => r.json()).then(d => { scanResult = d; scanning = false; if (d.total_new > 0) setTimeout(() => location.reload(), 1500); }).catch(() => { scanning = false; scanResult = { error: 'VPS nicht erreichbar — nutze manuellen Eintrag' }; })"
       :disabled="scanning"
-      class="px-4 py-2 bg-brand hover:bg-brand/90 text-white rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-50">
+      class="px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-50 shadow-sm">
       <svg x-show="!scanning" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
       <svg x-show="scanning" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-      <span x-text="scanning ? 'Scanne...' : '🔍 Auto-Scan'"></span>
+      <span x-text="scanning ? 'Scanne...' : 'Auto-Scan'"></span>
     </button>
-    <button @click="manualOpen = !manualOpen" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold">+ Manueller Lead</button>
+    <button @click="manualOpen = !manualOpen" class="px-4 py-2 bg-white border-2 border-brand text-brand hover:bg-brand-light rounded-xl text-sm font-semibold flex items-center gap-1.5">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      Manueller Lead
+    </button>
     <form method="POST" class="inline" onsubmit="return confirm('Junk-Leads (Job-Boards, Behörden, Konkurrenten, alte ohne Kontakt) löschen?');">
       <?= csrfField() ?>
       <input type="hidden" name="action" value="purge_junk"/>
-      <button type="submit" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold">🗑 Junk löschen</button>
+      <button type="submit" class="px-4 py-2 bg-white border-2 border-rose-600 text-rose-700 hover:bg-rose-50 rounded-xl text-sm font-semibold flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        Junk löschen
+      </button>
     </form>
     <div x-show="scanResult" x-cloak class="text-xs basis-full">
       <template x-if="scanResult?.success">
@@ -449,7 +455,7 @@ include __DIR__ . '/../includes/layout.php';
         <input name="m_phone" placeholder="Telefon" class="px-3 py-2 border rounded-lg text-sm"/>
         <input name="m_notes" placeholder="Notiz" class="px-3 py-2 border rounded-lg text-sm"/>
         <textarea name="m_snippet" placeholder="Anzeigen-Text / Beschreibung" class="md:col-span-3 px-3 py-2 border rounded-lg text-sm" rows="2"></textarea>
-        <button type="submit" class="md:col-span-3 px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-semibold">💾 Lead speichern</button>
+        <button type="submit" class="md:col-span-3 px-4 py-2 bg-brand hover:bg-brand-dark text-white rounded-xl text-sm font-semibold">💾 Lead speichern</button>
       </form>
     </div>
   </div>
@@ -459,7 +465,7 @@ include __DIR__ . '/../includes/layout.php';
 <?php $freshUrl = function($f) use ($filter, $segment, $category) { return '?filter=' . urlencode($filter) . '&segment=' . urlencode($segment) . '&fresh=' . urlencode($f) . ($category ? '&category=' . urlencode($category) : ''); }; ?>
 <div class="flex gap-2 mb-3 flex-wrap items-center">
   <span class="text-xs text-gray-500 font-semibold">⏱ Frische:</span>
-  <a href="<?= $freshUrl('7d') ?>" class="px-3 py-1 rounded-lg text-xs font-bold <?= $fresh === '7d' ? 'bg-green-600 text-white' : 'bg-white border text-green-700 hover:border-green-600' ?>">🟢 letzte 7 Tage</a>
+  <a href="<?= $freshUrl('7d') ?>" class="px-3 py-1 rounded-lg text-xs font-bold <?= $fresh === '7d' ? 'bg-emerald-600 text-white' : 'bg-white border text-emerald-700 hover:border-emerald-600' ?>">🟢 letzte 7 Tage</a>
   <a href="<?= $freshUrl('30d') ?>" class="px-3 py-1 rounded-lg text-xs font-bold <?= $fresh === '30d' ? 'bg-amber-600 text-white' : 'bg-white border text-amber-700 hover:border-amber-600' ?>">🟡 letzte 30 Tage</a>
   <a href="<?= $freshUrl('') ?>" class="px-3 py-1 rounded-lg text-xs font-bold <?= $fresh === '' ? 'bg-gray-700 text-white' : 'bg-white border text-gray-700 hover:border-gray-700' ?>">alle</a>
 </div>
@@ -476,7 +482,7 @@ include __DIR__ . '/../includes/layout.php';
 <div class="flex gap-2 mb-4 flex-wrap">
   <a href="?filter=new" class="px-4 py-2 rounded-xl text-sm font-semibold <?= $filter === 'new' ? 'bg-brand text-white' : 'bg-white border text-gray-700 hover:border-brand' ?>">Neu (<?= $counts['new'] ?>)</a>
   <a href="?filter=contacted" class="px-4 py-2 rounded-xl text-sm font-semibold <?= $filter === 'contacted' ? 'bg-brand text-white' : 'bg-white border text-gray-700 hover:border-brand' ?>">Kontaktiert (<?= $counts['contacted'] ?>)</a>
-  <a href="?filter=converted" class="px-4 py-2 rounded-xl text-sm font-semibold <?= $filter === 'converted' ? 'bg-green-600 text-white' : 'bg-white border text-gray-700 hover:border-green-600' ?>">Gewonnen (<?= $counts['converted'] ?>)</a>
+  <a href="?filter=converted" class="px-4 py-2 rounded-xl text-sm font-semibold <?= $filter === 'converted' ? 'bg-emerald-600 text-white' : 'bg-white border text-gray-700 hover:border-emerald-600' ?>">Gewonnen (<?= $counts['converted'] ?>)</a>
   <a href="?filter=rejected" class="px-4 py-2 rounded-xl text-sm font-semibold <?= $filter === 'rejected' ? 'bg-gray-500 text-white' : 'bg-white border text-gray-700 hover:border-gray-500' ?>">Abgelehnt (<?= $counts['rejected'] ?>)</a>
   <a href="?filter=all" class="px-4 py-2 rounded-xl text-sm font-semibold <?= $filter === 'all' ? 'bg-gray-700 text-white' : 'bg-white border text-gray-700 hover:border-gray-700' ?>">Alle (<?= $counts['all'] ?>)</a>
 </div>
@@ -737,7 +743,7 @@ function bgCheck(id) {
       }
       const ch = d.channels || {};
       const waBtn = ch.whatsapp && ch.wa_link
-        ? `<a href="${ch.wa_link}" target="_blank" class="inline-flex items-center gap-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700">💬 WhatsApp öffnen</a>`
+        ? `<a href="${ch.wa_link}" target="_blank" class="inline-flex items-center gap-1 px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700">💬 WhatsApp öffnen</a>`
         : '<span class="px-3 py-2 bg-gray-100 text-gray-500 rounded-lg text-sm">💬 WhatsApp nicht erkennbar</span>';
       const tgBtn = ch.telegram
         ? '<span class="inline-flex items-center gap-1 px-3 py-2 bg-sky-600 text-white rounded-lg text-sm font-semibold">✈️ Telegram erwähnt im Text</span>'
