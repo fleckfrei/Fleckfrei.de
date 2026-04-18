@@ -751,6 +751,13 @@ include __DIR__ . '/../includes/layout-customer.php';
           </div>
         </div>
       </div>
+      <template x-if="result?.auto_shifted">
+        <div class="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-3 mb-4 text-sm">
+          ℹ️ <b>Hinweis:</b> Dein Wunsch-Termin <b x-text="result.auto_shifted.from"></b> Uhr lag im
+          <b x-text="result.auto_shifted.reason"></b>-Fenster (<span x-text="result.auto_shifted.window"></span>).
+          Wir haben automatisch auf <b x-text="result.auto_shifted.to"></b> Uhr umgebucht — passt besser zur Route.
+        </div>
+      </template>
 
       <!-- Details der Buchung -->
       <div class="card-elev p-5 mb-4">

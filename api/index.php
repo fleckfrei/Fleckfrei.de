@@ -1049,6 +1049,37 @@ try {
                 }
             }
 
+            // Auto-Shift bei Priority-Fenster: wenn Kunde shiftbar ist und in einem aktiven
+            // Priority-Fenster bucht, verschieben wir automatisch auf den nächsten freien Slot
+            // vor oder nach dem Fenster. Kein Admin-Eingriff nötig.
+            $autoShifted = null;
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && preg_match('/^\d{2}:\d{2}/', $time)) {
+                $_pw = all("SELECT priority_label, start_time, end_time, priority_customer_types, shiftable_customer_types, max_shift_minutes
+                            FROM booking_priority_windows WHERE active=1");
+                foreach ($_pw as $_w) {
+                    $_prioTypes = json_decode($_w['priority_customer_types'], true) ?: [];
+                    $_shiftTypes = json_decode($_w['shiftable_customer_types'], true) ?: [];
+                    if (in_array($customerType, $_prioTypes, true)) break; // Prio-Kunde → nicht shiften
+                    if (!in_array($customerType, $_shiftTypes, true)) continue; // nicht in diesem Fenster shiftbar
+                    $_ws = substr($_w['start_time'], 0, 5);
+                    $_we = substr($_w['end_time'], 0, 5);
+                    $_t  = substr($time, 0, 5);
+                    if ($_t < $_ws || $_t >= $_we) continue; // nicht in Fenster
+                    // Shift: bevorzugt VOR dem Fenster (= Fensterstart - Job-Dauer), sonst NACH dem Fenster
+                    $_preTime = date('H:i', strtotime($_ws) - ((int)$hours) * 3600);
+                    $_postTime = $_we;
+                    $_chosen = null;
+                    if ($_preTime >= '07:00') $_chosen = $_preTime;
+                    elseif ($_postTime <= '19:00') $_chosen = $_postTime;
+                    if ($_chosen) {
+                        $autoShifted = ['from' => $_t, 'to' => $_chosen, 'reason' => $_w['priority_label'], 'window' => "$_ws-$_we"];
+                        $time = $_chosen . ':00';
+                        $stopTimes = date('H:i:s', strtotime($time) + ((int)$hours) * 3600);
+                    }
+                    break;
+                }
+            }
+
             // Create job with ALL fields
             q("INSERT INTO jobs (customer_id_fk, s_id_fk, j_date, j_time, stop_times, check_in_date, check_in_time,
                 j_hours, job_for, address, optional_products, emp_message, no_people, code_door,
@@ -1072,7 +1103,10 @@ try {
                 'customer_type' => $customerType,
                 'service' => $service,
                 'status' => 'PENDING',
-                'message' => "Booking FF-".date('Ymd')."-$jid created for $name ($customerType)"
+                'auto_shifted' => $autoShifted,
+                'message' => $autoShifted
+                    ? "Termin auf {$autoShifted['to']} verschoben ({$autoShifted['reason']}-Fenster {$autoShifted['window']})"
+                    : "Booking FF-".date('Ymd')."-$jid created for $name ($customerType)"
             ];
         })(),
 
