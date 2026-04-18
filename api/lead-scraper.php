@@ -112,15 +112,18 @@ $results = [];
 // Direkt-Scrape von kleinanzeigen.de (unabhängig von VPS SearXNG)
 // Kleinanzeigen-Suche liefert deutlich verlässlicher echte Leads.
 // ============================================================
-$kleinanzeigenCategories = [
-    'haushalt' => ['reinigungsfirma-berlin','putzhilfe-berlin','haushaltshilfe-berlin','wohnungsreinigung-berlin'],
-    'airbnb'   => ['airbnb-reinigung-berlin','ferienwohnung-reinigung-berlin'],
-    'cohost'   => ['airbnb-co-host-berlin','airbnb-verwaltung-berlin'],
-    'buero'    => ['bueroreinigung-berlin','gewerbereinigung-berlin'],
+// Kleinanzeigen-Suche nur in "Gesuche" (adType=REQUEST) — das sind Leute die
+// Dienstleistungen SUCHEN, nicht anbieten. l3331 = Berlin. Mit "gesucht"-Keyword.
+$kleinanzeigenSearches = [
+    'haushalt' => ['reinigungsfirma+gesucht', 'putzhilfe+gesucht', 'haushaltshilfe+gesucht', 'wohnungsreinigung+gesucht', 'endreinigung+wohnung'],
+    'airbnb'   => ['airbnb+reinigung', 'ferienwohnung+reinigung+gesucht', 'turnover+cleaning', 'gästewechsel+reinigung'],
+    'cohost'   => ['airbnb+co-host', 'ferienwohnung+verwaltung', 'airbnb+management'],
+    'buero'    => ['büroreinigung+gesucht', 'gewerbereinigung+gesucht', 'praxisreinigung+gesucht'],
 ];
-foreach ($kleinanzeigenCategories as $category => $slugs) {
-    foreach ($slugs as $slug) {
-        $url = 'https://www.kleinanzeigen.de/s-' . urlencode($slug) . '/k0l3331';
+foreach ($kleinanzeigenSearches as $category => $terms) {
+    foreach ($terms as $term) {
+        // adType=REQUEST = nur Gesuche, kein Angebot; l3331 = Berlin; sortBy=creation = neueste zuerst
+        $url = 'https://www.kleinanzeigen.de/s-berlin/' . $term . '/k0l3331?adType=REQUEST&sortingField=SORTING_DATE';
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -172,8 +175,23 @@ foreach ($queries as $category => $queryList) {
             $snippet = $r['snippet'] ?? $r['content'] ?? '';
             if ($url === '' || $title === '') continue;
 
-            // Skip aggregator/spam domains
-            $skipDomains = ['google.com', 'wikipedia', 'youtube.com', 'helpling.de', 'book-a-tiger.com', 'amazon.', 'pinterest.', 'facebook.com/marketplace'];
+            // Skip aggregator/spam/competitor/government/job-board domains
+            $skipDomains = [
+                // Suchmaschinen + Portale
+                'google.com', 'wikipedia', 'youtube.com', 'amazon.', 'pinterest.', 'facebook.com/marketplace',
+                // Job-Boards (Leute die Arbeit suchen, nicht Kunden)
+                'jooble.org', 'indeed.', 'stepstone.de', 'stellenanzeigen.de', 'monster.de', 'xing.com', 'linkedin.com',
+                'adzuna.de', 'kimeta.de', 'meinestadt.de', 'jobruf.de', 'joblift.de', 'stellenmarkt.de',
+                // Behörden / Gesetze / Gewerkschaften
+                'rki.de', 'bmg.bund.de', 'bundesregierung.de', 'gesetze-im-internet.de', 'bzga.de',
+                'dpolg.', 'verdi.de', 'dgb.de', 'beamtenbund.de',
+                // Konkurrenten Reinigungsfirmen
+                'helpling.de', 'book-a-tiger.com', 'desomax.de', 'alfa24.de', 'swc-berlin.de',
+                'clean4you.', 'cleanpower', 'reinigungsfirma-berlin.de', 'gebäudereinigung.',
+                // Branchen-Portale
+                'gelbeseiten.de', 'dasoertliche.de', '11880.com', 'wlw.de', 'gewerbe24.de',
+                'praxiswaesche.de', 'berufskleidung.', 'hygieneplan.de',
+            ];
             $skip = false;
             foreach ($skipDomains as $d) if (strpos($url, $d) !== false) $skip = true;
             if ($skip) continue;

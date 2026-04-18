@@ -109,6 +109,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: /admin/leads.php?saved=1&sent=1"); exit;
     }
 
+    // Junk-Purge: löscht alle Leads von Behörden/Job-Boards/Konkurrenten + alte kontaktlose
+    if ($act === 'purge_junk') {
+        $junkDomains = [
+            'rki.de','bmg.bund.de','bundesregierung.de','gesetze-im-internet.de',
+            'jooble.org','indeed.com','indeed.de','stepstone.de','stellenanzeigen.de',
+            'monster.de','xing.com','linkedin.com','adzuna.de','kimeta.de','meinestadt.de',
+            'dpolg.berlin','dpolg.de','verdi.de','dgb.de',
+            'desomax.de','alfa24.de','helpling.de','book-a-tiger.com','jobruf.de',
+            'gelbeseiten.de','dasoertliche.de','11880.com',
+            'praxiswaesche.de','wikipedia.org','youtube.com','pinterest.',
+        ];
+        $deleted = 0;
+        // 1) Domain-basiert löschen
+        foreach ($junkDomains as $dom) {
+            $n = q("DELETE FROM leads WHERE source_url LIKE ? OR source LIKE ?", ["%$dom%", "%$dom%"]);
+            // rowCount via PDOStatement — q() returns it in some codebases; ignore result, DB wil do it
+        }
+        $deleted = (int) val("SELECT ROW_COUNT()"); // letzte Operation
+
+        // 2) Alte Leads ohne Kontaktdaten + status=new älter 7 Tage
+        q("DELETE FROM leads WHERE status='new' AND (email IS NULL OR email='') AND (phone IS NULL OR phone='') AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)");
+
+        // 3) Alle nicht-konvertierten älter 60 Tage
+        q("DELETE FROM leads WHERE status='new' AND created_at < DATE_SUB(NOW(), INTERVAL 60 DAY)");
+
+        header('Location: /admin/leads.php?saved=1&purged=1'); exit;
+    }
+
+    if ($act === 'delete_all_new') {
+        q("DELETE FROM leads WHERE status='new'");
+        header('Location: /admin/leads.php?saved=1&purged=1'); exit;
+    }
+
     if ($act === 'add_manual') {
         $name = trim($_POST['m_name'] ?? '');
         if ($name !== '') {
@@ -246,6 +279,11 @@ include __DIR__ . '/../includes/layout.php';
       <span x-text="scanning ? 'Scanne...' : '🔍 Auto-Scan'"></span>
     </button>
     <button @click="manualOpen = !manualOpen" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold">+ Manueller Lead</button>
+    <form method="POST" class="inline" onsubmit="return confirm('Junk-Leads (Job-Boards, Behörden, Konkurrenten, alte ohne Kontakt) löschen?');">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="purge_junk"/>
+      <button type="submit" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold">🗑 Junk löschen</button>
+    </form>
     <div x-show="scanResult" x-cloak class="text-xs basis-full">
       <template x-if="scanResult?.success">
         <div>
