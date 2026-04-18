@@ -471,11 +471,19 @@ if ($fresh === '7d') {
     $where[] = "(notes REGEXP '\\\\[POSTED:[0-9-]+[^]]*\\\\]' AND STR_TO_DATE(SUBSTRING_INDEX(SUBSTRING_INDEX(notes, '[POSTED:', -1), ' ', 1), '%Y-%m-%d') >= DATE_SUB(NOW(), INTERVAL 30 DAY))";
 }
 
-// Sortierung: nach POSTED-Date falls vorhanden, sonst created_at
+// Pagination + Sortierung: Target-Leads (Airbnb/Booking/Places) zuerst, dann nach Datum
+$perPage = 50;
+$page = max(1, (int)($_GET['page'] ?? 1));
+$offset = ($page - 1) * $perPage;
+$totalLeads = (int) val("SELECT COUNT(*) FROM leads WHERE " . implode(' AND ', $where), $params);
+$totalPages = max(1, (int) ceil($totalLeads / $perPage));
+
 $leads = all("SELECT *,
-                COALESCE(STR_TO_DATE(SUBSTRING_INDEX(SUBSTRING_INDEX(notes, '[POSTED:', -1), ' ', 1), '%Y-%m-%d'), DATE(created_at)) AS effective_date
+                COALESCE(STR_TO_DATE(SUBSTRING_INDEX(SUBSTRING_INDEX(notes, '[POSTED:', -1), ' ', 1), '%Y-%m-%d'), DATE(created_at)) AS effective_date,
+                (CASE WHEN source IN ('airbnb','booking.com','google_places') THEN 0 ELSE 1 END) AS target_priority
              FROM leads WHERE " . implode(' AND ', $where) . "
-             ORDER BY effective_date DESC, created_at DESC LIMIT 200", $params);
+             ORDER BY target_priority ASC, effective_date DESC, created_at DESC
+             LIMIT $perPage OFFSET $offset", $params);
 
 // Letzter Scan-Zeitpunkt (aus audit)
 $lastScan = val("SELECT MAX(created_at) FROM audit_log WHERE action='scrape' AND entity='leads'") ?: null;
@@ -617,6 +625,12 @@ include __DIR__ . '/../includes/layout.php';
   <a href="?filter=all" class="px-4 py-2 rounded-xl text-sm font-semibold <?= $filter === 'all' ? 'bg-gray-700 text-white' : 'bg-white border text-gray-700 hover:border-gray-700' ?>">Alle (<?= $counts['all'] ?>)</a>
 </div>
 
+<!-- Info-Leiste: wieviele insgesamt + Seite -->
+<div class="flex justify-between items-center mb-2 text-xs text-gray-600">
+  <div><b><?= $totalLeads ?></b> Leads in Filter · Seite <b><?= $page ?></b>/<?= $totalPages ?> · <b><?= count($leads) ?></b> angezeigt</div>
+  <?php if ($totalLeads > 500): ?><div class="text-amber-700">💡 Tipp: zu viele Leads? Klicke "🎯 Target-Kunden" oben für die wertvollen.</div><?php endif; ?>
+</div>
+
 <!-- Leads list -->
 <div class="bg-white rounded-xl border overflow-hidden">
   <?php if (empty($leads)): ?>
@@ -638,11 +652,15 @@ include __DIR__ . '/../includes/layout.php';
           if (preg_match('/\[POSTED:([\d-]+(?: [\d:]+)?)\]/', $l['notes'], $_m)) $postedAt = $_m[1];
       }
       $googleQ = $contactName ? $contactName . ' Berlin' : ($l['email'] ?: $l['phone'] ?: $l['name']) . ' Berlin';
+      $_isTarget = in_array($l['source'] ?? '', ['airbnb','booking.com','google_places'], true);
     ?>
-    <div class="p-5 hover:bg-gray-50 transition">
+    <div class="p-5 hover:bg-gray-50 transition <?= $_isTarget ? 'bg-brand-light/10 border-l-4 border-brand' : '' ?>">
       <div class="flex items-start justify-between gap-4">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <?php if ($_isTarget): ?>
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand text-white">🎯 TARGET</span>
+            <?php endif; ?>
             <?php $_seg = $catSegment[$l['category']] ?? ''; ?>
             <?php if ($_seg === 'B2C'): ?>
               <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">👤 B2C</span>
@@ -737,6 +755,28 @@ include __DIR__ . '/../includes/layout.php';
   </div>
   <?php endif; ?>
 </div>
+
+<?php if ($totalPages > 1):
+  $pageUrl = function($p) { $q = $_GET; $q['page'] = $p; return '?' . http_build_query($q); };
+?>
+<div class="flex items-center justify-center gap-1 mt-4 flex-wrap">
+  <?php if ($page > 1): ?>
+  <a href="<?= $pageUrl(1) ?>" class="px-3 py-1.5 bg-white border rounded-lg text-xs hover:border-brand">« Erste</a>
+  <a href="<?= $pageUrl($page - 1) ?>" class="px-3 py-1.5 bg-white border rounded-lg text-xs hover:border-brand">‹ Zurück</a>
+  <?php endif; ?>
+  <?php
+    $pStart = max(1, $page - 3); $pEnd = min($totalPages, $page + 3);
+    for ($p = $pStart; $p <= $pEnd; $p++):
+  ?>
+  <a href="<?= $pageUrl($p) ?>" class="px-3 py-1.5 rounded-lg text-xs font-semibold <?= $p === $page ? 'bg-brand text-white' : 'bg-white border hover:border-brand' ?>"><?= $p ?></a>
+  <?php endfor; ?>
+  <?php if ($page < $totalPages): ?>
+  <a href="<?= $pageUrl($page + 1) ?>" class="px-3 py-1.5 bg-white border rounded-lg text-xs hover:border-brand">Weiter ›</a>
+  <a href="<?= $pageUrl($totalPages) ?>" class="px-3 py-1.5 bg-white border rounded-lg text-xs hover:border-brand">Letzte »</a>
+  <?php endif; ?>
+  <span class="ml-3 text-xs text-gray-500">Seite <?= $page ?> von <?= $totalPages ?> · <?= $totalLeads ?> Leads gesamt</span>
+</div>
+<?php endif; ?>
 
 <!-- KI-Pitch Modal -->
 <div id="pitchModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
