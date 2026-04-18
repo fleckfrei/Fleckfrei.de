@@ -146,34 +146,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cat = $lead['category'] ?? 'haushalt';
         $pitchCtx = $catPitch[$cat] ?? $catPitch['haushalt'];
 
-        $prompt = "Du schreibst eine personalisierte Verkaufs-Email von Fleckfrei (Reinigungs-Service Berlin, fleckfrei.de) an einen potenziellen Kunden. "
-                . "Wir haben seine Anzeige/Post gefunden und wollen ihn überzeugen, uns zu wählen.\n\n"
-                . "Kunde-Info:\n"
-                . "- Titel/Name: $name\n"
-                . "- Anzeigen-Text: " . substr($snippet, 0, 500) . "\n"
-                . "- Quelle: $sourceUrl\n"
-                . "- Kategorie: $cat\n\n"
-                . "Kontext zu Fleckfrei für diese Kategorie:\n$pitchCtx\n\n"
-                . "Gib AUSSCHLIESSLICH JSON zurück, keine Markdown:\n"
-                . '{"subject": "...", "body": "<p>...</p>HTML-Body mit <p>, <b>, <a>-Tags"}' . "\n\n"
-                . "- Subject: max 70 Zeichen, persönlich, mit konkretem Nutzen (nicht generisch)\n"
-                . "- Body: 4-5 kurze Absätze, warm und menschlich, keine Floskeln:\n"
-                . "  1. Persönlicher Einstieg (bezug auf seine Anzeige — wenn Name bekannt, nutze ihn)\n"
-                . "  2. Was Fleckfrei für SEINEN Fall konkret anbietet (kategorie-spezifisch)\n"
-                . "  3. 2-3 konkrete Benefits als Liste oder Fließtext (keine Buzzwords — konkret)\n"
-                . "  4. Ein grosser Button-Link: <a href=\"{{LINK}}\" style=\"background:#2E7D6B;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;display:inline-block\">Jetzt unverbindliches Angebot ansehen →</a>\n"
-                . "  5. Signatur: 'Viele Grüße, Fleckfrei-Team · 030-xxx · info@fleckfrei.de'\n"
-                . "- Platzhalter {{LINK}} wird später durch den persönlichen Buchungs-Link ersetzt.\n"
-                . "- Keine aggressive Sprache, kein 'gratis', keine Emojis im Subject.";
+        $prompt = "Du schreibst eine personalisierte Verkaufs-Email von Fleckfrei (Reinigungs-Service Berlin) an einen potenziellen Kunden dessen Kleinanzeige wir gefunden haben.\n\n"
+                . "KUNDE:\n"
+                . "Titel: $name\n"
+                . "Anzeigen-Text: " . substr($snippet, 0, 500) . "\n"
+                . "Kategorie: $cat\n\n"
+                . "FLECKFREI-KONTEXT ($cat):\n$pitchCtx\n\n"
+                . "AUFGABE — gib die Email in EXAKT diesem Format zurück (nichts vor SUBJECT, nichts nach </body>):\n\n"
+                . "SUBJECT: <Betreff max 70 Zeichen, persönlich, konkret, keine Emojis>\n"
+                . "---\n"
+                . "<p>Persönlicher Einstieg mit Bezug auf seine Anzeige</p>\n"
+                . "<p>Was Fleckfrei konkret für SEINEN Fall anbietet (kategorie-spezifisch aus dem Kontext oben)</p>\n"
+                . "<p>2-3 konkrete Benefits als Fließtext</p>\n"
+                . "<p><a href=\"{{LINK}}\" style=\"background:#2E7D6B;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;display:inline-block\">Jetzt unverbindliches Angebot ansehen →</a></p>\n"
+                . "<p>Herzliche Grüße<br>Ihr Fleckfrei-Team<br>info@fleckfrei.de</p>\n\n"
+                . "REGELN:\n"
+                . "- {{LINK}} wird automatisch durch den persönlichen Prebook-Link ersetzt\n"
+                . "- Warm + menschlich + konkret, KEINE Floskeln, KEIN 'gratis', KEINE Emojis im Subject\n"
+                . "- KEINE Markdown-Fences (```), KEIN Intro, KEIN Outro — nur SUBJECT-Zeile + --- + HTML-Body";
 
         $r = groq_chat($prompt, 900);
         $content = trim($r['content'] ?? '');
-        $content = preg_replace('/^```(?:json)?|```$/m', '', $content);
-        $parsed = json_decode(trim($content), true);
-        if (!is_array($parsed) || empty($parsed['subject']) || empty($parsed['body'])) {
-            echo json_encode(['error' => 'KI-Antwort nicht lesbar', 'raw' => substr($content, 0, 400)]); exit;
+        $clean = preg_replace('#```(?:json|html)?\s*#m', '', $content);
+        $clean = preg_replace('#\s*```\s*#m', '', $clean);
+        $clean = trim($clean);
+
+        $parsed = null;
+
+        // 1) Primary: SUBJECT: xxx\n---\nBODY format
+        if (preg_match('/SUBJECT\s*:\s*(.+?)\s*\n\s*---+\s*\n(.+)$/is', $clean, $sm)) {
+            $parsed = ['subject' => trim($sm[1], " \"'`"), 'body' => trim($sm[2])];
         }
-        echo json_encode(['subject' => $parsed['subject'], 'body' => $parsed['body']]);
+
+        // 2) JSON-Block im Text finden (alter Stil falls Groq das zurückgibt)
+        if (!is_array($parsed) && preg_match('/\{[\s\S]*"subject"[\s\S]*\}/m', $clean, $m)) {
+            $parsed = json_decode($m[0], true);
+        }
+
+        // 3) Nur SUBJECT: Zeile finden, Rest = Body
+        if (!is_array($parsed) || empty($parsed['subject'])) {
+            if (preg_match('/(?:SUBJECT|Betreff)\s*:\s*(.+?)\n([\s\S]+)/i', $clean, $m)) {
+                $parsed = ['subject' => trim($m[1], " \"'`*"), 'body' => trim($m[2])];
+            }
+        }
+
+        // 4) Ultimate Fallback: erste Zeile als Subject
+        if (!is_array($parsed) || empty($parsed['subject']) || empty($parsed['body'])) {
+            $lines = array_values(array_filter(array_map('trim', explode("\n", $clean))));
+            if (count($lines) >= 2) {
+                $subj = trim($lines[0], " \"'`#*:");
+                $rest = array_slice($lines, 1);
+                $body = strpos(implode('', $rest), '<') !== false
+                    ? implode("\n", $rest)
+                    : '<p>' . implode('</p><p>', $rest) . '</p>';
+                if ($subj && strlen($subj) < 200) $parsed = ['subject' => $subj, 'body' => $body];
+            }
+        }
+
+        if (!is_array($parsed) || empty($parsed['subject']) || empty($parsed['body'])) {
+            echo json_encode(['error' => 'KI-Antwort nicht lesbar — bitte "Neu generieren" klicken', 'raw' => substr($content, 0, 400)]); exit;
+        }
+        echo json_encode(['subject' => trim($parsed['subject']), 'body' => trim($parsed['body'])]);
         exit;
     }
 
