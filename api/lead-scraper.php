@@ -326,73 +326,14 @@ foreach ($checkBatch as $ld) {
 }
 
 // ============================================================
-// Direkt-Scrape von kleinanzeigen.de (unabhängig von VPS SearXNG)
-// Kleinanzeigen-Suche liefert deutlich verlässlicher echte Leads.
+// Kleinanzeigen-Scrape ENTFERNT (2026-04-18):
+// Die Suche dort mischt Angebote (Konkurrenten/Jobsucher) mit Gesuchen
+// und bringt zu 90%+ Rauschen. Fleckfrei = Dienstleister und sucht
+// zahlende Kunden (Hosts, Vermieter, Hotels, Ferienwohnungen) —
+// NICHT andere Reinigungsfirmen oder Putzhilfen die sich selbst anbieten.
+// Statt dessen: Customer-Hunting weiter unten (Apify Airbnb/Booking +
+// Google Places + Manuell).
 // ============================================================
-// Kleinanzeigen URL-Pattern (2026-04 getestet): /s-berlin/<hyphen-slug>/k0l3331
-// WICHTIG: Keywords müssen mit Bindestrichen verbunden sein (kein +, kein adType-Param
-// sonst HTTP 400). "gesucht" im Slug triggert natürlich Gesuche.
-$kleinanzeigenSearches = [
-    'haushalt' => ['reinigungsfirma-gesucht', 'putzhilfe-gesucht', 'haushaltshilfe-gesucht', 'wohnungsreinigung-gesucht', 'endreinigung-wohnung', 'reinigungskraft-gesucht'],
-    'airbnb'   => ['airbnb-reinigung', 'ferienwohnung-reinigung', 'turnover-cleaning', 'gaestewechsel-reinigung'],
-    'cohost'   => ['airbnb-co-host', 'ferienwohnung-verwaltung', 'airbnb-management'],
-    'buero'    => ['buero-reinigung-gesucht', 'gewerbereinigung-gesucht', 'praxisreinigung-gesucht', 'unterhaltsreinigung-gesucht'],
-];
-foreach ($kleinanzeigenSearches as $category => $terms) {
-    foreach ($terms as $term) {
-        $url = 'https://www.kleinanzeigen.de/s-berlin/' . $term . '/k0l3331';
-        // Search-Pages kurze Cache-TTL (2h) — Details länger (24h)
-        $html = fetchSmart($url, 7200);
-        if (!$html) continue;
-
-        // Pro <article class="aditem"> parsen: Titel + posted-Date ("Heute, 14:32" | "Gestern, 09:15" | "15.04.2026")
-        if (preg_match_all('#<article[^>]*class="[^"]*aditem[^"]*"[^>]*>(.*?)</article>#is', $html, $articles)) {
-            foreach (array_slice($articles[1], 0, 25) as $art) {
-                // URL + Titel
-                if (!preg_match('#href="(/s-anzeige/[^"]+)"[^>]*>([^<]+)#i', $art, $tMatch)) continue;
-                $leadUrl = 'https://www.kleinanzeigen.de' . $tMatch[1];
-                $title = html_entity_decode(trim($tMatch[2]), ENT_QUOTES, 'UTF-8');
-                $totalSeen++;
-                if (val("SELECT lead_id FROM leads WHERE source_url=? LIMIT 1", [$leadUrl])) continue;
-
-                // Posted-Date extrahieren
-                $postedAt = null;
-                if (preg_match('#(Heute|Gestern|\d{2}\.\d{2}\.\d{4})(?:,?\s*(\d{2}:\d{2}))?#u', $art, $dMatch)) {
-                    $dStr = $dMatch[1];
-                    $tStr = $dMatch[2] ?? '00:00';
-                    if ($dStr === 'Heute') $postedAt = date('Y-m-d') . ' ' . $tStr . ':00';
-                    elseif ($dStr === 'Gestern') $postedAt = date('Y-m-d', strtotime('-1 day')) . ' ' . $tStr . ':00';
-                    else $postedAt = date('Y-m-d', strtotime(str_replace('.', '-', $dStr) . ' 2026')) . ' ' . $tStr . ':00';
-                }
-
-                // Snippet aus dem Artikel (description)
-                $snippet = $title;
-                if (preg_match('#<p[^>]*aditem-main--middle--description[^>]*>(.*?)</p>#is', $art, $sMatch)) {
-                    $snippet = html_entity_decode(trim(strip_tags($sMatch[1])), ENT_QUOTES, 'UTF-8');
-                }
-
-                try {
-                    // OSINT-Enrichment: Ad-Seite fetchen und Kontaktdaten extrahieren
-                    $details = fetchLeadDetails($leadUrl);
-                    usleep(300000); // 0.3s throttle pro Ad-Fetch
-                    $email = $details['email'] ?? null;
-                    $phone = $details['phone'] ?? null;
-                    $district = $details['district'] ?? null;
-                    $contactName = $details['name'] ?? null;
-                    $fullText = $details['full_text'] ?? $snippet;
-
-                    $seg = ($category === 'buero') ? 'B2B' : 'B2C';
-                    $notes = "[$seg]" . ($postedAt ? " [POSTED:$postedAt]" : '') . ($district ? " [BEZIRK:$district]" : '') . ($contactName ? " [KONTAKT:$contactName]" : '');
-                    q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES (?, ?, ?, ?, ?, ?, 'Berlin', ?, ?)",
-                      ['kleinanzeigen.de', $leadUrl, $category, $title, $email, $phone, $notes, substr($fullText, 0, 1500)]);
-                    $totalNew++;
-                    $results[] = ['category'=>$category, 'title'=>substr($title,0,80), 'url'=>$leadUrl, 'posted_at'=>$postedAt, 'has_contact'=>(bool)($email || $phone)];
-                } catch (Exception $e) {}
-            }
-        }
-        usleep(500000); // 0.5s throttle
-    }
-}
 
 // ============================================================
 // CUSTOMER HUNTING (das was Geld bringt): Airbnb-Hosts, Booking-Properties,
@@ -411,7 +352,7 @@ if (defined('APIFY_API_TOKEN') && APIFY_API_TOKEN) {
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
         CURLOPT_POSTFIELDS => json_encode([
             'startUrls' => [['url' => 'https://www.airbnb.de/s/Berlin--Germany/homes']],
-            'currency' => 'EUR', 'locale' => 'de-DE', 'maxListings' => 60,
+            'currency' => 'EUR', 'locale' => 'de-DE', 'maxListings' => 120,
             'proxyConfig' => ['useApifyProxy' => true, 'apifyProxyGroups' => ['RESIDENTIAL']],
         ]),
     ]);
@@ -450,7 +391,7 @@ if (defined('APIFY_API_TOKEN') && APIFY_API_TOKEN) {
         CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 130,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
         CURLOPT_POSTFIELDS => json_encode([
-            'search' => 'Berlin', 'destType' => 'city', 'maxPages' => 2,
+            'search' => 'Berlin', 'destType' => 'city', 'maxPages' => 4,
             'currency' => 'EUR', 'language' => 'de',
             'proxyConfig' => ['useApifyProxy' => true, 'apifyProxyGroups' => ['RESIDENTIAL']],
         ]),
@@ -531,76 +472,12 @@ if (defined('GOOGLE_PLACES_API_KEY') && GOOGLE_PLACES_API_KEY) {
     }
 }
 
-foreach ($queries as $category => $queryList) {
-    foreach ($queryList as $q) {
-        $sx = vps_call('searxng', [
-            'query' => $q,
-            'categories' => 'general',
-            'limit' => 10,
-        ], false);
-
-        if (!is_array($sx) || empty($sx['results'])) continue;
-
-        foreach ($sx['results'] as $r) {
-            $totalSeen++;
-            $url = $r['url'] ?? '';
-            $title = $r['title'] ?? '';
-            $snippet = $r['snippet'] ?? $r['content'] ?? '';
-            if ($url === '' || $title === '') continue;
-
-            // Skip aggregator/spam/competitor/government/job-board domains
-            $skipDomains = [
-                // Suchmaschinen + Portale
-                'google.com', 'wikipedia', 'youtube.com', 'amazon.', 'pinterest.', 'facebook.com/marketplace',
-                // Job-Boards (Leute die Arbeit suchen, nicht Kunden)
-                'jooble.org', 'indeed.', 'stepstone.de', 'stellenanzeigen.de', 'monster.de', 'xing.com', 'linkedin.com',
-                'adzuna.de', 'kimeta.de', 'meinestadt.de', 'jobruf.de', 'joblift.de', 'stellenmarkt.de',
-                // Behörden / Gesetze / Gewerkschaften
-                'rki.de', 'bmg.bund.de', 'bundesregierung.de', 'gesetze-im-internet.de', 'bzga.de',
-                'dpolg.', 'verdi.de', 'dgb.de', 'beamtenbund.de',
-                // Konkurrenten Reinigungsfirmen
-                'helpling.de', 'book-a-tiger.com', 'desomax.de', 'alfa24.de', 'swc-berlin.de',
-                'clean4you.', 'cleanpower', 'reinigungsfirma-berlin.de', 'gebäudereinigung.',
-                // Branchen-Portale
-                'gelbeseiten.de', 'dasoertliche.de', '11880.com', 'wlw.de', 'gewerbe24.de',
-                'praxiswaesche.de', 'berufskleidung.', 'hygieneplan.de',
-            ];
-            $skip = false;
-            foreach ($skipDomains as $d) if (strpos($url, $d) !== false) $skip = true;
-            if ($skip) continue;
-
-            // Skip if already in DB
-            $exists = val("SELECT lead_id FROM leads WHERE source_url = ? LIMIT 1", [$url]);
-            if ($exists) continue;
-
-            // Extract contact hints from snippet+title
-            $combined = $title . ' ' . $snippet;
-            $email = extractEmail($combined);
-            $phone = extractPhone($combined);
-
-            // B2B vs B2C-Segment
-            $segmentMap = ['haushalt'=>'B2C','airbnb'=>'B2C','cohost'=>'B2C','buero'=>'B2B','event'=>'B2B','umzug'=>'B2C'];
-            $segment = $segmentMap[$category] ?? 'B2C';
-            $notes = "[$segment]";
-
-            try {
-                q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  [parse_url($url, PHP_URL_HOST) ?: 'unknown', $url, $category, $title, $email, $phone, 'Berlin', $notes, $snippet]);
-                $totalNew++;
-                $results[] = [
-                    'category' => $category,
-                    'title' => substr($title, 0, 80),
-                    'url' => $url,
-                    'has_contact' => $email || $phone ? true : false,
-                ];
-            } catch (Exception $e) {
-                // Skip duplicates / errors
-            }
-        }
-
-        sleep(1); // throttle between queries
-    }
-}
+// SearXNG-Such-Pfad ENTFERNT (2026-04-18):
+// Brachte 90%+ Müll: Konkurrenten, Jobsucher, Behörden, SEO-Artikel,
+// Branchen-Portale. Customer-Hunting (Airbnb/Booking/Places oben)
+// liefert 100% echte B2B/B2C-Targets die Reinigung brauchen.
+// $queries-Variable wird nicht mehr verwendet — nur noch als Referenz
+// für manuell gepflegte Keywords falls jemand das reaktivieren will.
 
 if (function_exists('audit')) {
     audit('scrape', 'leads', 0, "Lead-Scrape: $totalNew neu von $totalSeen geprüft");
