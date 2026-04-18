@@ -872,7 +872,7 @@ try {
         // Update single employee field (inline edit)
         $action === 'employee/update' && $method === 'POST' => (function() use ($body) {
             if (empty($body['emp_id']) || empty($body['field'])) throw new Exception('Need emp_id + field');
-            $allowed = ['name','surname','email','phone','tariff','location','nationality','notes'];
+            $allowed = ['name','surname','email','phone','tariff','location','nationality','notes','display_name'];
             if (!in_array($body['field'], $allowed)) throw new Exception('Field not editable');
             q("UPDATE employee SET {$body['field']}=? WHERE emp_id=?", [$body['value'] ?? '', (int)$body['emp_id']]);
             audit('inline_edit', 'employee', $body['emp_id'], $body['field'] . ' updated');

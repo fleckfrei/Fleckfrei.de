@@ -65,6 +65,22 @@ $typeFilter = in_array($_GET['type'] ?? '', ['mitarbeiter','freelancer','kleinun
 $typeSql = $typeFilter ? "AND e.partner_type=?" : '';
 $typeParams = $typeFilter ? [$typeFilter] : [];
 
+// Stellt sicher dass display_name-Spalte existiert (gitignored Migration, idempotent)
+try { q("ALTER TABLE employee ADD COLUMN display_name VARCHAR(100) NULL AFTER surname"); } catch (Exception $e) {}
+
+// Bulk-Action: automatisch Kunden-Namen für alle die leer sind generieren
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'autofill_display_names' && verifyCsrf()) {
+    $empsNeedFill = all("SELECT emp_id, name, surname FROM employee WHERE (display_name IS NULL OR display_name='')");
+    $filled = 0;
+    foreach ($empsNeedFill as $e) {
+        $first = explode(' ', trim($e['name'] ?? ''))[0];
+        $last = trim($e['surname'] ?? '');
+        $disp = $first . ($last ? ' ' . strtoupper(substr($last, 0, 1)) . '.' : '');
+        if ($disp !== '') { q("UPDATE employee SET display_name=? WHERE emp_id=?", [$disp, $e['emp_id']]); $filled++; }
+    }
+    header("Location: /admin/employees.php?autofilled=$filled"); exit;
+}
+
 $employees = all("SELECT e.*, COUNT(CASE WHEN j.job_status='COMPLETED' THEN 1 END) as done, COUNT(CASE WHEN j.job_status='PENDING' AND j.j_date>=CURDATE() THEN 1 END) as pending
                  FROM employee e LEFT JOIN jobs j ON j.emp_id_fk=e.emp_id AND j.status=1
                  WHERE e.status=? $typeSql
@@ -119,6 +135,30 @@ include __DIR__ . '/../includes/layout.php';
 </div>
 <?php endif; ?>
 
+<!-- Privacy-Banner: real names vs customer-facing display names -->
+<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-xs flex items-center justify-between flex-wrap gap-3">
+  <div class="flex items-center gap-2">
+    <span class="text-lg">🔒</span>
+    <div>
+      <b class="text-amber-900">Privacy-Hinweis:</b>
+      Echte Namen, E-Mails & Telefonnummern sieht <b>nur der Admin</b>. Kunden sehen nur den <b class="text-emerald-800">Kunden-Namen</b> (z.B. "Adrian H.").
+      Spalte <span class="text-emerald-800 font-semibold">👁 öffentlich</span> ist bearbeitbar — leer = Auto-Generierung.
+    </div>
+  </div>
+  <?php if ($tab === 'active'): $missing = (int) val("SELECT COUNT(*) FROM employee WHERE status=1 AND (display_name IS NULL OR display_name='')"); ?>
+  <?php if ($missing > 0): ?>
+  <form method="POST" class="inline">
+    <?= csrfField() ?>
+    <input type="hidden" name="action" value="autofill_display_names"/>
+    <button class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold whitespace-nowrap">⚡ <?= $missing ?> Auto-füllen</button>
+  </form>
+  <?php endif; endif; ?>
+</div>
+
+<?php if (isset($_GET['autofilled'])): ?>
+<div class="bg-emerald-50 border border-emerald-300 text-emerald-900 px-4 py-3 rounded-xl mb-4">✓ <?= (int)$_GET['autofilled'] ?> Kunden-Namen automatisch gesetzt (Vorname + Initial Nachname).</div>
+<?php endif; ?>
+
 <div x-data="{ editOpen:false, emp:{} }" class="bg-white rounded-xl border">
   <div class="p-5 border-b flex items-center justify-between">
     <h3 class="font-semibold"><?= $tab==='archive' ? 'Archivierte' : 'Aktive' ?> Partner (<?= count($employees) ?>)</h3>
@@ -132,9 +172,10 @@ include __DIR__ . '/../includes/layout.php';
   <div class="overflow-x-auto">
     <table class="w-full text-sm" id="tbl"><thead class="bg-gray-50"><tr>
       <th class="px-4 py-3 text-left font-medium text-gray-600">#</th>
-      <th class="px-4 py-3 text-left font-medium text-gray-600">Name</th>
-      <th class="px-4 py-3 text-left font-medium text-gray-600">E-Mail</th>
-      <th class="px-4 py-3 text-left font-medium text-gray-600">Telefon</th>
+      <th class="px-4 py-3 text-left font-medium text-gray-600">Name <span class="text-[9px] font-normal text-amber-600 uppercase">🔒 admin-only</span></th>
+      <th class="px-4 py-3 text-left font-medium text-gray-600">Kunden-Name <span class="text-[9px] font-normal text-emerald-600 uppercase">👁 öffentlich</span></th>
+      <th class="px-4 py-3 text-left font-medium text-gray-600">E-Mail <span class="text-[9px] font-normal text-amber-600 uppercase">🔒</span></th>
+      <th class="px-4 py-3 text-left font-medium text-gray-600">Telefon <span class="text-[9px] font-normal text-amber-600 uppercase">🔒</span></th>
       <th class="px-4 py-3 text-left font-medium text-gray-600">Tarif</th>
       <th class="px-4 py-3 text-left font-medium text-gray-600">Typ</th>
       <th class="px-4 py-3 text-left font-medium text-gray-600">Erledigt</th>
@@ -146,7 +187,17 @@ include __DIR__ . '/../includes/layout.php';
     <tr class="hover:bg-gray-50">
       <td class="px-4 py-3 text-gray-400"><?= $e2['emp_id'] ?></td>
       <td class="px-3 py-2">
-        <input value="<?= e($e2['name']) ?>" onchange="updateEmp(<?=$e2['emp_id']?>,'name',this.value)" class="w-full px-2 py-1 text-sm font-medium border border-gray-200 rounded-lg focus:border-brand focus:outline-none bg-white cursor-pointer appearance-none" style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 12 12%22><path fill=%22%239ca3af%22 d=%22M3 5l3 3 3-3%22/></svg>');background-repeat:no-repeat;background-position:right 8px center;padding-right:24px"/>
+        <input value="<?= e($e2['name']) ?>" onchange="updateEmp(<?=$e2['emp_id']?>,'name',this.value)" class="w-full px-2 py-1 text-sm font-medium border border-amber-200 rounded-lg focus:border-brand focus:outline-none bg-amber-50/40" title="Echter Name — nur Admin sieht das"/>
+      </td>
+      <td class="px-3 py-2">
+        <?php
+          // Default: Vorname + Initial Nachname (z.B. "Adrian H.")
+          $_first = explode(' ', trim($e2['name'] ?? ''))[0];
+          $_last  = trim($e2['surname'] ?? '');
+          $_suggested = $_first . ($_last ? ' ' . strtoupper(substr($_last, 0, 1)) . '.' : '');
+          $_display = trim($e2['display_name'] ?? '') ?: $_suggested;
+        ?>
+        <input value="<?= e($_display) ?>" placeholder="<?= e($_suggested) ?>" onchange="updateEmp(<?=$e2['emp_id']?>,'display_name',this.value)" class="w-full px-2 py-1 text-sm font-medium border border-emerald-300 rounded-lg focus:border-brand focus:outline-none bg-emerald-50/40" title="Das sehen Kunden — nicht der echte Name"/>
       </td>
       <td class="px-3 py-2">
         <input type="email" value="<?= e($e2['email']) ?>" onchange="updateEmp(<?=$e2['emp_id']?>,'email',this.value)" class="w-full px-2 py-1 text-sm border border-transparent rounded-lg hover:border-gray-200 focus:border-brand focus:outline-none bg-transparent text-brand"/>
