@@ -28,31 +28,63 @@ if (!$isAdmin && $cronSecret !== 'flk_scrape_2026') {
 // ============================================================
 // Search queries by category
 // ============================================================
-// Gezielt auf Kleinanzeigen-Plattformen, wo echte Leute Hilfe suchen
+// Echte Berlin-Market-Keywords: was Leute tippen, wenn sie eine Reinigungs-
+// oder Co-Host-Firma suchen. Fokus: Kleinanzeigen + Community-Foren wo Anfragen
+// wirklich gepostet werden.
 $queries = [
+    // Privat-Wohnung — Leute die eine Firma/Hilfe suchen
     'haushalt' => [
-        'site:kleinanzeigen.de "Putzhilfe" Berlin',
-        'site:kleinanzeigen.de "Reinigungskraft" Berlin gesucht',
-        'site:kleinanzeigen.de "Haushaltshilfe" Berlin',
-        'site:quoka.de Reinigung Berlin gesucht',
-        'site:nebenan.de "Putzhilfe gesucht" Berlin',
-        '"suche Putzhilfe" Berlin 2026',
+        'site:kleinanzeigen.de "Reinigungsfirma gesucht" Berlin',
+        'site:kleinanzeigen.de "Putzhilfe gesucht" Berlin',
+        'site:kleinanzeigen.de "Haushaltshilfe gesucht" Berlin',
+        'site:kleinanzeigen.de "Wohnungsreinigung" Berlin gesucht',
+        'site:kleinanzeigen.de "Grundreinigung" Berlin gesucht',
+        'site:kleinanzeigen.de "Endreinigung Wohnung" Berlin',
+        'site:kleinanzeigen.de "Fensterputzer" Berlin gesucht',
+        'site:quoka.de Reinigungsfirma Berlin gesucht',
+        'site:nebenan.de "Putzhilfe" Berlin',
+        '"suche Reinigungsfirma" Berlin Wohnung',
+        '"brauche Putzfrau" Berlin privat',
     ],
+    // Short-Term Rental / Airbnb — Hosts die Turnover-Cleaning suchen
     'airbnb' => [
-        'site:kleinanzeigen.de Airbnb Reinigung Berlin',
-        '"Turnover cleaning" Berlin Airbnb 2026',
-        '"Ferienwohnung Reinigung" Berlin gesucht',
-        'site:facebook.com/groups Berlin Airbnb Reinigung',
+        'site:kleinanzeigen.de "Airbnb Reinigung" Berlin gesucht',
+        'site:kleinanzeigen.de "Ferienwohnung Reinigung" Berlin',
+        'site:kleinanzeigen.de "Turnover" Berlin Gästewechsel',
+        '"Airbnb Reinigungsservice" Berlin gesucht',
+        '"Ferienwohnung Putzkraft" Berlin',
+        '"STR cleaning" Berlin gesucht',
+        '"Gästewechsel Reinigung" Berlin',
+        '"Endreinigung Ferienwohnung" Berlin',
+        'site:nebenan.de Airbnb Reinigung Berlin',
+        'facebook.com Berlin Airbnb hosts Reinigung gesucht',
     ],
+    // Co-Host Services — Vermieter die Airbnb-Management suchen
+    'cohost' => [
+        '"Airbnb Co-Host" Berlin gesucht',
+        '"Airbnb Management" Berlin Vermieter',
+        '"Ferienwohnung Verwaltung" Berlin gesucht',
+        '"Short-Term Rental Management" Berlin',
+        '"Airbnb Betreuung" Berlin gesucht',
+        'site:kleinanzeigen.de "Co-Host" Berlin',
+        'site:kleinanzeigen.de "Airbnb Verwaltung" Berlin',
+        '"Gastgeber Service" Berlin Airbnb',
+    ],
+    // Büro / B2B
     'buero' => [
-        'site:kleinanzeigen.de Büroreinigung Berlin',
-        '"Büroreinigung gesucht" Berlin',
-        '"Praxis Reinigung" Berlin gesucht',
-        'site:gelbeseiten.de Büroreinigung Berlin new',
+        'site:kleinanzeigen.de "Büroreinigung" Berlin gesucht',
+        'site:kleinanzeigen.de "Praxisreinigung" Berlin gesucht',
+        '"Büroreinigung Firma" Berlin gesucht',
+        '"Gewerbereinigung" Berlin gesucht',
+        '"Unterhaltsreinigung Büro" Berlin',
+        '"Reinigungsfirma Büro" Berlin gesucht',
     ],
+    // Events / Baustellen / Umzug
     'event' => [
-        '"Event Reinigung" Berlin gesucht',
-        '"Veranstaltung Reinigung" Berlin',
+        '"Eventreinigung" Berlin gesucht',
+        '"Baustellenreinigung" Berlin gesucht',
+        '"Umzugsreinigung" Berlin gesucht',
+        'site:kleinanzeigen.de Umzugsreinigung Berlin',
     ],
 ];
 
@@ -108,9 +140,14 @@ foreach ($queries as $category => $queryList) {
             $email = extractEmail($combined);
             $phone = extractPhone($combined);
 
+            // B2B vs B2C-Segment
+            $segmentMap = ['haushalt'=>'B2C','airbnb'=>'B2C','cohost'=>'B2C','buero'=>'B2B','event'=>'B2B','umzug'=>'B2C'];
+            $segment = $segmentMap[$category] ?? 'B2C';
+            $notes = "[$segment]";
+
             try {
                 q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  [parse_url($url, PHP_URL_HOST) ?: 'unknown', $url, $category, $title, $email, $phone, 'Berlin', '', $snippet]);
+                  [parse_url($url, PHP_URL_HOST) ?: 'unknown', $url, $category, $title, $email, $phone, 'Berlin', $notes, $snippet]);
                 $totalNew++;
                 $results[] = [
                     'category' => $category,

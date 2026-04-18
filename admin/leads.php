@@ -73,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $filter = $_GET['filter'] ?? 'new';
 $category = $_GET['category'] ?? '';
+$segment = $_GET['segment'] ?? ''; // B2B / B2C
 $where = ['1=1'];
 $params = [];
 if ($filter !== 'all') {
@@ -82,6 +83,11 @@ if ($filter !== 'all') {
 if ($category) {
     $where[] = 'category = ?';
     $params[] = $category;
+}
+if ($segment === 'B2B') {
+    $where[] = "category IN ('buero','event')";
+} elseif ($segment === 'B2C') {
+    $where[] = "category IN ('haushalt','airbnb','cohost','umzug')";
 }
 $leads = all("SELECT * FROM leads WHERE " . implode(' AND ', $where) . " ORDER BY created_at DESC LIMIT 200", $params);
 
@@ -94,11 +100,13 @@ $counts['all'] = (int) val("SELECT COUNT(*) FROM leads");
 $catLabels = [
     'haushalt' => '🏠 Haushalt',
     'airbnb' => '🌴 Airbnb',
+    'cohost' => '🤝 Co-Host',
     'buero' => '🏢 Büro',
     'event' => '🎉 Event',
     'umzug' => '📦 Umzug',
     'other' => '📋 Sonstige',
 ];
+$catSegment = ['haushalt'=>'B2C','airbnb'=>'B2C','cohost'=>'B2C','umzug'=>'B2C','buero'=>'B2B','event'=>'B2B','other'=>''];
 
 include __DIR__ . '/../includes/layout.php';
 ?>
@@ -128,6 +136,14 @@ include __DIR__ . '/../includes/layout.php';
   </div>
 </div>
 
+<!-- B2B / B2C Segment-Tabs -->
+<?php $segUrl = function($seg) use ($filter, $category) { return '?filter=' . urlencode($filter) . '&segment=' . urlencode($seg) . ($category ? '&category=' . urlencode($category) : ''); }; ?>
+<div class="flex gap-2 mb-3 flex-wrap">
+  <a href="<?= $segUrl('') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === '' ? 'bg-gray-800 text-white' : 'bg-white border text-gray-600 hover:border-gray-800' ?>">Alle Leads</a>
+  <a href="<?= $segUrl('B2C') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2C' ? 'bg-purple-600 text-white' : 'bg-white border text-purple-700 hover:border-purple-600' ?>">👤 B2C (Privat + Airbnb + Co-Host)</a>
+  <a href="<?= $segUrl('B2B') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2B' ? 'bg-amber-600 text-white' : 'bg-white border text-amber-700 hover:border-amber-600' ?>">🏢 B2B (Büro + Event)</a>
+</div>
+
 <!-- Status filter tabs -->
 <div class="flex gap-2 mb-4 flex-wrap">
   <a href="?filter=new" class="px-4 py-2 rounded-xl text-sm font-semibold <?= $filter === 'new' ? 'bg-brand text-white' : 'bg-white border text-gray-700 hover:border-brand' ?>">Neu (<?= $counts['new'] ?>)</a>
@@ -154,6 +170,12 @@ include __DIR__ . '/../includes/layout.php';
       <div class="flex items-start justify-between gap-4">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <?php $_seg = $catSegment[$l['category']] ?? ''; ?>
+            <?php if ($_seg === 'B2C'): ?>
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">👤 B2C</span>
+            <?php elseif ($_seg === 'B2B'): ?>
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">🏢 B2B</span>
+            <?php endif; ?>
             <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand/10 text-brand"><?= $catLabels[$l['category']] ?? $l['category'] ?></span>
             <span class="text-[10px] text-gray-400"><?= e($l['source']) ?></span>
             <span class="text-[10px] text-gray-400">·</span>
