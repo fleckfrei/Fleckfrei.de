@@ -468,7 +468,7 @@ include __DIR__ . '/../includes/layout.php';
 <?php $segUrl = function($seg) use ($filter, $category) { return '?filter=' . urlencode($filter) . '&segment=' . urlencode($seg) . ($category ? '&category=' . urlencode($category) : ''); }; ?>
 <div class="flex gap-2 mb-3 flex-wrap">
   <a href="<?= $segUrl('') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === '' ? 'bg-gray-800 text-white' : 'bg-white border text-gray-600 hover:border-gray-800' ?>">Alle Leads</a>
-  <a href="<?= $segUrl('B2C') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2C' ? 'bg-purple-600 text-white' : 'bg-white border text-purple-700 hover:border-purple-600' ?>">👤 B2C (Privat + Airbnb + Co-Host)</a>
+  <a href="<?= $segUrl('B2C') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2C' ? 'bg-indigo-600 text-white' : 'bg-white border text-indigo-700 hover:border-indigo-600' ?>">👤 B2C (Privat + Airbnb + Co-Host)</a>
   <a href="<?= $segUrl('B2B') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2B' ? 'bg-amber-600 text-white' : 'bg-white border text-amber-700 hover:border-amber-600' ?>">🏢 B2B (Büro + Event)</a>
 </div>
 
@@ -500,7 +500,7 @@ include __DIR__ . '/../includes/layout.php';
           <div class="flex items-center gap-2 mb-1 flex-wrap">
             <?php $_seg = $catSegment[$l['category']] ?? ''; ?>
             <?php if ($_seg === 'B2C'): ?>
-              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">👤 B2C</span>
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">👤 B2C</span>
             <?php elseif ($_seg === 'B2B'): ?>
               <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">🏢 B2B</span>
             <?php endif; ?>
@@ -561,21 +561,25 @@ include __DIR__ . '/../includes/layout.php';
         <!-- Status actions -->
         <div class="flex flex-col gap-1 flex-shrink-0 min-w-[180px]">
           <?php if ($l['status'] !== 'converted'): ?>
-          <button type="button" onclick="enrichLead(<?= $l['lead_id'] ?>, this)" class="w-full px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold">
-            🔍 OSINT anreichern
+          <!-- Primary: KI-Pitch (der Workflow den der User eigentlich will) -->
+          <button type="button" onclick='openPitch(<?= e(json_encode(["lead_id"=>$l["lead_id"],"name"=>$l["name"],"email"=>$l["email"] ?? '',"phone"=>$l["phone"] ?? '',"category"=>$l["category"]])) ?>)' class="w-full px-3 py-2 bg-brand hover:bg-brand-dark text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm">
+            ✉️ KI-Pitch schreiben
           </button>
-          <button type="button" onclick="bgCheck(<?= $l['lead_id'] ?>)" class="w-full px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold">
-            👤 Background-Check
-          </button>
-          <button type="button" onclick='openPitch(<?= e(json_encode(["lead_id"=>$l["lead_id"],"name"=>$l["name"],"email"=>$l["email"] ?? '',"phone"=>$l["phone"] ?? '',"category"=>$l["category"]])) ?>)' class="w-full px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold">
-            ✉️ KI-Pitch (Preview)
-          </button>
+          <!-- Secondary: utility actions -->
+          <div class="grid grid-cols-2 gap-1">
+            <button type="button" onclick="enrichLead(<?= $l['lead_id'] ?>, this)" class="px-2 py-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>🔍 OSINT
+            </button>
+            <button type="button" onclick="bgCheck(<?= $l['lead_id'] ?>)" class="px-2 py-1.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>👤 Background
+            </button>
+          </div>
           <form method="POST" onsubmit="return confirm('Lead → Kunde umwandeln (ohne Email)?');">
             <?= csrfField() ?>
             <input type="hidden" name="action" value="convert"/>
             <input type="hidden" name="lead_id" value="<?= $l['lead_id'] ?>"/>
-            <button type="submit" class="w-full px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold">
-              ✨ Nur umwandeln →
+            <button type="submit" class="w-full px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>✨ Nur umwandeln
             </button>
           </form>
           <?php endif; ?>
@@ -616,7 +620,7 @@ include __DIR__ . '/../includes/layout.php';
       <input type="hidden" name="action" value="send_pitch"/>
       <input type="hidden" name="lead_id" id="pitchLid"/>
       <div class="flex items-center gap-2">
-        <button type="button" onclick="regenPitch()" id="pitchGenBtn" class="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold hover:bg-purple-700 disabled:opacity-50">🔄 KI neu generieren</button>
+        <button type="button" onclick="regenPitch()" id="pitchGenBtn" class="px-3 py-2 bg-brand text-white rounded-lg text-sm font-semibold hover:bg-brand-dark disabled:opacity-50">🔄 KI neu generieren</button>
         <span id="pitchStatus" class="text-xs text-gray-500"></span>
         <span class="text-[11px] text-gray-400 ml-auto">Platzhalter <code class="bg-gray-100 px-1 rounded">{{LINK}}</code> wird beim Senden durch persönlichen Prebook-Link ersetzt.</span>
       </div>
@@ -655,7 +659,25 @@ include __DIR__ . '/../includes/layout.php';
   </div>
 </div>
 
+<!-- Toast-Container -->
+<div id="toast" class="hidden fixed top-4 right-4 z-[60] max-w-sm px-4 py-3 rounded-xl shadow-lg text-sm font-medium"></div>
+
 <script>
+function toast(msg, kind = 'info') {
+  const el = document.getElementById('toast');
+  const palette = {
+    ok:    'bg-emerald-50 border border-emerald-300 text-emerald-900',
+    info:  'bg-indigo-50 border border-indigo-300 text-indigo-900',
+    warn:  'bg-amber-50 border border-amber-300 text-amber-900',
+    err:   'bg-rose-50 border border-rose-300 text-rose-900',
+  };
+  el.className = 'fixed top-4 right-4 z-[60] max-w-sm px-4 py-3 rounded-xl shadow-lg text-sm font-medium ' + (palette[kind] || palette.info);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.add('hidden'), 4500);
+}
+
 // Inline Lead-Feld speichern (email, phone)
 function saveLeadField(id, field, value, el) {
   const orig = el.defaultValue;
@@ -669,8 +691,8 @@ function saveLeadField(id, field, value, el) {
   fd.append('_csrf', '<?= csrfToken() ?>');
   fetch('/admin/leads.php', { method: 'POST', body: fd })
     .then(r => r.json()).then(d => {
-      if (d.success) { el.style.background = '#dcfce7'; el.defaultValue = value; setTimeout(()=>{el.style.background='';}, 900); }
-      else { el.style.background = '#fee2e2'; alert(d.error || 'Fehler'); }
+      if (d.success) { el.style.background = '#dcfce7'; el.defaultValue = value; setTimeout(()=>{el.style.background='';}, 900); toast('✓ Gespeichert', 'ok'); }
+      else { el.style.background = '#fee2e2'; toast(d.error || 'Fehler beim Speichern', 'err'); }
     });
 }
 
@@ -685,16 +707,16 @@ function enrichLead(id, btn) {
   fetch('/admin/leads.php', { method: 'POST', body: fd })
     .then(r => r.json()).then(d => {
       btn.disabled = false; btn.textContent = origText;
-      if (d.error) { alert('OSINT Fehler: ' + d.error); return; }
-      let msg = '✅ Angereichert:';
-      if (d.email) msg += '\n📧 ' + d.email;
-      if (d.phone) msg += '\n📞 ' + d.phone;
-      if (d.contact_name) msg += '\n👤 ' + d.contact_name;
-      if (d.district) msg += '\n📍 ' + d.district;
-      if (!d.email && !d.phone && !d.contact_name) msg = '⚠ Nix gefunden — Ad-Seite evtl. durch Cloudflare geschützt';
-      alert(msg);
-      location.reload();
-    }).catch(e => { btn.disabled = false; btn.textContent = origText; alert('Netzwerk-Fehler'); });
+      if (d.error) { toast('OSINT: ' + d.error, 'err'); return; }
+      const parts = [];
+      if (d.email) parts.push('📧 ' + d.email);
+      if (d.phone) parts.push('📞 ' + d.phone);
+      if (d.contact_name) parts.push('👤 ' + d.contact_name);
+      if (d.district) parts.push('📍 ' + d.district);
+      if (parts.length === 0) { toast('⚠ Nix gefunden — Ad evtl. durch Cloudflare geschützt', 'warn'); return; }
+      toast('✓ Angereichert: ' + parts.join(' · '), 'ok');
+      setTimeout(() => location.reload(), 1200);
+    }).catch(e => { btn.disabled = false; btn.textContent = origText; toast('Netzwerk-Fehler', 'err'); });
 }
 
 // Background-Check: Perplexity-OSINT + WA/Telegram-Detection
