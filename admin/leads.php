@@ -8,6 +8,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $act = $_POST['action'] ?? '';
     $lid = (int)($_POST['lead_id'] ?? 0);
 
+    if ($act === 'add_manual') {
+        $name = trim($_POST['m_name'] ?? '');
+        if ($name !== '') {
+            $cat = in_array($_POST['m_category'] ?? '', ['haushalt','airbnb','cohost','buero','event','umzug','other'], true) ? $_POST['m_category'] : 'other';
+            $url = trim($_POST['m_url'] ?? '') ?: ('manual://' . time());
+            q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet, status) VALUES (?, ?, ?, ?, ?, ?, 'Berlin', ?, ?, 'new')",
+              ['manual', $url, $cat, $name,
+               strtolower(trim($_POST['m_email'] ?? '')) ?: null,
+               trim($_POST['m_phone'] ?? '') ?: null,
+               trim($_POST['m_notes'] ?? '') ?: null,
+               trim($_POST['m_snippet'] ?? '') ?: null]);
+        }
+        header('Location: /admin/leads.php?saved=1'); exit;
+    }
+
     if ($act === 'update_status' && $lid) {
         $status = in_array($_POST['status'] ?? '', ['new','contacted','converted','rejected'], true) ? $_POST['status'] : 'new';
         $contactedAt = $status === 'contacted' ? 'NOW()' : 'NULL';
@@ -120,18 +135,47 @@ include __DIR__ . '/../includes/layout.php';
     <h1 class="text-2xl font-bold text-gray-900">Leads — Neue Kunden</h1>
     <p class="text-sm text-gray-500 mt-1">Automatisch gefundene potenzielle Kunden aus öffentlichen Quellen.</p>
   </div>
-  <div x-data="{ scanning: false, scanResult: null }" class="flex items-center gap-2">
+  <div x-data="{ scanning: false, scanResult: null, manualOpen: false }" class="flex items-center gap-2 flex-wrap">
     <button
-      @click="scanning = true; scanResult = null; fetch('/api/lead-scraper.php?cron=flk_scrape_2026').then(r => r.json()).then(d => { scanResult = d; scanning = false; setTimeout(() => location.reload(), 1500); }).catch(() => { scanning = false; scanResult = { error: 'Fehler' }; })"
+      @click="scanning = true; scanResult = null; fetch('/api/lead-scraper.php?cron=flk_scrape_2026').then(r => r.json()).then(d => { scanResult = d; scanning = false; if (d.total_new > 0) setTimeout(() => location.reload(), 1500); }).catch(() => { scanning = false; scanResult = { error: 'VPS nicht erreichbar — nutze manuellen Eintrag' }; })"
       :disabled="scanning"
       class="px-4 py-2 bg-brand hover:bg-brand/90 text-white rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-50">
       <svg x-show="!scanning" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
       <svg x-show="scanning" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-      <span x-text="scanning ? 'Scanne Markt...' : 'Neue Leads suchen'"></span>
+      <span x-text="scanning ? 'Scanne...' : '🔍 Auto-Scan'"></span>
     </button>
-    <div x-show="scanResult" x-cloak class="text-xs">
-      <span x-show="scanResult?.success" class="text-green-700">✓ <span x-text="scanResult?.total_new"></span> neue Leads</span>
-      <span x-show="scanResult?.error" class="text-red-700" x-text="scanResult?.error"></span>
+    <button @click="manualOpen = !manualOpen" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold">+ Manueller Lead</button>
+    <div x-show="scanResult" x-cloak class="text-xs basis-full">
+      <template x-if="scanResult?.success">
+        <div>
+          <span :class="scanResult.total_new > 0 ? 'text-green-700' : 'text-gray-500'">
+            ✓ Scan fertig: <b x-text="scanResult.total_new"></b> neu · <b x-text="scanResult.total_seen"></b> geprüft
+          </span>
+          <span x-show="scanResult.total_new === 0" class="text-amber-700 ml-2">⚠ 0 neue Leads — SearXNG liefert wenig für site:-Queries. Nutze "+ Manueller Lead" aus Kleinanzeigen.</span>
+        </div>
+      </template>
+      <span x-show="scanResult?.error" class="text-red-700">❌ <span x-text="scanResult?.error"></span></span>
+    </div>
+    <div x-show="manualOpen" x-cloak class="basis-full bg-green-50 border-2 border-green-300 rounded-xl p-4 mt-2">
+      <form method="POST" class="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <?= csrfField() ?>
+        <input type="hidden" name="action" value="add_manual"/>
+        <input name="m_name" required placeholder="Name / Titel *" class="px-3 py-2 border rounded-lg text-sm"/>
+        <select name="m_category" class="px-3 py-2 border rounded-lg text-sm">
+          <option value="haushalt">🏠 Haushalt (B2C)</option>
+          <option value="airbnb">🌴 Airbnb (B2C)</option>
+          <option value="cohost">🤝 Co-Host (B2C)</option>
+          <option value="buero">🏢 Büro (B2B)</option>
+          <option value="event">🎉 Event (B2B)</option>
+          <option value="umzug">📦 Umzug</option>
+        </select>
+        <input name="m_url" placeholder="Quelle-URL (z.B. Kleinanzeigen-Link)" class="px-3 py-2 border rounded-lg text-sm"/>
+        <input type="email" name="m_email" placeholder="E-Mail" class="px-3 py-2 border rounded-lg text-sm"/>
+        <input name="m_phone" placeholder="Telefon" class="px-3 py-2 border rounded-lg text-sm"/>
+        <input name="m_notes" placeholder="Notiz" class="px-3 py-2 border rounded-lg text-sm"/>
+        <textarea name="m_snippet" placeholder="Anzeigen-Text / Beschreibung" class="md:col-span-3 px-3 py-2 border rounded-lg text-sm" rows="2"></textarea>
+        <button type="submit" class="md:col-span-3 px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-semibold">💾 Lead speichern</button>
+      </form>
     </div>
   </div>
 </div>

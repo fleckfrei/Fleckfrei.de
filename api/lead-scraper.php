@@ -108,6 +108,53 @@ $totalNew = 0;
 $totalSeen = 0;
 $results = [];
 
+// ============================================================
+// Direkt-Scrape von kleinanzeigen.de (unabhängig von VPS SearXNG)
+// Kleinanzeigen-Suche liefert deutlich verlässlicher echte Leads.
+// ============================================================
+$kleinanzeigenCategories = [
+    'haushalt' => ['reinigungsfirma-berlin','putzhilfe-berlin','haushaltshilfe-berlin','wohnungsreinigung-berlin'],
+    'airbnb'   => ['airbnb-reinigung-berlin','ferienwohnung-reinigung-berlin'],
+    'cohost'   => ['airbnb-co-host-berlin','airbnb-verwaltung-berlin'],
+    'buero'    => ['bueroreinigung-berlin','gewerbereinigung-berlin'],
+];
+foreach ($kleinanzeigenCategories as $category => $slugs) {
+    foreach ($slugs as $slug) {
+        $url = 'https://www.kleinanzeigen.de/s-' . urlencode($slug) . '/k0l3331';
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_HTTPHEADER => ['Accept-Language: de-DE,de;q=0.9'],
+        ]);
+        $html = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code !== 200 || !$html) continue;
+
+        // Einfach: <a class="ellipsis" href="/s-anzeige/...">Titel</a>
+        if (preg_match_all('#<a class="ellipsis"[^>]+href="(/s-anzeige/[^"]+)"[^>]*>([^<]+)</a>#i', $html, $m, PREG_SET_ORDER)) {
+            foreach (array_slice($m, 0, 20) as $match) {
+                $totalSeen++;
+                $leadUrl = 'https://www.kleinanzeigen.de' . $match[1];
+                $title = html_entity_decode(trim($match[2]), ENT_QUOTES, 'UTF-8');
+                if (val("SELECT lead_id FROM leads WHERE source_url=? LIMIT 1", [$leadUrl])) continue;
+                try {
+                    $seg = ($category === 'buero') ? 'B2B' : 'B2C';
+                    q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES (?, ?, ?, ?, NULL, NULL, 'Berlin', ?, ?)",
+                      ['kleinanzeigen.de', $leadUrl, $category, $title, "[$seg]", substr($title, 0, 500)]);
+                    $totalNew++;
+                    $results[] = ['category'=>$category, 'title'=>substr($title,0,80), 'url'=>$leadUrl, 'has_contact'=>false];
+                } catch (Exception $e) {}
+            }
+        }
+        usleep(500000); // 0.5s throttle
+    }
+}
+
 foreach ($queries as $category => $queryList) {
     foreach ($queryList as $q) {
         $sx = vps_call('searxng', [
