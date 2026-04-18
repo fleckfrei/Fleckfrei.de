@@ -1056,11 +1056,12 @@ try {
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && preg_match('/^\d{2}:\d{2}/', $time)) {
                 $_pw = all("SELECT priority_label, start_time, end_time, priority_customer_types, shiftable_customer_types, max_shift_minutes
                             FROM booking_priority_windows WHERE active=1");
+                $_myTypes = array_filter(array_map('trim', explode(',', $customerType ?? '')));
                 foreach ($_pw as $_w) {
                     $_prioTypes = json_decode($_w['priority_customer_types'], true) ?: [];
                     $_shiftTypes = json_decode($_w['shiftable_customer_types'], true) ?: [];
-                    if (in_array($customerType, $_prioTypes, true)) break; // Prio-Kunde → nicht shiften
-                    if (!in_array($customerType, $_shiftTypes, true)) continue; // nicht in diesem Fenster shiftbar
+                    if (array_intersect($_myTypes, $_prioTypes)) break; // irgendein Typ ist Prio → nicht shiften
+                    if (!array_intersect($_myTypes, $_shiftTypes)) continue; // kein Typ in diesem Fenster shiftbar
                     $_ws = substr($_w['start_time'], 0, 5);
                     $_we = substr($_w['end_time'], 0, 5);
                     $_t  = substr($time, 0, 5);

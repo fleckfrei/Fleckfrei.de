@@ -100,13 +100,13 @@ include __DIR__ . '/../includes/layout.php';
   <div class="overflow-x-auto">
     <table class="w-full text-sm" id="tbl">
       <thead class="bg-gray-50"><tr>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">#</th>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">Name</th>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">Typ</th>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">E-Mail</th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" data-sort="num" data-col="0">#<span class="sort-ind text-gray-300 ml-1">↕</span></th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" data-sort="text" data-col="1">Name<span class="sort-ind text-gray-300 ml-1">↕</span></th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" data-sort="text" data-col="2">Typ<span class="sort-ind text-gray-300 ml-1">↕</span></th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" data-sort="text" data-col="3">E-Mail<span class="sort-ind text-gray-300 ml-1">↕</span></th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Telefon</th>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">Jobs</th>
-        <th class="px-4 py-3 text-left font-medium text-gray-600">Status</th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" data-sort="num" data-col="5">Jobs<span class="sort-ind text-gray-300 ml-1">↕</span></th>
+        <th class="px-4 py-3 text-left font-medium text-gray-600 cursor-pointer select-none hover:bg-gray-100" data-sort="text" data-col="6">Status<span class="sort-ind text-gray-300 ml-1">↕</span></th>
         <th class="px-4 py-3 text-left font-medium text-gray-600">Aktionen</th>
       </tr></thead>
       <tbody class="divide-y">
@@ -114,12 +114,15 @@ include __DIR__ . '/../includes/layout.php';
       <tr class="hover:bg-gray-50">
         <td class="px-4 py-3 text-gray-400"><?= $row['customer_id'] ?></td>
         <td class="px-4 py-3 font-medium"><?= e($row['name']) ?> <span class="text-gray-400"><?= e($row['surname']) ?></span></td>
-        <td class="px-4 py-2">
-          <select onchange="updateCustField(<?= $row['customer_id'] ?>,'customer_type',this.value,this)" class="px-2 py-1 text-xs font-medium border rounded-lg cursor-pointer bg-blue-50 text-blue-700 border-blue-200">
-            <?php foreach (['Private Person','Airbnb','Company','Host'] as $t): ?>
-            <option value="<?= $t ?>" <?= $row['customer_type']===$t?'selected':'' ?>><?= $t ?></option>
+        <td class="px-4 py-2" data-sort-val="<?= e($row['customer_type'] ?? '') ?>">
+          <div class="type-chips flex flex-wrap items-center gap-1 cursor-pointer min-w-[120px]" data-cid="<?= $row['customer_id'] ?>" data-types="<?= e($row['customer_type'] ?? '') ?>" onclick="openTypeEdit(this)" title="Klicken zum Bearbeiten">
+            <?php
+              $tags = array_filter(array_map('trim', explode(',', $row['customer_type'] ?? '')));
+              if (empty($tags)) echo '<span class="text-xs text-gray-400 italic">+ Typ</span>';
+              foreach ($tags as $t): ?>
+              <span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] rounded font-medium"><?= e($t) ?></span>
             <?php endforeach; ?>
-          </select>
+          </div>
         </td>
         <td class="px-4 py-3"><a href="mailto:<?= e($row['email']) ?>" class="text-brand hover:underline"><?= e($row['email']) ?></a></td>
         <td class="px-4 py-3">
@@ -131,7 +134,7 @@ include __DIR__ . '/../includes/layout.php';
           <?php endif; ?>
         </td>
         <td class="px-4 py-3"><?= $row['jobs'] ?></td>
-        <td class="px-4 py-2">
+        <td class="px-4 py-2" data-sort-val="<?= $row['status'] ? '1' : '0' ?>">
           <select onchange="updateCustStatus(<?= $row['customer_id'] ?>, this.value, this)" class="px-2 py-1 text-xs font-medium border rounded-lg cursor-pointer <?= $row['status'] ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200' ?>">
             <option value="1" <?= $row['status'] ? 'selected' : '' ?>>Aktiv</option>
             <option value="0" <?= !$row['status'] ? 'selected' : '' ?>>Inaktiv</option>
@@ -256,6 +259,108 @@ include __DIR__ . '/../includes/layout.php';
 $apiKey = API_KEY;
 $script = <<<JS
 function filterRows(q){q=q.toLowerCase();document.querySelectorAll('#tbl tbody tr').forEach(r=>{r.style.display=r.textContent.toLowerCase().includes(q)?'':'none'})}
+
+// Click-to-sort columns
+(function(){
+  const tbl = document.getElementById('tbl');
+  if (!tbl) return;
+  const tbody = tbl.querySelector('tbody');
+  let sortState = {col: -1, asc: true};
+  tbl.querySelectorAll('thead th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = parseInt(th.dataset.col);
+      const type = th.dataset.sort;
+      sortState.asc = (sortState.col === col) ? !sortState.asc : true;
+      sortState.col = col;
+      tbl.querySelectorAll('thead .sort-ind').forEach(s => { s.textContent = '↕'; s.className = 'sort-ind text-gray-300 ml-1'; });
+      const ind = th.querySelector('.sort-ind');
+      ind.textContent = sortState.asc ? '↑' : '↓';
+      ind.className = 'sort-ind text-brand ml-1 font-bold';
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort((a, b) => {
+        const ca = a.children[col], cb = b.children[col];
+        let va = ca?.dataset?.sortVal ?? ca?.textContent.trim() ?? '';
+        let vb = cb?.dataset?.sortVal ?? cb?.textContent.trim() ?? '';
+        if (type === 'num') { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; return sortState.asc ? va - vb : vb - va; }
+        return sortState.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+      });
+      rows.forEach(r => tbody.appendChild(r));
+    });
+  });
+})();
+
+// Multi-Tag Type-Editor (Popover)
+const TYPE_PRESETS = ['Private Person','Private','Airbnb','Host','Co-Host','Short-Term Rental','Booking','Company','Firma','GmbH','B2B','Business'];
+let _typePop = null;
+function openTypeEdit(chipEl) {
+  closeTypePop();
+  const cid = chipEl.dataset.cid;
+  const current = (chipEl.dataset.types || '').split(',').map(s => s.trim()).filter(Boolean);
+  const pop = document.createElement('div');
+  pop.className = 'fixed z-50 bg-white border-2 border-brand rounded-xl shadow-xl p-3 text-xs';
+  pop.style.minWidth = '240px';
+  const rect = chipEl.getBoundingClientRect();
+  pop.style.left = Math.max(8, rect.left) + 'px';
+  pop.style.top = (rect.bottom + 4) + 'px';
+  const allTags = [...new Set([...TYPE_PRESETS, ...current])];
+  pop.innerHTML = '<div class="font-semibold text-gray-700 mb-2">Kunden-Typ(en) — mehrere möglich</div>'
+    + '<div class="grid grid-cols-2 gap-1 mb-3 max-h-56 overflow-auto">'
+    + allTags.map(t => {
+        const checked = current.includes(t) ? 'checked' : '';
+        return `<label class="flex items-center gap-1 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer"><input type="checkbox" value="${t.replace(/"/g,'&quot;')}" ${checked} class="type-cb rounded"/><span>${t}</span></label>`;
+      }).join('')
+    + '</div>'
+    + '<div class="flex gap-1 mb-2"><input type="text" id="typeCustom" placeholder="+ Eigener Typ" class="flex-1 px-2 py-1 border rounded text-xs"/><button onclick="addCustomType(this)" type="button" class="px-2 py-1 bg-brand text-white rounded text-xs">+</button></div>'
+    + `<div class="flex gap-1"><button onclick="saveTypes(${cid}, this)" class="flex-1 px-3 py-1.5 bg-brand text-white rounded font-semibold">💾 Speichern</button><button onclick="closeTypePop()" class="px-3 py-1.5 border rounded">Abbrechen</button></div>`;
+  pop.dataset.cid = cid;
+  pop.dataset.origChip = '';
+  _typePop = {el: pop, chip: chipEl};
+  document.body.appendChild(pop);
+  document.addEventListener('click', outsideTypePop, true);
+}
+function outsideTypePop(e) {
+  if (_typePop && !_typePop.el.contains(e.target) && !_typePop.chip.contains(e.target)) closeTypePop();
+}
+function closeTypePop() {
+  if (_typePop) { _typePop.el.remove(); _typePop = null; document.removeEventListener('click', outsideTypePop, true); }
+}
+function addCustomType(btn) {
+  const inp = document.getElementById('typeCustom');
+  const v = (inp.value || '').trim();
+  if (!v) return;
+  const grid = btn.closest('.fixed').querySelector('.grid');
+  const lbl = document.createElement('label');
+  lbl.className = 'flex items-center gap-1 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer';
+  lbl.innerHTML = `<input type="checkbox" value="${v.replace(/"/g,'&quot;')}" checked class="type-cb rounded"/><span>${v}</span>`;
+  grid.appendChild(lbl);
+  inp.value = '';
+}
+function saveTypes(cid, btn) {
+  const checks = _typePop.el.querySelectorAll('.type-cb:checked');
+  const vals = Array.from(checks).map(c => c.value);
+  const joined = vals.join(', ');
+  btn.disabled = true; btn.textContent = '…';
+  fetch('/api/index.php?action=customer/update', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-API-Key':'$apiKey'},
+    body: JSON.stringify({customer_id: cid, field:'customer_type', value: joined})
+  }).then(r=>r.json()).then(d => {
+    if (!d.success) { alert(d.error || 'Fehler'); btn.disabled=false; btn.textContent='💾 Speichern'; return; }
+    const chip = _typePop.chip;
+    chip.dataset.types = joined;
+    chip.setAttribute('data-types', joined);
+    const td = chip.closest('td');
+    if (td) td.setAttribute('data-sort-val', joined);
+    chip.innerHTML = vals.length
+      ? vals.map(t => `<span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] rounded font-medium">${t.replace(/</g,'&lt;')}</span>`).join(' ')
+      : '<span class="text-xs text-gray-400 italic">+ Typ</span>';
+    closeTypePop();
+    chip.closest('tr').style.transition='background 0.3s';
+    chip.closest('tr').style.background='#dcfce7';
+    setTimeout(()=>{chip.closest('tr').style.background='';}, 800);
+  });
+}
+
 function updateCustField(id, field, val, el) {
     fetch('/api/index.php?action=customer/update', {
         method:'POST',
