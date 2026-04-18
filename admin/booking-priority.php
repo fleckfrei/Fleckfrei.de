@@ -11,8 +11,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
 
     if ($act === 'save_window') {
         $pwId = (int)($_POST['pw_id'] ?? 0);
-        $prio = array_map('trim', explode(',', $_POST['priority_types'] ?? ''));
-        $shift = array_map('trim', explode(',', $_POST['shiftable_types'] ?? ''));
+        // Checkbox-Arrays ODER Komma-String (backwards-compat)
+        $prio = is_array($_POST['priority_types'] ?? null)
+            ? array_map('trim', $_POST['priority_types'])
+            : array_map('trim', explode(',', $_POST['priority_types'] ?? ''));
+        $shift = is_array($_POST['shiftable_types'] ?? null)
+            ? array_map('trim', $_POST['shiftable_types'])
+            : array_map('trim', explode(',', $_POST['shiftable_types'] ?? ''));
         $params = [
             trim($_POST['priority_label'] ?? ''),
             $_POST['start_time'] ?? '11:00',
@@ -37,6 +42,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
     if ($act === 'toggle_window') {
         q("UPDATE booking_priority_windows SET active=1-active WHERE pw_id=?", [(int)$_POST['pw_id']]);
         header('Location: /admin/booking-priority.php?saved=1'); exit;
+    }
+
+    if ($act === 'apply_preset') {
+        $presets = [
+            'str' => [
+                'priority_label' => 'STR_TURNOVER',
+                'start_time' => '11:00', 'end_time' => '16:00',
+                'priority_types' => ['Airbnb','Host','Co-Host','Short-Term Rental','Booking'],
+                'shiftable_types' => ['Private Person','Private','Company','Firma','GmbH','B2B','Business'],
+                'max_shift_minutes' => 120, 'allow_next_day' => 1, 'fallback_mode' => 'escalate',
+                'notes' => 'STR-Turnover-Fenster: Check-outs haben Priorität, Privatkunden werden automatisch vor/nach dem Fenster gelegt.'
+            ],
+            'office' => [
+                'priority_label' => 'B2B_MORNING',
+                'start_time' => '07:00', 'end_time' => '10:00',
+                'priority_types' => ['B2B','Company','Firma','GmbH','Business'],
+                'shiftable_types' => ['Private Person','Private','Airbnb','Host','Co-Host'],
+                'max_shift_minutes' => 120, 'allow_next_day' => 1, 'fallback_mode' => 'escalate',
+                'notes' => 'B2B-Morgen-Fenster: Büros wollen früh gereinigt sein — andere Kundentypen werden auf später verschoben.'
+            ]
+        ];
+        $p = $presets[$_POST['preset'] ?? ''] ?? null;
+        if ($p) {
+            $exists = val("SELECT pw_id FROM booking_priority_windows WHERE priority_label=?", [$p['priority_label']]);
+            if ($exists) {
+                q("UPDATE booking_priority_windows SET start_time=?, end_time=?, priority_customer_types=?, shiftable_customer_types=?, max_shift_minutes=?, allow_next_day=?, fallback_mode=?, active=1, notes=? WHERE pw_id=?",
+                    [$p['start_time'], $p['end_time'], json_encode($p['priority_types']), json_encode($p['shiftable_types']), $p['max_shift_minutes'], $p['allow_next_day'], $p['fallback_mode'], $p['notes'], $exists]);
+            } else {
+                q("INSERT INTO booking_priority_windows (priority_label, start_time, end_time, priority_customer_types, shiftable_customer_types, max_shift_minutes, allow_next_day, fallback_mode, active, notes) VALUES (?,?,?,?,?,?,?,?,1,?)",
+                    [$p['priority_label'], $p['start_time'], $p['end_time'], json_encode($p['priority_types']), json_encode($p['shiftable_types']), $p['max_shift_minutes'], $p['allow_next_day'], $p['fallback_mode'], $p['notes']]);
+            }
+        }
+        header('Location: /admin/booking-priority.php?preset=1'); exit;
     }
 
     if ($act === 'shift_respond') {
@@ -70,10 +108,46 @@ include __DIR__ . '/../includes/layout.php';
 <?php if (!empty($_GET['saved'])): ?>
 <div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">✓ Gespeichert</div>
 <?php endif; ?>
+<?php if (!empty($_GET['preset'])): ?>
+<div class="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-xl mb-4">✨ Preset aktiviert — Auto-Shift läuft ab sofort.</div>
+<?php endif; ?>
 
 <div class="mb-6">
   <h1 class="text-2xl font-bold text-gray-900">Buchungs-Priorität & Shifting</h1>
-  <p class="text-sm text-gray-600 mt-1">Definiere Zeitfenster in denen bestimmte Kundentypen (z.B. Airbnb/Host) Priorität haben. Normale Kunden werden automatisch verschoben.</p>
+  <p class="text-sm text-gray-600 mt-1">Legt fest wann welche Kundentypen Vorrang haben. Andere werden automatisch vor/nach das Fenster verschoben — ohne Admin-Eingriff.</p>
+</div>
+
+<!-- Quick-Presets: 1-Klick-Setup -->
+<div class="bg-gradient-to-br from-brand-light/40 to-white border-2 border-brand/30 rounded-xl p-5 mb-6">
+  <div class="flex items-center gap-2 mb-3">
+    <span class="text-xl">⚡</span>
+    <h2 class="font-bold text-gray-900">Schnell-Start (1 Klick)</h2>
+  </div>
+  <p class="text-xs text-gray-600 mb-4">Aktiviert typische Fenster automatisch. Du kannst sie danach trotzdem anpassen.</p>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <form method="POST" onsubmit="return confirm('STR-Turnover-Fenster 11:00–16:00 anlegen/aktivieren?')" class="bg-white rounded-lg border p-4 hover:border-brand hover:shadow-md transition cursor-pointer" onclick="this.querySelector('button').click()">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="apply_preset"/>
+      <input type="hidden" name="preset" value="str"/>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-lg">🏨</span>
+        <span class="font-bold text-gray-900">STR-Turnover 11:00–16:00</span>
+      </div>
+      <div class="text-xs text-gray-600 mb-3">Airbnb / Host / Booking haben Vorrang. Private/B2B werden automatisch auf 09:00 oder 16:00 verschoben.</div>
+      <button type="submit" class="w-full px-3 py-2 bg-brand text-white rounded-lg text-sm font-semibold hover:bg-brand-dark">✓ Aktivieren</button>
+    </form>
+    <form method="POST" onsubmit="return confirm('B2B-Morgen-Fenster 07:00–10:00 anlegen/aktivieren?')" class="bg-white rounded-lg border p-4 hover:border-brand hover:shadow-md transition cursor-pointer" onclick="this.querySelector('button').click()">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="apply_preset"/>
+      <input type="hidden" name="preset" value="office"/>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-lg">💼</span>
+        <span class="font-bold text-gray-900">B2B-Morgen 07:00–10:00</span>
+      </div>
+      <div class="text-xs text-gray-600 mb-3">Büros / B2B haben Vorrang. Privat / Airbnb werden auf später am Tag verschoben.</div>
+      <button type="submit" class="w-full px-3 py-2 bg-brand text-white rounded-lg text-sm font-semibold hover:bg-brand-dark">✓ Aktivieren</button>
+    </form>
+  </div>
 </div>
 
 <!-- Pending Shifts — Action-Required -->
@@ -201,13 +275,28 @@ include __DIR__ . '/../includes/layout.php';
           <input type="time" name="end_time" required value="16:00" class="w-full px-3 py-2 border rounded-lg text-sm"/>
         </div>
       </div>
+      <?php $allTypes = ['Airbnb','Host','Co-Host','Short-Term Rental','Booking','Private Person','Private','Company','Firma','GmbH','B2B','Business']; ?>
       <div>
-        <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">Prio-Kundentypen (Komma-getrennt)</label>
-        <input type="text" name="priority_types" placeholder="Airbnb, Host, Co-Host" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+        <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">⭐ Prio-Kundentypen (haben Vorrang)</label>
+        <div class="grid grid-cols-2 gap-1.5 p-2 bg-gray-50 rounded-lg">
+          <?php foreach ($allTypes as $t): ?>
+          <label class="flex items-center gap-1.5 px-2 py-1 hover:bg-white rounded cursor-pointer">
+            <input type="checkbox" name="priority_types[]" value="<?= e($t) ?>" data-field="prio" class="rounded"/>
+            <span class="text-xs"><?= e($t) ?></span>
+          </label>
+          <?php endforeach; ?>
+        </div>
       </div>
       <div>
-        <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">Verschiebbare Kundentypen</label>
-        <input type="text" name="shiftable_types" placeholder="Private Person, Company, B2B" class="w-full px-3 py-2 border rounded-lg text-sm"/>
+        <label class="block text-xs font-semibold text-gray-700 mb-1 uppercase">↔️ Verschiebbare Typen (werden auto-umgeplant)</label>
+        <div class="grid grid-cols-2 gap-1.5 p-2 bg-gray-50 rounded-lg">
+          <?php foreach ($allTypes as $t): ?>
+          <label class="flex items-center gap-1.5 px-2 py-1 hover:bg-white rounded cursor-pointer">
+            <input type="checkbox" name="shiftable_types[]" value="<?= e($t) ?>" data-field="shift" class="rounded"/>
+            <span class="text-xs"><?= e($t) ?></span>
+          </label>
+          <?php endforeach; ?>
+        </div>
       </div>
       <div class="grid grid-cols-3 gap-3">
         <div>
@@ -244,10 +333,12 @@ function editWindow(w) {
   const f = document.getElementById('windowForm');
   f.pw_id.value = w.pw_id;
   f.priority_label.value = w.priority_label;
-  f.start_time.value = w.start_time;
-  f.end_time.value = w.end_time;
-  f.priority_types.value = (JSON.parse(w.priority_customer_types || '[]')).join(', ');
-  f.shiftable_types.value = (JSON.parse(w.shiftable_customer_types || '[]')).join(', ');
+  f.start_time.value = (w.start_time || '').slice(0, 5);
+  f.end_time.value = (w.end_time || '').slice(0, 5);
+  const prio = JSON.parse(w.priority_customer_types || '[]');
+  const shift = JSON.parse(w.shiftable_customer_types || '[]');
+  f.querySelectorAll('[data-field=prio]').forEach(cb => { cb.checked = prio.includes(cb.value); });
+  f.querySelectorAll('[data-field=shift]').forEach(cb => { cb.checked = shift.includes(cb.value); });
   f.max_shift_minutes.value = w.max_shift_minutes;
   f.allow_next_day.checked = !!parseInt(w.allow_next_day);
   f.fallback_mode.value = w.fallback_mode;
@@ -256,6 +347,10 @@ function editWindow(w) {
   document.getElementById('formTitle').textContent = 'Fenster #' + w.pw_id + ' bearbeiten';
   document.getElementById('windowModal').classList.remove('hidden');
 }
+// "+ Neu" button reset
+document.querySelector('[onclick*="windowForm"]')?.addEventListener('click', () => {
+  document.querySelectorAll('#windowForm [data-field]').forEach(cb => cb.checked = false);
+});
 </script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>
