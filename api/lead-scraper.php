@@ -121,10 +121,93 @@ function browserHeaders(): array {
 }
 
 /**
- * Apify-based URL-Fetcher (bypasses Cloudflare via Apify's infrastructure).
- * Ruft den Apify Actor "apify/cheerio-scraper" synchron auf und bekommt das HTML zurück.
- * Funktioniert nur wenn APIFY_API_TOKEN in includes/apify-keys.php gesetzt ist.
- * Gibt null zurück bei Fehler, dann fallback auf direktem curl.
+ * Primary: IPRoyal ISP-Proxy (statische DE-IPs, schnellster Fetch ~1s).
+ * Round-robin zwischen allen konfigurierten Proxies.
+ */
+function fetchViaIproyal(string $url, int $timeoutSec = 20): ?string {
+    if (!defined('IPROYAL_PROXIES') || !IPROYAL_PROXIES) return null;
+    $list = is_string(IPROYAL_PROXIES) ? json_decode(IPROYAL_PROXIES, true) : IPROYAL_PROXIES;
+    if (!is_array($list) || empty($list)) return null;
+    // Random proxy pick (round-robin-artig)
+    $p = $list[array_rand($list)];
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        CURLOPT_ENCODING => '',
+        CURLOPT_TIMEOUT => $timeoutSec,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_HTTPHEADER => browserHeaders(),
+        CURLOPT_PROXY => "http://{$p['host']}:{$p['port']}",
+        CURLOPT_PROXYUSERPWD => "{$p['user']}:{$p['pass']}",
+        CURLOPT_PROXYTYPE => CURLPROXY_HTTP,
+    ]);
+    $html = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ($code === 200 && $html) ? $html : null;
+}
+
+/**
+ * Fallback: BrightData Web Unlocker API (handles JS, CAPTCHA, auto-retries).
+ * Etwas langsamer (~5s) aber fast immer erfolgreich.
+ */
+function fetchViaBrightData(string $url, int $timeoutSec = 30): ?string {
+    if (!defined('BRIGHTDATA_API_KEY') || !BRIGHTDATA_API_KEY) return null;
+    $zone = defined('BRIGHTDATA_ZONE') ? BRIGHTDATA_ZONE : 'n8n_unblocker';
+    $ch = curl_init('https://api.brightdata.com/request');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_TIMEOUT => $timeoutSec,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . BRIGHTDATA_API_KEY,
+        ],
+        CURLOPT_POSTFIELDS => json_encode([
+            'zone' => $zone,
+            'url' => $url,
+            'format' => 'raw',
+            'country' => 'de',
+        ]),
+    ]);
+    $html = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ($code === 200 && $html) ? $html : null;
+}
+
+/**
+ * Smart Fetch Chain mit KOSTEN-OPTIMIERUNG:
+ *   1. Disk-Cache (24h TTL) — 0$ Kosten, 0ms Latenz
+ *   2. IPRoyal ISP — Subscription (= free je Request)
+ *   3. BrightData Web Unlocker — pay-per-request (~0.002$/req)
+ *   4. Apify Actor — compute + proxy (~0.005$/req)
+ * Cache schont Provider-Limits UND spart $$.
+ */
+function fetchSmart(string $url, int $cacheSec = 86400): ?string {
+    // Cache-Read
+    $cDir = sys_get_temp_dir() . '/flk_scrape_cache';
+    if (!is_dir($cDir)) @mkdir($cDir, 0700, true);
+    $cFile = $cDir . '/' . md5($url) . '.html';
+    if (file_exists($cFile) && (time() - filemtime($cFile)) < $cacheSec) {
+        $cached = @file_get_contents($cFile);
+        if ($cached && strlen($cached) > 500) return $cached;
+    }
+
+    // Provider-Chain
+    $html = fetchViaIproyal($url, 15);
+    if (!$html) $html = fetchViaBrightData($url, 25);
+    if (!$html) $html = fetchViaApify($url, 30);
+
+    if ($html && strlen($html) > 500) @file_put_contents($cFile, $html);
+    return $html;
+}
+
+/**
+ * Apify Actor-basiertes URL-Fetching (last-resort fallback).
  */
 function fetchViaApify(string $url, int $timeoutSec = 45): ?string {
     if (!defined('APIFY_API_TOKEN') || !APIFY_API_TOKEN) return null;
@@ -164,21 +247,8 @@ function applyApifyProxy($ch): void {
 }
 
 function fetchLeadDetails(string $url): ?array {
-    // Primary: Apify Cheerio-Scraper (residential DE proxy, bypasses Cloudflare)
-    $html = fetchViaApify($url, 30);
-    if (!$html) {
-        // Fallback: direkter curl mit Browser-Headers
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            CURLOPT_ENCODING => '', CURLOPT_TIMEOUT => 20, CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_HTTPHEADER => browserHeaders(),
-        ]);
-        applyApifyProxy($ch);
-        $html = curl_exec($ch);
-        curl_close($ch);
-    }
+    // Smart chain: Cache → IPRoyal → BrightData → Apify
+    $html = fetchSmart($url);
     if (!$html) return null;
 
     // Beschreibung aus #viewad-description-text
@@ -239,20 +309,10 @@ $checkBatch = all("SELECT lead_id, source_url, notes FROM leads
                         OR notes REGEXP '\\\\[VERIFIED:20[0-9]{2}-[0-1][0-9]-[0-3][0-9]\\\\]')
                    ORDER BY lead_id ASC LIMIT 80");
 foreach ($checkBatch as $ld) {
-    $ch = curl_init($ld['source_url']);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        CURLOPT_ENCODING => '',
-        CURLOPT_TIMEOUT => 12, CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_HTTPHEADER => browserHeaders(),
-    ]);
-    applyApifyProxy($ch);
-    $h = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    // Dead-Check nutzt Cache wenn vorhanden (spart 0.002$+ pro Request bei BrightData/Apify)
+    $h = fetchSmart($ld['source_url'], 43200); // 12h cache für dead-check
     $dead = false;
-    if ($code >= 400 && $code !== 429) $dead = true;
+    if (!$h) $dead = true; // gar kein HTML → wahrscheinlich tot
     if ($h) foreach ($deadMarkers as $m) { if (stripos($h, $m) !== false) { $dead = true; break; } }
     if ($dead) {
         q("DELETE FROM leads WHERE lead_id=?", [$ld['lead_id']]);
@@ -281,21 +341,8 @@ foreach ($kleinanzeigenSearches as $category => $terms) {
     foreach ($terms as $term) {
         // adType=REQUEST = nur Gesuche; l3331 = Berlin; sortingField=SORTING_DATE = neueste zuerst
         $url = 'https://www.kleinanzeigen.de/s-berlin/' . $term . '/k0l3331?adType=REQUEST&sortingField=SORTING_DATE';
-        // Primary: Apify Actor (Residential DE)
-        $html = fetchViaApify($url, 30);
-        if (!$html) {
-            // Fallback: direkter curl
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                CURLOPT_ENCODING => '', CURLOPT_TIMEOUT => 20, CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_HTTPHEADER => browserHeaders(),
-            ]);
-            applyApifyProxy($ch);
-            $html = curl_exec($ch);
-            curl_close($ch);
-        }
+        // Search-Pages kurze Cache-TTL (2h) — Details länger (24h)
+        $html = fetchSmart($url, 7200);
         if (!$html) continue;
 
         // Pro <article class="aditem"> parsen: Titel + posted-Date ("Heute, 14:32" | "Gestern, 09:15" | "15.04.2026")

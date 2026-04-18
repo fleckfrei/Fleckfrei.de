@@ -39,20 +39,40 @@ jobs:
           if [ ! -s ~/.ssh/deploy_key ]; then echo "::error::HOSTINGER_SSH_KEY secret is empty"; exit 1; fi
           ssh-keyscan -p 65002 -T 10 62.72.37.195 >> ~/.ssh/known_hosts 2>&1 || true
 
-      - name: Sync gitignored keys to server (only if missing on server)
+      - name: Sync scraper-proxy keys to server
         env:
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          IPROYAL_PROXIES: ${{ secrets.IPROYAL_PROXIES }}
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_ZONE: ${{ secrets.BRIGHTDATA_ZONE }}
         run: |
-          # apify-keys.php — schreibt nur wenn Token vorhanden UND File fehlt ODER keinen APIFY_API_TOKEN enthält
           if [ -n "$APIFY_API_TOKEN" ]; then
             cat > /tmp/apify-keys.php <<EOF
           <?php
           if (!defined('APIFY_API_TOKEN')) define('APIFY_API_TOKEN', '$APIFY_API_TOKEN');
           EOF
-            scp -i ~/.ssh/deploy_key -P 65002 -o StrictHostKeyChecking=no \
-              /tmp/apify-keys.php \
+            scp -i ~/.ssh/deploy_key -P 65002 -o StrictHostKeyChecking=no /tmp/apify-keys.php \
               u860899303@62.72.37.195:/home/u860899303/domains/app.fleckfrei.de/public_html/includes/apify-keys.php
-            echo "✓ apify-keys.php synced to server"
+            echo "✓ apify-keys.php synced"
+          fi
+
+          if [ -n "$IPROYAL_PROXIES" ]; then
+            # IPROYAL_PROXIES secret holds a JSON array
+            printf "<?php\nif (!defined('IPROYAL_PROXIES')) define('IPROYAL_PROXIES', %s);\n" "'$IPROYAL_PROXIES'" > /tmp/iproyal-keys.php
+            scp -i ~/.ssh/deploy_key -P 65002 -o StrictHostKeyChecking=no /tmp/iproyal-keys.php \
+              u860899303@62.72.37.195:/home/u860899303/domains/app.fleckfrei.de/public_html/includes/iproyal-keys.php
+            echo "✓ iproyal-keys.php synced"
+          fi
+
+          if [ -n "$BRIGHTDATA_API_KEY" ]; then
+            cat > /tmp/brightdata-keys.php <<EOF
+          <?php
+          if (!defined('BRIGHTDATA_API_KEY')) define('BRIGHTDATA_API_KEY', '$BRIGHTDATA_API_KEY');
+          if (!defined('BRIGHTDATA_ZONE')) define('BRIGHTDATA_ZONE', '${BRIGHTDATA_ZONE:-n8n_unblocker}');
+          EOF
+            scp -i ~/.ssh/deploy_key -P 65002 -o StrictHostKeyChecking=no /tmp/brightdata-keys.php \
+              u860899303@62.72.37.195:/home/u860899303/domains/app.fleckfrei.de/public_html/includes/brightdata-keys.php
+            echo "✓ brightdata-keys.php synced"
           fi
 
       - name: Deploy via rsync
@@ -72,6 +92,8 @@ jobs:
             --exclude='includes/paypal-keys.php' \
             --exclude='includes/telegram-keys.php' \
             --exclude='includes/apify-keys.php' \
+            --exclude='includes/iproyal-keys.php' \
+            --exclude='includes/brightdata-keys.php' \
             -e "ssh -i ~/.ssh/deploy_key -p 65002" \
             ./ u860899303@62.72.37.195:/home/u860899303/domains/app.fleckfrei.de/public_html/
 

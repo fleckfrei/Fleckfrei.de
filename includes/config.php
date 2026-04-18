@@ -142,7 +142,7 @@ if (!defined('STRIPE_SK')) define('STRIPE_SK', env('STRIPE_SK'));
 
 // LLM / Telegram / Apify / Google — kept in separate gitignored key files
 // (include them only if they exist; values accessible via defined()/const)
-foreach (['llm-keys.php', 'telegram-keys.php', 'apify-keys.php', 'google-keys.php'] as $_keyFile) {
+foreach (['llm-keys.php', 'telegram-keys.php', 'apify-keys.php', 'google-keys.php', 'iproyal-keys.php', 'brightdata-keys.php'] as $_keyFile) {
     $_path = __DIR__ . '/' . $_keyFile;
     if (file_exists($_path)) { require_once $_path; }
 }
