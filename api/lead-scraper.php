@@ -104,15 +104,32 @@ function extractPhone(string $text): ?string {
  * Fetch single ad page and extract contact info + full description.
  * Returns ['email','phone','name','district','full_text'] or null on failure.
  */
+// Volle Browser-Headers damit Kleinanzeigen/Cloudflare nicht blockt
+function browserHeaders(): array {
+    return [
+        'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language: de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Sec-Ch-Ua: "Chromium";v="120", "Not_A Brand";v="8"',
+        'Sec-Ch-Ua-Mobile: ?0',
+        'Sec-Ch-Ua-Platform: "macOS"',
+        'Sec-Fetch-Dest: document',
+        'Sec-Fetch-Mode: navigate',
+        'Sec-Fetch-Site: none',
+        'Sec-Fetch-User: ?1',
+        'Upgrade-Insecure-Requests: 1',
+    ];
+}
+
 function fetchLeadDetails(string $url): ?array {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        CURLOPT_ENCODING => '', // accept gzip
         CURLOPT_TIMEOUT => 12,
         CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_HTTPHEADER => ['Accept-Language: de-DE,de;q=0.9'],
+        CURLOPT_HTTPHEADER => browserHeaders(),
     ]);
     $html = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -180,8 +197,10 @@ foreach ($checkBatch as $ld) {
     $ch = curl_init($ld['source_url']);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        CURLOPT_ENCODING => '',
         CURLOPT_TIMEOUT => 5, CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_HTTPHEADER => browserHeaders(),
     ]);
     $h = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -220,10 +239,11 @@ foreach ($kleinanzeigenSearches as $category => $terms) {
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            CURLOPT_ENCODING => '',
             CURLOPT_TIMEOUT => 10,
             CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_HTTPHEADER => ['Accept-Language: de-DE,de;q=0.9'],
+            CURLOPT_HTTPHEADER => browserHeaders(),
         ]);
         $html = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -279,6 +299,58 @@ foreach ($kleinanzeigenSearches as $category => $terms) {
     }
 }
 
+// ============================================================
+// GOOGLE PLACES (B2B-Leads): Berlin-Businesses die potentiell
+// Reinigung brauchen — Airbnb/Hotels/Büros/Praxen. Outbound-Leads.
+// Benötigt GOOGLE_PLACES_API_KEY in includes/google-keys.php.
+// ============================================================
+if (defined('GOOGLE_PLACES_API_KEY') && GOOGLE_PLACES_API_KEY) {
+    $placesSearches = [
+        'airbnb' => ['Ferienwohnung Berlin', 'Airbnb Berlin Mitte', 'Apartments kurzzeit Berlin'],
+        'buero'  => ['Coworking Berlin', 'Bürogemeinschaft Berlin Mitte', 'Arztpraxis Berlin Mitte', 'Anwaltskanzlei Berlin'],
+    ];
+    foreach ($placesSearches as $category => $qs) {
+        foreach ($qs as $q) {
+            $url = 'https://maps.googleapis.com/maps/api/place/textsearch/json?query=' . urlencode($q) . '&region=de&key=' . GOOGLE_PLACES_API_KEY;
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_SSL_VERIFYPEER => false]);
+            $resp = curl_exec($ch); curl_close($ch);
+            $d = json_decode($resp, true);
+            if (!is_array($d) || empty($d['results'])) continue;
+            foreach (array_slice($d['results'], 0, 15) as $p) {
+                $totalSeen++;
+                $placeId = $p['place_id'] ?? '';
+                $placeUrl = $placeId ? "https://www.google.com/maps/place/?q=place_id:$placeId" : '';
+                if (!$placeUrl) continue;
+                if (val("SELECT lead_id FROM leads WHERE source_url=? LIMIT 1", [$placeUrl])) continue;
+                // Details holen für Phone
+                $phone = null;
+                if ($placeId) {
+                    $detUrl = 'https://maps.googleapis.com/maps/api/place/details/json?place_id=' . $placeId . '&fields=formatted_phone_number,international_phone_number,website&key=' . GOOGLE_PLACES_API_KEY;
+                    $ch2 = curl_init($detUrl);
+                    curl_setopt_array($ch2, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_SSL_VERIFYPEER => false]);
+                    $dresp = curl_exec($ch2); curl_close($ch2);
+                    $dd = json_decode($dresp, true);
+                    $phone = $dd['result']['international_phone_number'] ?? $dd['result']['formatted_phone_number'] ?? null;
+                    $website = $dd['result']['website'] ?? null;
+                }
+                $title = $p['name'] ?? 'Berlin Business';
+                $addr = $p['formatted_address'] ?? '';
+                $seg = 'B2B';
+                $notes = "[$seg] [SOURCE:google_places]" . ($website ? " [WEBSITE:$website]" : '');
+                $snippet = $title . ' · ' . $addr . ($p['rating'] ?? '' ? ' · ⭐' . $p['rating'] : '');
+                try {
+                    q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES ('google_places', ?, ?, ?, NULL, ?, 'Berlin', ?, ?)",
+                      [$placeUrl, $category, $title, $phone, $notes, substr($snippet, 0, 500)]);
+                    $totalNew++;
+                    $results[] = ['category'=>$category, 'title'=>$title, 'url'=>$placeUrl, 'source'=>'google_places', 'has_contact'=>(bool)$phone];
+                } catch (Exception $e) {}
+            }
+            usleep(300000);
+        }
+    }
+}
+
 foreach ($queries as $category => $queryList) {
     foreach ($queryList as $q) {
         $sx = vps_call('searxng', [
@@ -295,14 +367,6 @@ foreach ($queries as $category => $queryList) {
             $title = $r['title'] ?? '';
             $snippet = $r['snippet'] ?? $r['content'] ?? '';
             if ($url === '' || $title === '') continue;
-
-            // QUALITÄTS-FILTER: nur akzeptieren wenn URL eindeutig eine
-            // Kleinanzeigen-Einzel-Anzeige ODER nebenan.de/quoka-Anzeige ist
-            $isRealAd =
-                preg_match('#kleinanzeigen\.de/s-anzeige/#', $url) ||
-                preg_match('#quoka\.de/cat_[0-9]+/[a-z0-9_-]+#', $url) ||
-                preg_match('#nebenan\.de/(feed_items|content)/#', $url);
-            if (!$isRealAd) continue;
 
             // Skip aggregator/spam/competitor/government/job-board domains
             $skipDomains = [
