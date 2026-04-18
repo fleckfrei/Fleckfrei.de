@@ -138,19 +138,39 @@ foreach ($kleinanzeigenSearches as $category => $terms) {
         curl_close($ch);
         if ($code !== 200 || !$html) continue;
 
-        // Einfach: <a class="ellipsis" href="/s-anzeige/...">Titel</a>
-        if (preg_match_all('#<a class="ellipsis"[^>]+href="(/s-anzeige/[^"]+)"[^>]*>([^<]+)</a>#i', $html, $m, PREG_SET_ORDER)) {
-            foreach (array_slice($m, 0, 20) as $match) {
+        // Pro <article class="aditem"> parsen: Titel + posted-Date ("Heute, 14:32" | "Gestern, 09:15" | "15.04.2026")
+        if (preg_match_all('#<article[^>]*class="[^"]*aditem[^"]*"[^>]*>(.*?)</article>#is', $html, $articles)) {
+            foreach (array_slice($articles[1], 0, 25) as $art) {
+                // URL + Titel
+                if (!preg_match('#href="(/s-anzeige/[^"]+)"[^>]*>([^<]+)#i', $art, $tMatch)) continue;
+                $leadUrl = 'https://www.kleinanzeigen.de' . $tMatch[1];
+                $title = html_entity_decode(trim($tMatch[2]), ENT_QUOTES, 'UTF-8');
                 $totalSeen++;
-                $leadUrl = 'https://www.kleinanzeigen.de' . $match[1];
-                $title = html_entity_decode(trim($match[2]), ENT_QUOTES, 'UTF-8');
                 if (val("SELECT lead_id FROM leads WHERE source_url=? LIMIT 1", [$leadUrl])) continue;
+
+                // Posted-Date extrahieren
+                $postedAt = null;
+                if (preg_match('#(Heute|Gestern|\d{2}\.\d{2}\.\d{4})(?:,?\s*(\d{2}:\d{2}))?#u', $art, $dMatch)) {
+                    $dStr = $dMatch[1];
+                    $tStr = $dMatch[2] ?? '00:00';
+                    if ($dStr === 'Heute') $postedAt = date('Y-m-d') . ' ' . $tStr . ':00';
+                    elseif ($dStr === 'Gestern') $postedAt = date('Y-m-d', strtotime('-1 day')) . ' ' . $tStr . ':00';
+                    else $postedAt = date('Y-m-d', strtotime(str_replace('.', '-', $dStr) . ' 2026')) . ' ' . $tStr . ':00';
+                }
+
+                // Snippet aus dem Artikel (description)
+                $snippet = $title;
+                if (preg_match('#<p[^>]*aditem-main--middle--description[^>]*>(.*?)</p>#is', $art, $sMatch)) {
+                    $snippet = html_entity_decode(trim(strip_tags($sMatch[1])), ENT_QUOTES, 'UTF-8');
+                }
+
                 try {
                     $seg = ($category === 'buero') ? 'B2B' : 'B2C';
+                    $notes = "[$seg]" . ($postedAt ? " [POSTED:$postedAt]" : '');
                     q("INSERT INTO leads (source, source_url, category, name, email, phone, city, notes, raw_snippet) VALUES (?, ?, ?, ?, NULL, NULL, 'Berlin', ?, ?)",
-                      ['kleinanzeigen.de', $leadUrl, $category, $title, "[$seg]", substr($title, 0, 500)]);
+                      ['kleinanzeigen.de', $leadUrl, $category, $title, $notes, substr($snippet, 0, 500)]);
                     $totalNew++;
-                    $results[] = ['category'=>$category, 'title'=>substr($title,0,80), 'url'=>$leadUrl, 'has_contact'=>false];
+                    $results[] = ['category'=>$category, 'title'=>substr($title,0,80), 'url'=>$leadUrl, 'posted_at'=>$postedAt, 'has_contact'=>false];
                 } catch (Exception $e) {}
             }
         }

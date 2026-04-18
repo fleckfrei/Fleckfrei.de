@@ -238,7 +238,22 @@ if ($segment === 'B2B') {
 } elseif ($segment === 'B2C') {
     $where[] = "category IN ('haushalt','airbnb','cohost','umzug')";
 }
-$leads = all("SELECT * FROM leads WHERE " . implode(' AND ', $where) . " ORDER BY created_at DESC LIMIT 200", $params);
+// Freshness-Filter: nur Anzeigen die KÜRZLICH gepostet wurden (via [POSTED:YYYY-MM-DD] in notes)
+$fresh = $_GET['fresh'] ?? ''; // 7d / 30d / all
+if ($fresh === '7d') {
+    $where[] = "(notes REGEXP '\\\\[POSTED:[0-9-]+[^]]*\\\\]' AND STR_TO_DATE(SUBSTRING_INDEX(SUBSTRING_INDEX(notes, '[POSTED:', -1), ' ', 1), '%Y-%m-%d') >= DATE_SUB(NOW(), INTERVAL 7 DAY))";
+} elseif ($fresh === '30d') {
+    $where[] = "(notes REGEXP '\\\\[POSTED:[0-9-]+[^]]*\\\\]' AND STR_TO_DATE(SUBSTRING_INDEX(SUBSTRING_INDEX(notes, '[POSTED:', -1), ' ', 1), '%Y-%m-%d') >= DATE_SUB(NOW(), INTERVAL 30 DAY))";
+}
+
+// Sortierung: nach POSTED-Date falls vorhanden, sonst created_at
+$leads = all("SELECT *,
+                COALESCE(STR_TO_DATE(SUBSTRING_INDEX(SUBSTRING_INDEX(notes, '[POSTED:', -1), ' ', 1), '%Y-%m-%d'), DATE(created_at)) AS effective_date
+             FROM leads WHERE " . implode(' AND ', $where) . "
+             ORDER BY effective_date DESC, created_at DESC LIMIT 200", $params);
+
+// Letzter Scan-Zeitpunkt (aus audit)
+$lastScan = val("SELECT MAX(created_at) FROM audit_log WHERE action='scrape' AND entity='leads'") ?: null;
 
 $counts = [];
 foreach (['new','contacted','converted','rejected'] as $s) {
@@ -268,6 +283,11 @@ include __DIR__ . '/../includes/layout.php';
   <div>
     <h1 class="text-2xl font-bold text-gray-900">Leads — Neue Kunden</h1>
     <p class="text-sm text-gray-500 mt-1">Automatisch gefundene potenzielle Kunden aus öffentlichen Quellen.</p>
+    <?php if ($lastScan): ?>
+    <div class="text-[11px] text-gray-500 mt-1">⏱ Letzter Scan: <b><?= date('d.m.Y H:i', strtotime($lastScan)) ?></b> (<?= (int)((time() - strtotime($lastScan))/60) ?> min her)</div>
+    <?php else: ?>
+    <div class="text-[11px] text-red-600 mt-1">⚠ Noch nie gescannt — klick "Auto-Scan" oder richte Cron ein</div>
+    <?php endif; ?>
   </div>
   <div x-data="{ scanning: false, scanResult: null, manualOpen: false }" class="flex items-center gap-2 flex-wrap">
     <button
@@ -319,6 +339,15 @@ include __DIR__ . '/../includes/layout.php';
   </div>
 </div>
 
+<!-- Freshness-Filter: nur kürzlich gepostete Anzeigen -->
+<?php $freshUrl = function($f) use ($filter, $segment, $category) { return '?filter=' . urlencode($filter) . '&segment=' . urlencode($segment) . '&fresh=' . urlencode($f) . ($category ? '&category=' . urlencode($category) : ''); }; ?>
+<div class="flex gap-2 mb-3 flex-wrap items-center">
+  <span class="text-xs text-gray-500 font-semibold">⏱ Frische:</span>
+  <a href="<?= $freshUrl('7d') ?>" class="px-3 py-1 rounded-lg text-xs font-bold <?= $fresh === '7d' ? 'bg-green-600 text-white' : 'bg-white border text-green-700 hover:border-green-600' ?>">🟢 letzte 7 Tage</a>
+  <a href="<?= $freshUrl('30d') ?>" class="px-3 py-1 rounded-lg text-xs font-bold <?= $fresh === '30d' ? 'bg-amber-600 text-white' : 'bg-white border text-amber-700 hover:border-amber-600' ?>">🟡 letzte 30 Tage</a>
+  <a href="<?= $freshUrl('') ?>" class="px-3 py-1 rounded-lg text-xs font-bold <?= $fresh === '' ? 'bg-gray-700 text-white' : 'bg-white border text-gray-700 hover:border-gray-700' ?>">alle</a>
+</div>
+
 <!-- B2B / B2C Segment-Tabs -->
 <?php $segUrl = function($seg) use ($filter, $category) { return '?filter=' . urlencode($filter) . '&segment=' . urlencode($seg) . ($category ? '&category=' . urlencode($category) : ''); }; ?>
 <div class="flex gap-2 mb-3 flex-wrap">
@@ -361,8 +390,21 @@ include __DIR__ . '/../includes/layout.php';
             <?php endif; ?>
             <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand/10 text-brand"><?= $catLabels[$l['category']] ?? $l['category'] ?></span>
             <span class="text-[10px] text-gray-400"><?= e($l['source']) ?></span>
-            <span class="text-[10px] text-gray-400">·</span>
-            <span class="text-[10px] text-gray-400"><?= date('d.m.Y H:i', strtotime($l['created_at'])) ?></span>
+            <?php
+              // Posted-Date aus notes extrahieren (falls vorhanden)
+              $postedAt = null;
+              if (!empty($l['notes']) && preg_match('/\[POSTED:([\d-]+(?: [\d:]+)?)\]/', $l['notes'], $pm)) {
+                  $postedAt = $pm[1];
+              }
+              if ($postedAt):
+                $daysAgo = (int)((time() - strtotime($postedAt))/86400);
+                $freshClass = $daysAgo <= 3 ? 'bg-green-100 text-green-800' : ($daysAgo <= 14 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600');
+            ?>
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded <?= $freshClass ?>" title="Anzeige gepostet am <?= e($postedAt) ?>">
+              📅 Anzeige: <?= $daysAgo === 0 ? 'heute' : ($daysAgo === 1 ? 'gestern' : "vor {$daysAgo} Tagen") ?>
+            </span>
+            <?php endif; ?>
+            <span class="text-[10px] text-gray-400" title="Gefunden am">💾 <?= date('d.m. H:i', strtotime($l['created_at'])) ?></span>
           </div>
           <h3 class="font-semibold text-gray-900 line-clamp-2"><?= e($l['name']) ?></h3>
           <?php if ($l['raw_snippet']): ?>
