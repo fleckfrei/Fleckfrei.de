@@ -221,13 +221,13 @@ include __DIR__ . '/../includes/layout.php';
       </div>
       <button onclick="document.getElementById('addJobModal').classList.remove('hidden')" class="px-4 py-2 bg-brand text-white rounded-xl text-sm font-medium hover:bg-brand-dark transition">+ Neuer Job</button>
     </div>
-    <!-- Farb-Legende -->
+    <!-- Farb-Legende (Palette 2026) -->
     <div class="flex items-center flex-wrap gap-3 mb-3 px-2 text-[11px] font-medium text-gray-800">
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#eab308"></span>Kein Partner</div>
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#2563EB"></span>Partner zugewiesen</div>
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#ea580c"></span>Partner in Bearbeitung</div>
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:<?= BRAND ?>"></span>Erledigt</div>
-      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#dc2626"></span>Storniert</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#F59E0B"></span>Kein Partner</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#6366F1"></span>Partner zugewiesen</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#F97316"></span>Partner in Bearbeitung</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#10B981"></span>Erledigt</div>
+      <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded" style="background:#F43F5E"></span>Storniert</div>
     </div>
     <div id="calendar"></div>
   </div>
@@ -526,21 +526,21 @@ if ('serviceWorker' in navigator) {
 }
 const API = '/api/index.php';
 const KEY = '{$apiKey}';
-// Farb-Standard (Max Spec 2026-04-13, plattformweit):
-// Gelb    = kein Partner zugewiesen
-// Blau    = Partner zugewiesen, noch nicht gestartet
-// Orange  = Partner hat angefangen (RUNNING/STARTED)
-// Grün    = Fertig (COMPLETED) — Fleckfrei Brand-Grün
-// Rot     = Storniert
+// Farb-Palette 2026 (plattformweit, refined/modern):
+// Amber    = kein Partner zugewiesen        #F59E0B
+// Indigo   = Partner zugewiesen, wartet      #6366F1
+// Orange   = Partner hat angefangen          #F97316
+// Emerald  = Fertig (COMPLETED)              #10B981
+// Rose     = Storniert                       #F43F5E
 const colors = {
-  UNASSIGNED: '#eab308',  // Gelb — kein Partner
-  PENDING: '#2563EB',     // Blau — Partner zugewiesen, wartet
-  CONFIRMED: '#2563EB',   // Blau
-  NEW: '#2563EB',         // Blau
-  RUNNING: '#ea580c',     // Orange — läuft
-  STARTED: '#ea580c',     // Orange — läuft
-  COMPLETED: '<?= BRAND ?>',   // Fleckfrei-Brand-Grün — fertig
-  CANCELLED: '#dc2626'    // Rot — storniert
+  UNASSIGNED: '#F59E0B',
+  PENDING:    '#6366F1',
+  CONFIRMED:  '#6366F1',
+  NEW:        '#6366F1',
+  RUNNING:    '#F97316',
+  STARTED:    '#F97316',
+  COMPLETED:  '#10B981',
+  CANCELLED:  '#F43F5E'
 };
 function jobColor(j) {
   if (j.job_status === 'CANCELLED') return colors.CANCELLED;
