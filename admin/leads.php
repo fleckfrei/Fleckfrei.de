@@ -253,6 +253,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /admin/leads.php?saved=1&purged=1'); exit;
     }
 
+    // Tote Anzeigen finden + löschen: checked Leads deren URL 404 zurückgibt oder
+    // deren Ad-Seite "Anzeige nicht mehr verfügbar" zeigt.
+    if ($act === 'purge_dead') {
+        $check = all("SELECT lead_id, source_url FROM leads WHERE status='new' AND source_url LIKE 'http%' ORDER BY created_at ASC LIMIT 150");
+        $deadMarkers = [
+            'Anzeige nicht mehr verfügbar',
+            'Die Anzeige wurde entfernt',
+            'Anzeige existiert nicht',
+            'wurde gelöscht',
+            'bereits reserviert',
+            'no longer available',
+            'viewad-not-found',
+            'nicht gefunden',
+            'not found',
+        ];
+        $deleted = 0; $checked = 0;
+        foreach ($check as $l) {
+            $checked++;
+            $ch = curl_init($l['source_url']);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+                CURLOPT_TIMEOUT => 6,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
+            $html = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            $isDead = false;
+            if ($code >= 400 && $code !== 429) $isDead = true;
+            if ($html) {
+                foreach ($deadMarkers as $m) { if (stripos($html, $m) !== false) { $isDead = true; break; } }
+            } elseif ($code === 0) {
+                // Netz-Fehler — nicht löschen, nur bei echten 4xx oder dead-markern
+            }
+            if ($isDead) {
+                q("DELETE FROM leads WHERE lead_id=?", [$l['lead_id']]);
+                $deleted++;
+            }
+            usleep(150000); // 0.15s
+        }
+        header("Location: /admin/leads.php?saved=1&dead=$deleted&checked=$checked"); exit;
+    }
+
     if ($act === 'delete_all_new') {
         q("DELETE FROM leads WHERE status='new'");
         header('Location: /admin/leads.php?saved=1&purged=1'); exit;
@@ -391,8 +436,13 @@ $catSegment = ['haushalt'=>'B2C','airbnb'=>'B2C','cohost'=>'B2C','umzug'=>'B2C',
 include __DIR__ . '/../includes/layout.php';
 ?>
 
-<?php if (!empty($_GET['saved'])): ?>
-<div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">Gespeichert.</div>
+<?php if (!empty($_GET['saved']) && !isset($_GET['dead'])): ?>
+<div class="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl mb-4">Gespeichert.</div>
+<?php endif; ?>
+<?php if (isset($_GET['dead'])): ?>
+<div class="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-xl mb-4">
+  🧹 <b><?= (int)$_GET['dead'] ?></b> tote Anzeigen entfernt (von <?= (int)($_GET['checked'] ?? 0) ?> geprüft). Nochmal klicken für die nächsten 150.
+</div>
 <?php endif; ?>
 
 <div class="flex items-start justify-between mb-6 flex-wrap gap-4">
@@ -418,6 +468,14 @@ include __DIR__ . '/../includes/layout.php';
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
       Manueller Lead
     </button>
+    <form method="POST" class="inline" onsubmit="return confirm('Prüft bis zu 150 Leads und entfernt alle deren Kleinanzeigen-URL nicht mehr erreichbar ist (404 / gelöscht / entfernt). Läuft 30-60s.');">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="purge_dead"/>
+      <button type="submit" class="px-4 py-2 bg-white border-2 border-amber-500 text-amber-700 hover:bg-amber-50 rounded-xl text-sm font-semibold flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Tote Anzeigen
+      </button>
+    </form>
     <form method="POST" class="inline" onsubmit="return confirm('Junk-Leads (Job-Boards, Behörden, Konkurrenten, alte ohne Kontakt) löschen?');">
       <?= csrfField() ?>
       <input type="hidden" name="action" value="purge_junk"/>
