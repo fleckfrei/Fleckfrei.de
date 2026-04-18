@@ -354,6 +354,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /admin/leads.php?saved=1&purged=1'); exit;
     }
 
+    // Konkurrenten als Partner-Pool kategorisieren (statt löschen → später nutzbar für Subunternehmer)
+    if ($act === 'classify_partners') {
+        // Klare Konkurrenz-Signale: Anbieter-Formulierungen im Titel/Snippet
+        $competitorPatterns = [
+            // Verbietet: Wörter die auf ANBIETEN hindeuten
+            'bieten an', 'bieten Ihnen', 'unseren Service', 'unser Service', 'unser Team',
+            'übernehmen wir', 'wir reinigen', 'wir bieten', 'wir übernehmen', 'wir kümmern',
+            'Firma für', 'Dienstleister', 'Reinigungsfirma', 'Gebäudereinigung',
+            'Ihr Partner für', 'fachkundig', 'professionell', 'jahrelanger Erfahrung',
+            'Kostenlose Besichtigung', 'kostenloses Angebot', 'Festpreis', 'alles aus einer Hand',
+        ];
+        $moved = 0;
+        $cands = all("SELECT lead_id, name, raw_snippet, notes FROM leads WHERE status='new' AND category NOT IN ('partner-pool')");
+        foreach ($cands as $c) {
+            $txt = strtolower(($c['name'] ?? '') . ' ' . ($c['raw_snippet'] ?? ''));
+            foreach ($competitorPatterns as $pat) {
+                if (strpos($txt, strtolower($pat)) !== false) {
+                    $newNotes = ($c['notes'] ?? '') . ' [PARTNER-POOL]';
+                    q("UPDATE leads SET category='partner-pool', notes=? WHERE lead_id=?", [trim($newNotes), $c['lead_id']]);
+                    $moved++;
+                    break;
+                }
+            }
+        }
+        header("Location: /admin/leads.php?saved=1&partners=$moved"); exit;
+    }
+
+    // Alte Kleinanzeigen-Leads von vor dem Customer-Hunting-Pivot entfernen
+    if ($act === 'purge_legacy_kleinanzeigen') {
+        $n = (int) val("SELECT COUNT(*) FROM leads WHERE source='kleinanzeigen.de' AND status='new'");
+        q("DELETE FROM leads WHERE source='kleinanzeigen.de' AND status='new'");
+        header("Location: /admin/leads.php?saved=1&legacy=$n"); exit;
+    }
+
     // Nuclear: ALLE Leads löschen (Reset)
     if ($act === 'nuke_all') {
         if (($_POST['confirm'] ?? '') !== 'LOESCHE ALLES') {
@@ -462,6 +496,12 @@ if ($segment === 'B2B') {
 } elseif ($segment === 'TARGET') {
     // Nur hochwertige Outbound-Target-Leads: Hosts, Hotels, Ferienwohnungen, Booking
     $where[] = "source IN ('airbnb','booking.com','google_places')";
+} elseif ($segment === 'PARTNER') {
+    // Konkurrenten / potenzielle Subunternehmer
+    $where[] = "category='partner-pool'";
+} else {
+    // Default: Partner-Pool NICHT in Alle-Liste zeigen (nur im PARTNER-Tab)
+    $where[] = "category != 'partner-pool'";
 }
 // Freshness-Filter: nur Anzeigen die KÜRZLICH gepostet wurden (via [POSTED:YYYY-MM-DD] in notes)
 $fresh = $_GET['fresh'] ?? ''; // 7d / 30d / all
@@ -501,9 +541,10 @@ $catLabels = [
     'buero' => '🏢 Büro',
     'event' => '🎉 Event',
     'umzug' => '📦 Umzug',
+    'partner-pool' => '🤝 Partner (Konkurrent/Subunternehmer-Kandidat)',
     'other' => '📋 Sonstige',
 ];
-$catSegment = ['haushalt'=>'B2C','airbnb'=>'B2C','cohost'=>'B2C','umzug'=>'B2C','buero'=>'B2B','event'=>'B2B','other'=>''];
+$catSegment = ['haushalt'=>'B2C','airbnb'=>'B2C','cohost'=>'B2C','umzug'=>'B2C','buero'=>'B2B','event'=>'B2B','partner-pool'=>'PARTNER','other'=>''];
 
 include __DIR__ . '/../includes/layout.php';
 ?>
@@ -519,6 +560,16 @@ include __DIR__ . '/../includes/layout.php';
 <?php if (isset($_GET['nuked'])): ?>
 <div class="bg-rose-50 border border-rose-300 text-rose-900 px-4 py-3 rounded-xl mb-4">
   💥 <b><?= (int)$_GET['nuked'] ?></b> Leads komplett gelöscht. Datenbank ist leer.
+</div>
+<?php endif; ?>
+<?php if (isset($_GET['partners'])): ?>
+<div class="bg-gray-50 border border-gray-300 text-gray-900 px-4 py-3 rounded-xl mb-4">
+  🤝 <b><?= (int)$_GET['partners'] ?></b> Konkurrenten in Partner-Pool verschoben (tauchen nicht mehr als Kunden-Leads auf).
+</div>
+<?php endif; ?>
+<?php if (isset($_GET['legacy'])): ?>
+<div class="bg-orange-50 border border-orange-300 text-orange-900 px-4 py-3 rounded-xl mb-4">
+  🧹 <b><?= (int)$_GET['legacy'] ?></b> Legacy-Kleinanzeigen-Leads gelöscht. Nach Auto-Scan kommen nur noch echte Kunden-Targets.
 </div>
 <?php endif; ?>
 
@@ -545,6 +596,21 @@ include __DIR__ . '/../includes/layout.php';
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
       Manueller Lead
     </button>
+    <form method="POST" class="inline" onsubmit="return confirm('Konkurrenten (Reinigungsfirmen die sich ANBIETEN) in Partner-Pool verschieben? Pattern-Match auf Titel/Text: \"bieten an\", \"übernehmen wir\", \"Reinigungsfirma\" etc.');">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="classify_partners"/>
+      <button type="submit" class="px-4 py-2 bg-white border-2 border-gray-500 text-gray-700 hover:bg-gray-50 rounded-xl text-sm font-semibold flex items-center gap-1.5" title="Konkurrenten → Partner-Pool">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+        → Partner
+      </button>
+    </form>
+    <form method="POST" class="inline" onsubmit="return confirm('Alle alten Kleinanzeigen-Leads löschen? (die von vor dem Customer-Hunting-Pivot, meist Rauschen)');">
+      <?= csrfField() ?>
+      <input type="hidden" name="action" value="purge_legacy_kleinanzeigen"/>
+      <button type="submit" class="px-4 py-2 bg-white border-2 border-orange-500 text-orange-700 hover:bg-orange-50 rounded-xl text-sm font-semibold flex items-center gap-1.5" title="Legacy-Kleinanzeigen-Leads löschen (vor Pivot)">
+        🧹 Legacy-KA
+      </button>
+    </form>
     <form method="POST" class="inline" onsubmit="return confirm('Junk-Leads (Job-Boards, Behörden, Konkurrenten, alte ohne Kontakt) löschen?');">
       <?= csrfField() ?>
       <input type="hidden" name="action" value="purge_junk"/>
@@ -614,6 +680,7 @@ include __DIR__ . '/../includes/layout.php';
   <a href="<?= $segUrl('TARGET') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'TARGET' ? 'bg-brand text-white' : 'bg-white border-2 border-brand text-brand hover:bg-brand-light' ?>">🎯 Target-Kunden (Airbnb + Booking + Hotels)</a>
   <a href="<?= $segUrl('B2C') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2C' ? 'bg-indigo-600 text-white' : 'bg-white border text-indigo-700 hover:border-indigo-600' ?>">👤 B2C</a>
   <a href="<?= $segUrl('B2B') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'B2B' ? 'bg-amber-600 text-white' : 'bg-white border text-amber-700 hover:border-amber-600' ?>">🏢 B2B (Büro + Event)</a>
+  <a href="<?= $segUrl('PARTNER') ?>" class="px-3 py-1.5 rounded-lg text-xs font-bold <?= $segment === 'PARTNER' ? 'bg-gray-700 text-white' : 'bg-white border text-gray-600 hover:border-gray-700' ?>" title="Konkurrenten/Reinigungsfirmen — KEINE Kunden, aber potenzielle Subunternehmer">🤝 Partner-Pool</a>
 </div>
 
 <!-- Status filter tabs -->
