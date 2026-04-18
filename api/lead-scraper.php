@@ -329,18 +329,18 @@ foreach ($checkBatch as $ld) {
 // Direkt-Scrape von kleinanzeigen.de (unabhängig von VPS SearXNG)
 // Kleinanzeigen-Suche liefert deutlich verlässlicher echte Leads.
 // ============================================================
-// Kleinanzeigen-Suche nur in "Gesuche" (adType=REQUEST) — das sind Leute die
-// Dienstleistungen SUCHEN, nicht anbieten. l3331 = Berlin. Mit "gesucht"-Keyword.
+// Kleinanzeigen URL-Pattern (2026-04 getestet): /s-berlin/<hyphen-slug>/k0l3331
+// WICHTIG: Keywords müssen mit Bindestrichen verbunden sein (kein +, kein adType-Param
+// sonst HTTP 400). "gesucht" im Slug triggert natürlich Gesuche.
 $kleinanzeigenSearches = [
-    'haushalt' => ['reinigungsfirma+gesucht', 'putzhilfe+gesucht', 'haushaltshilfe+gesucht', 'wohnungsreinigung+gesucht', 'endreinigung+wohnung'],
-    'airbnb'   => ['airbnb+reinigung', 'ferienwohnung+reinigung+gesucht', 'turnover+cleaning', 'gästewechsel+reinigung'],
-    'cohost'   => ['airbnb+co-host', 'ferienwohnung+verwaltung', 'airbnb+management'],
-    'buero'    => ['büroreinigung+gesucht', 'gewerbereinigung+gesucht', 'praxisreinigung+gesucht'],
+    'haushalt' => ['reinigungsfirma-gesucht', 'putzhilfe-gesucht', 'haushaltshilfe-gesucht', 'wohnungsreinigung-gesucht', 'endreinigung-wohnung', 'reinigungskraft-gesucht'],
+    'airbnb'   => ['airbnb-reinigung', 'ferienwohnung-reinigung', 'turnover-cleaning', 'gaestewechsel-reinigung'],
+    'cohost'   => ['airbnb-co-host', 'ferienwohnung-verwaltung', 'airbnb-management'],
+    'buero'    => ['buero-reinigung-gesucht', 'gewerbereinigung-gesucht', 'praxisreinigung-gesucht', 'unterhaltsreinigung-gesucht'],
 ];
 foreach ($kleinanzeigenSearches as $category => $terms) {
     foreach ($terms as $term) {
-        // adType=REQUEST = nur Gesuche; l3331 = Berlin; sortingField=SORTING_DATE = neueste zuerst
-        $url = 'https://www.kleinanzeigen.de/s-berlin/' . $term . '/k0l3331?adType=REQUEST&sortingField=SORTING_DATE';
+        $url = 'https://www.kleinanzeigen.de/s-berlin/' . $term . '/k0l3331';
         // Search-Pages kurze Cache-TTL (2h) — Details länger (24h)
         $html = fetchSmart($url, 7200);
         if (!$html) continue;
