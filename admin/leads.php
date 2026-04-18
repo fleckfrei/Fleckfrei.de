@@ -43,6 +43,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } catch (Exception $e) {}
 
+        // Google-Suche via SearXNG — Top 5 Ergebnisse
+        $googleResults = [];
+        try {
+            $sx = vps_call('searxng', ['query' => $query, 'categories' => 'general', 'limit' => 5], true);
+            if (is_array($sx) && !empty($sx['results'])) {
+                foreach (array_slice($sx['results'], 0, 5) as $r) {
+                    $googleResults[] = [
+                        'title' => substr($r['title'] ?? '', 0, 120),
+                        'url' => $r['url'] ?? '',
+                        'snippet' => substr($r['snippet'] ?? $r['content'] ?? '', 0, 200),
+                    ];
+                }
+            }
+        } catch (Exception $e) {}
+
         // Fallback: Groq-Analyse des Anzeigen-Texts
         if (!$osintSummary) {
             $prompt = "Analysiere diese Kleinanzeige für einen möglichen Kunden einer Reinigungsfirma:\n\n"
@@ -82,6 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'contact_name' => $contactName,
             'district' => $district,
             'business_url' => $businessUrl,
+            'google_query' => $query,
+            'google_url' => 'https://www.google.com/search?q=' . urlencode($query),
+            'google_results' => $googleResults,
             'channels' => [
                 'whatsapp' => $hasWA,
                 'telegram' => $hasTg,
@@ -501,14 +519,6 @@ include __DIR__ . '/../includes/layout.php';
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
       Manueller Lead
     </button>
-    <form method="POST" class="inline" onsubmit="return confirm('Prüft bis zu 150 Leads und entfernt alle deren Kleinanzeigen-URL nicht mehr erreichbar ist (404 / gelöscht / entfernt). Läuft 30-60s.');">
-      <?= csrfField() ?>
-      <input type="hidden" name="action" value="purge_dead"/>
-      <button type="submit" class="px-4 py-2 bg-white border-2 border-amber-500 text-amber-700 hover:bg-amber-50 rounded-xl text-sm font-semibold flex items-center gap-1.5">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        Tote Anzeigen
-      </button>
-    </form>
     <form method="POST" class="inline" onsubmit="return confirm('Junk-Leads (Job-Boards, Behörden, Konkurrenten, alte ohne Kontakt) löschen?');">
       <?= csrfField() ?>
       <input type="hidden" name="action" value="purge_junk"/>
@@ -520,10 +530,11 @@ include __DIR__ . '/../includes/layout.php';
     <div x-show="scanResult" x-cloak class="text-xs basis-full">
       <template x-if="scanResult?.success">
         <div>
-          <span :class="scanResult.total_new > 0 ? 'text-green-700' : 'text-gray-500'">
-            ✓ Scan fertig: <b x-text="scanResult.total_new"></b> neu · <b x-text="scanResult.total_seen"></b> geprüft
+          <span :class="scanResult.total_new > 0 ? 'text-emerald-700' : 'text-gray-500'">
+            ✓ Scan: <b x-text="scanResult.total_new"></b> neu · <b x-text="scanResult.total_seen"></b> geprüft
           </span>
-          <span x-show="scanResult.total_new === 0" class="text-amber-700 ml-2">⚠ 0 neue Leads — SearXNG liefert wenig für site:-Queries. Nutze "+ Manueller Lead" aus Kleinanzeigen.</span>
+          <span x-show="scanResult.total_dead > 0" class="text-amber-700 ml-2">🧹 <b x-text="scanResult.total_dead"></b> tote Anzeigen automatisch entfernt</span>
+          <span x-show="scanResult.total_new === 0" class="text-amber-700 ml-2">⚠ Keine neuen — nutze "+ Manueller Lead"</span>
         </div>
       </template>
       <span x-show="scanResult?.error" class="text-red-700">❌ <span x-text="scanResult?.error"></span></span>
@@ -590,7 +601,16 @@ include __DIR__ . '/../includes/layout.php';
   </div>
   <?php else: ?>
   <div class="divide-y">
-    <?php foreach ($leads as $l): ?>
+    <?php foreach ($leads as $l):
+      // Notes parsen: KONTAKT-Name, BEZIRK, POSTED-Date
+      $district = null; $contactName = null; $postedAt = null;
+      if (!empty($l['notes'])) {
+          if (preg_match('/\[BEZIRK:([^\]]+)\]/', $l['notes'], $_m)) $district = trim($_m[1]);
+          if (preg_match('/\[KONTAKT:([^\]]+)\]/', $l['notes'], $_m)) $contactName = trim($_m[1]);
+          if (preg_match('/\[POSTED:([\d-]+(?: [\d:]+)?)\]/', $l['notes'], $_m)) $postedAt = $_m[1];
+      }
+      $googleQ = $contactName ? $contactName . ' Berlin' : ($l['email'] ?: $l['phone'] ?: $l['name']) . ' Berlin';
+    ?>
     <div class="p-5 hover:bg-gray-50 transition">
       <div class="flex items-start justify-between gap-4">
         <div class="flex-1 min-w-0">
@@ -603,15 +623,9 @@ include __DIR__ . '/../includes/layout.php';
             <?php endif; ?>
             <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand/10 text-brand"><?= $catLabels[$l['category']] ?? $l['category'] ?></span>
             <span class="text-[10px] text-gray-400"><?= e($l['source']) ?></span>
-            <?php
-              // Posted-Date aus notes extrahieren (falls vorhanden)
-              $postedAt = null;
-              if (!empty($l['notes']) && preg_match('/\[POSTED:([\d-]+(?: [\d:]+)?)\]/', $l['notes'], $pm)) {
-                  $postedAt = $pm[1];
-              }
-              if ($postedAt):
+            <?php if ($postedAt):
                 $daysAgo = (int)((time() - strtotime($postedAt))/86400);
-                $freshClass = $daysAgo <= 3 ? 'bg-green-100 text-green-800' : ($daysAgo <= 14 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600');
+                $freshClass = $daysAgo <= 3 ? 'bg-emerald-100 text-emerald-800' : ($daysAgo <= 14 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600');
             ?>
             <span class="text-[10px] font-bold px-1.5 py-0.5 rounded <?= $freshClass ?>" title="Anzeige gepostet am <?= e($postedAt) ?>">
               📅 Anzeige: <?= $daysAgo === 0 ? 'heute' : ($daysAgo === 1 ? 'gestern' : "vor {$daysAgo} Tagen") ?>
@@ -627,6 +641,7 @@ include __DIR__ . '/../includes/layout.php';
           <!-- Contact info (inline-editable) -->
           <div class="flex flex-wrap items-center gap-2 mt-3 text-xs">
             <a href="<?= e($l['source_url']) ?>" target="_blank" rel="noopener" class="text-brand hover:underline font-semibold" title="<?= e($l['source_url']) ?>">🔗 Anzeige öffnen</a>
+            <a href="https://www.google.com/search?q=<?= urlencode($googleQ) ?>" target="_blank" rel="noopener" class="text-blue-600 hover:underline font-semibold" title="Google-Suche: <?= e($googleQ) ?>">🔎 Google</a>
             <span class="text-gray-300">·</span>
             <span class="inline-flex items-center gap-1">
               📧 <input type="email" value="<?= e($l['email'] ?? '') ?>" placeholder="email@..." onblur="saveLeadField(<?= $l['lead_id'] ?>,'email',this.value,this)" class="px-1 py-0.5 border border-transparent hover:border-gray-300 rounded text-xs w-48 focus:border-brand focus:outline-none"/>
@@ -637,18 +652,8 @@ include __DIR__ . '/../includes/layout.php';
             <?php if ($l['phone']): ?>
             <a href="https://wa.me/<?= preg_replace('/[^0-9]/', '', $l['phone']) ?>" target="_blank" class="text-green-700 hover:underline">💬 WA</a>
             <?php endif; ?>
-            <?php
-              $district = null; $contactName = null;
-              if (!empty($l['notes'])) {
-                  if (preg_match('/\[BEZIRK:([^\]]+)\]/', $l['notes'], $dm)) $district = trim($dm[1]);
-                  if (preg_match('/\[KONTAKT:([^\]]+)\]/', $l['notes'], $km)) $contactName = trim($km[1]);
-              }
-              if ($contactName): ?>
-              <span class="text-gray-500">👤 <?= e($contactName) ?></span>
-            <?php endif;
-              if ($district): ?>
-              <span class="text-gray-500">📍 <?= e($district) ?></span>
-            <?php endif; ?>
+            <?php if ($contactName): ?><span class="text-gray-500">👤 <?= e($contactName) ?></span><?php endif; ?>
+            <?php if ($district): ?><span class="text-gray-500">📍 <?= e($district) ?></span><?php endif; ?>
             <?php if (!$l['email'] && !$l['phone']): ?>
             <span class="text-amber-600 font-semibold">⚠ OSINT nötig — klick "🔍 OSINT anreichern"</span>
             <?php endif; ?>
@@ -845,6 +850,28 @@ function bgCheck(id) {
       const bizRow = d.business_url
         ? `<div class="flex items-center gap-2"><span class="text-xs font-semibold text-gray-600">🌐 BUSINESS-SEITE</span><a href="${d.business_url}" target="_blank" class="text-brand hover:underline text-sm truncate">${d.business_url}</a></div>`
         : '';
+      const googleSection = (d.google_results && d.google_results.length)
+        ? `<div>
+             <div class="flex items-center justify-between mb-1">
+               <span class="text-xs font-semibold text-gray-600">🔎 GOOGLE-SUCHE (top ${d.google_results.length})</span>
+               <a href="${d.google_url}" target="_blank" class="text-[11px] text-brand hover:underline">→ Alle Ergebnisse öffnen</a>
+             </div>
+             <div class="space-y-1.5">
+               ${d.google_results.map(g => `
+                 <a href="${g.url}" target="_blank" class="block p-2 bg-gray-50 hover:bg-indigo-50 border border-gray-200 rounded-lg">
+                   <div class="text-xs font-semibold text-indigo-700 truncate">${(g.title || '').replace(/</g,'&lt;')}</div>
+                   <div class="text-[10px] text-gray-500 truncate">${g.url.replace(/^https?:\/\//,'').slice(0,60)}</div>
+                   <div class="text-[11px] text-gray-600 line-clamp-2">${(g.snippet || '').replace(/</g,'&lt;')}</div>
+                 </a>
+               `).join('')}
+             </div>
+           </div>`
+        : `<div>
+             <div class="text-xs font-semibold text-gray-600 mb-1">🔎 GOOGLE-SUCHE</div>
+             <a href="${d.google_url}" target="_blank" class="inline-flex items-center gap-1 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm font-semibold hover:bg-blue-100">
+               🔎 Bei Google suchen (kein API-Zugriff — öffnet im Tab)
+             </a>
+           </div>`;
       const nameRow = d.contact_name ? `<div><span class="text-xs font-semibold text-gray-600">👤 KONTAKT</span><div class="text-sm font-semibold">${d.contact_name}</div></div>` : '';
       const distRow = d.district ? `<div><span class="text-xs font-semibold text-gray-600">📍 BEZIRK</span><div class="text-sm">${d.district}</div></div>` : '';
       const summary = (d.summary || '').replace(/</g, '&lt;').replace(/\n/g, '<br/>');
@@ -855,6 +882,7 @@ function bgCheck(id) {
           <div class="text-xs font-semibold text-gray-600 mb-1">📱 KOMMUNIKATIONS-KANÄLE</div>
           <div class="flex flex-wrap gap-2">${waBtn}${tgBtn}${sigBtn}</div>
         </div>
+        ${googleSection}
         <div>
           <div class="text-xs font-semibold text-gray-600 mb-1">🧠 OSINT-ANALYSE</div>
           <div class="bg-gray-50 border rounded-lg p-3 text-sm leading-relaxed">${summary || '<em class="text-gray-400">Keine Analyse verfügbar</em>'}</div>

@@ -158,9 +158,47 @@ function fetchLeadDetails(string $url): ?array {
 // ============================================================
 // Run scraping
 // ============================================================
+@set_time_limit(180);
 $totalNew = 0;
 $totalSeen = 0;
+$totalDead = 0;
 $results = [];
+
+// AUTO-DEAD-CHECK: bevor wir neue Leads scrapen, prüfe ob bestehende Leads
+// noch erreichbar sind. Max 80 pro Run (die ältesten-verifizierten zuerst).
+$deadMarkers = [
+    'Anzeige nicht mehr verfügbar', 'Die Anzeige wurde entfernt', 'Anzeige existiert nicht',
+    'wurde gelöscht', 'bereits reserviert', 'no longer available', 'viewad-not-found',
+];
+$checkBatch = all("SELECT lead_id, source_url, notes FROM leads
+                   WHERE status='new' AND source_url LIKE 'http%'
+                   AND (notes NOT LIKE '%[VERIFIED:%' OR notes IS NULL OR
+                        notes LIKE CONCAT('%[VERIFIED:', DATE_FORMAT(DATE_SUB(NOW(), INTERVAL 3 DAY), '%Y-%m-%d'), '%')
+                        OR notes REGEXP '\\\\[VERIFIED:20[0-9]{2}-[0-1][0-9]-[0-3][0-9]\\\\]')
+                   ORDER BY lead_id ASC LIMIT 80");
+foreach ($checkBatch as $ld) {
+    $ch = curl_init($ld['source_url']);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 Chrome/120.0 Safari/537.36',
+        CURLOPT_TIMEOUT => 5, CURLOPT_SSL_VERIFYPEER => false,
+    ]);
+    $h = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $dead = false;
+    if ($code >= 400 && $code !== 429) $dead = true;
+    if ($h) foreach ($deadMarkers as $m) { if (stripos($h, $m) !== false) { $dead = true; break; } }
+    if ($dead) {
+        q("DELETE FROM leads WHERE lead_id=?", [$ld['lead_id']]);
+        $totalDead++;
+    } else if ($h) {
+        // Mark as verified (remove old verified stamp, add new one)
+        $newNotes = preg_replace('/\s*\[VERIFIED:[^\]]+\]/', '', $ld['notes'] ?? '') . ' [VERIFIED:' . date('Y-m-d') . ']';
+        q("UPDATE leads SET notes=? WHERE lead_id=?", [trim($newNotes), $ld['lead_id']]);
+    }
+    usleep(120000);
+}
 
 // ============================================================
 // Direkt-Scrape von kleinanzeigen.de (unabhängig von VPS SearXNG)
@@ -321,5 +359,6 @@ echo json_encode([
     'scraped_at' => date('Y-m-d H:i:s'),
     'total_seen' => $totalSeen,
     'total_new' => $totalNew,
+    'total_dead' => $totalDead,
     'results' => array_slice($results, 0, 30),
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
