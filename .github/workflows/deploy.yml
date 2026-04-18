@@ -39,6 +39,22 @@ jobs:
           if [ ! -s ~/.ssh/deploy_key ]; then echo "::error::HOSTINGER_SSH_KEY secret is empty"; exit 1; fi
           ssh-keyscan -p 65002 -T 10 62.72.37.195 >> ~/.ssh/known_hosts 2>&1 || true
 
+      - name: Sync gitignored keys to server (only if missing on server)
+        env:
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+        run: |
+          # apify-keys.php — schreibt nur wenn Token vorhanden UND File fehlt ODER keinen APIFY_API_TOKEN enthält
+          if [ -n "$APIFY_API_TOKEN" ]; then
+            cat > /tmp/apify-keys.php <<EOF
+          <?php
+          if (!defined('APIFY_API_TOKEN')) define('APIFY_API_TOKEN', '$APIFY_API_TOKEN');
+          EOF
+            scp -i ~/.ssh/deploy_key -P 65002 -o StrictHostKeyChecking=no \
+              /tmp/apify-keys.php \
+              u860899303@62.72.37.195:/home/u860899303/domains/app.fleckfrei.de/public_html/includes/apify-keys.php
+            echo "✓ apify-keys.php synced to server"
+          fi
+
       - name: Deploy via rsync
         run: |
           rsync -avz --delete \

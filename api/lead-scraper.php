@@ -121,35 +121,65 @@ function browserHeaders(): array {
 }
 
 /**
- * Configure curl to route through Apify Residential Proxy (deutsche IPs).
- * Bypasses Cloudflare bot detection by using real household IPs.
- * Falls back to direct connection if APIFY_PROXY_PASSWORD not set.
+ * Apify-based URL-Fetcher (bypasses Cloudflare via Apify's infrastructure).
+ * Ruft den Apify Actor "apify/cheerio-scraper" synchron auf und bekommt das HTML zurück.
+ * Funktioniert nur wenn APIFY_API_TOKEN in includes/apify-keys.php gesetzt ist.
+ * Gibt null zurück bei Fehler, dann fallback auf direktem curl.
+ */
+function fetchViaApify(string $url, int $timeoutSec = 45): ?string {
+    if (!defined('APIFY_API_TOKEN') || !APIFY_API_TOKEN) return null;
+    $apiUrl = "https://api.apify.com/v2/acts/apify~cheerio-scraper/run-sync-get-dataset-items?token=" . APIFY_API_TOKEN . "&timeout=$timeoutSec";
+    $payload = [
+        'startUrls' => [['url' => $url]],
+        'maxRequestsPerCrawl' => 1,
+        'maxConcurrency' => 1,
+        'proxyConfiguration' => ['useApifyProxy' => true, 'apifyProxyGroups' => ['RESIDENTIAL'], 'apifyProxyCountry' => 'DE'],
+        'pageFunction' => 'async function pageFunction(ctx) { return { url: ctx.request.url, html: ctx.$.html() }; }',
+    ];
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => json_encode($payload),
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_TIMEOUT => $timeoutSec + 5,
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($code !== 200 || !$resp) return null;
+    $items = json_decode($resp, true);
+    return $items[0]['html'] ?? null;
+}
+
+/**
+ * Legacy proxy-mode (für Scripts die nicht auf Apify Actor wechseln wollen).
+ * Bleibt als Fallback wenn APIFY_PROXY_PASSWORD gesetzt wird.
  */
 function applyApifyProxy($ch): void {
     if (!defined('APIFY_PROXY_PASSWORD') || !APIFY_PROXY_PASSWORD) return;
-    $proxyUser = 'groups-RESIDENTIAL,country-DE';
-    $proxyPass = APIFY_PROXY_PASSWORD;
     curl_setopt($ch, CURLOPT_PROXY, 'http://proxy.apify.com:8000');
-    curl_setopt($ch, CURLOPT_PROXYUSERPWD, "$proxyUser:$proxyPass");
+    curl_setopt($ch, CURLOPT_PROXYUSERPWD, 'groups-RESIDENTIAL,country-DE:' . APIFY_PROXY_PASSWORD);
     curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
 }
 
 function fetchLeadDetails(string $url): ?array {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        CURLOPT_ENCODING => '',
-        CURLOPT_TIMEOUT => 20,
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_HTTPHEADER => browserHeaders(),
-    ]);
-    applyApifyProxy($ch);
-    $html = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($code !== 200 || !$html) return null;
+    // Primary: Apify Cheerio-Scraper (residential DE proxy, bypasses Cloudflare)
+    $html = fetchViaApify($url, 30);
+    if (!$html) {
+        // Fallback: direkter curl mit Browser-Headers
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            CURLOPT_ENCODING => '', CURLOPT_TIMEOUT => 20, CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_HTTPHEADER => browserHeaders(),
+        ]);
+        applyApifyProxy($ch);
+        $html = curl_exec($ch);
+        curl_close($ch);
+    }
+    if (!$html) return null;
 
     // Beschreibung aus #viewad-description-text
     $fullText = '';
@@ -249,23 +279,24 @@ $kleinanzeigenSearches = [
 ];
 foreach ($kleinanzeigenSearches as $category => $terms) {
     foreach ($terms as $term) {
-        // adType=REQUEST = nur Gesuche, kein Angebot; l3331 = Berlin; sortBy=creation = neueste zuerst
+        // adType=REQUEST = nur Gesuche; l3331 = Berlin; sortingField=SORTING_DATE = neueste zuerst
         $url = 'https://www.kleinanzeigen.de/s-berlin/' . $term . '/k0l3331?adType=REQUEST&sortingField=SORTING_DATE';
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            CURLOPT_ENCODING => '',
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_HTTPHEADER => browserHeaders(),
-        ]);
-        applyApifyProxy($ch);
-        $html = curl_exec($ch);
-        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        if ($code !== 200 || !$html) continue;
+        // Primary: Apify Actor (Residential DE)
+        $html = fetchViaApify($url, 30);
+        if (!$html) {
+            // Fallback: direkter curl
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                CURLOPT_ENCODING => '', CURLOPT_TIMEOUT => 20, CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_HTTPHEADER => browserHeaders(),
+            ]);
+            applyApifyProxy($ch);
+            $html = curl_exec($ch);
+            curl_close($ch);
+        }
+        if (!$html) continue;
 
         // Pro <article class="aditem"> parsen: Titel + posted-Date ("Heute, 14:32" | "Gestern, 09:15" | "15.04.2026")
         if (preg_match_all('#<article[^>]*class="[^"]*aditem[^"]*"[^>]*>(.*?)</article>#is', $html, $articles)) {

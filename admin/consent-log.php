@@ -27,6 +27,17 @@ try {
     $historyAvailable = true;
 } catch (Exception $e) {}
 
+// Drill-down: wenn auf eine Stat-Card geklickt wurde, zeig die konkrete Kunden-Liste
+$drillChannel = $_GET['channel'] ?? ''; // email | wa | phone
+$drillStatus  = $_GET['status'] ?? 'ok'; // ok | no
+$drillList = [];
+if (in_array($drillChannel, ['email','wa','phone'], true)) {
+    $col = ['email'=>'consent_email','wa'=>'consent_whatsapp','phone'=>'consent_phone'][$drillChannel];
+    $val = $drillStatus === 'no' ? 0 : 1;
+    $drillList = all("SELECT customer_id, name, email, phone, customer_type FROM customer
+                      WHERE status=1 AND $col=? ORDER BY name ASC LIMIT 500", [$val]);
+}
+
 include __DIR__ . '/../includes/layout.php';
 ?>
 
@@ -35,53 +46,106 @@ include __DIR__ . '/../includes/layout.php';
   <p class="text-sm text-gray-600 mt-1">Marketing-Einwilligungen nach DSGVO. Kunde klickt → gespeichert → System respektiert es automatisch.</p>
 </div>
 
-<!-- Stats-Cards -->
+<!-- Stats-Cards (klickbar für Drill-down) -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-  <div class="bg-white rounded-xl border p-5">
+  <?php
+  $cards = [
+    ['channel'=>'email','icon'=>'📧','label'=>'E-Mail-Marketing','ok'=>'email_ok','no'=>'email_no','what'=>'Email-Adresse'],
+    ['channel'=>'wa',   'icon'=>'💬','label'=>'WhatsApp',        'ok'=>'wa_ok',   'no'=>'wa_no',   'what'=>'Telefon-Nummer'],
+    ['channel'=>'phone','icon'=>'📞','label'=>'Telefon/SMS',     'ok'=>'phone_ok','no'=>'phone_no','what'=>'Telefon-Nummer'],
+  ];
+  foreach ($cards as $c):
+    $okN = (int)$stats[$c['ok']]; $noN = (int)$stats[$c['no']];
+    $pct = $stats['total_customers'] > 0 ? round($okN / $stats['total_customers'] * 100) : 0;
+    $isActive = $drillChannel === $c['channel'];
+  ?>
+  <div class="bg-white rounded-xl border <?= $isActive ? 'border-brand ring-2 ring-brand/30' : '' ?> p-5">
     <div class="flex items-center gap-2 mb-2">
-      <span class="text-lg">📧</span>
-      <h3 class="font-bold text-gray-900">E-Mail-Marketing</h3>
+      <span class="text-lg"><?= $c['icon'] ?></span>
+      <h3 class="font-bold text-gray-900"><?= $c['label'] ?></h3>
+      <span class="ml-auto text-[10px] text-gray-400">→ <?= $c['what'] ?></span>
     </div>
-    <div class="text-3xl font-bold text-brand-dark"><?= (int)$stats['email_ok'] ?></div>
+    <div class="text-3xl font-bold text-brand-dark"><?= $okN ?></div>
     <div class="text-xs text-gray-600 mt-1">
       von <?= (int)$stats['total_customers'] ?> Kunden erlaubt ·
-      <strong class="text-red-700"><?= (int)$stats['email_no'] ?></strong> gesperrt
+      <strong class="text-red-700"><?= $noN ?></strong> gesperrt
     </div>
     <div class="mt-3 w-full bg-gray-200 rounded-full h-2">
-      <div class="h-2 bg-brand rounded-full" style="width: <?= $stats['total_customers'] > 0 ? round($stats['email_ok'] / $stats['total_customers'] * 100) : 0 ?>%"></div>
+      <div class="h-2 bg-brand rounded-full" style="width: <?= $pct ?>%"></div>
+    </div>
+    <div class="flex gap-1 mt-3 text-[11px]">
+      <a href="?channel=<?= $c['channel'] ?>&status=ok" class="flex-1 px-2 py-1 text-center rounded <?= $isActive && $drillStatus==='ok' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' ?>">✓ Zeige <?= $okN ?> erlaubt</a>
+      <a href="?channel=<?= $c['channel'] ?>&status=no" class="flex-1 px-2 py-1 text-center rounded <?= $isActive && $drillStatus==='no' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100' ?>">✕ Zeige <?= $noN ?> gesperrt</a>
     </div>
   </div>
-
-  <div class="bg-white rounded-xl border p-5">
-    <div class="flex items-center gap-2 mb-2">
-      <span class="text-lg">💬</span>
-      <h3 class="font-bold text-gray-900">WhatsApp</h3>
-    </div>
-    <div class="text-3xl font-bold text-brand-dark"><?= (int)$stats['wa_ok'] ?></div>
-    <div class="text-xs text-gray-600 mt-1">
-      von <?= (int)$stats['total_customers'] ?> Kunden erlaubt ·
-      <strong class="text-red-700"><?= (int)$stats['wa_no'] ?></strong> gesperrt
-    </div>
-    <div class="mt-3 w-full bg-gray-200 rounded-full h-2">
-      <div class="h-2 bg-brand rounded-full" style="width: <?= $stats['total_customers'] > 0 ? round($stats['wa_ok'] / $stats['total_customers'] * 100) : 0 ?>%"></div>
-    </div>
-  </div>
-
-  <div class="bg-white rounded-xl border p-5">
-    <div class="flex items-center gap-2 mb-2">
-      <span class="text-lg">📞</span>
-      <h3 class="font-bold text-gray-900">Telefon/SMS</h3>
-    </div>
-    <div class="text-3xl font-bold text-brand-dark"><?= (int)$stats['phone_ok'] ?></div>
-    <div class="text-xs text-gray-600 mt-1">
-      von <?= (int)$stats['total_customers'] ?> Kunden erlaubt ·
-      <strong class="text-red-700"><?= (int)$stats['phone_no'] ?></strong> gesperrt
-    </div>
-    <div class="mt-3 w-full bg-gray-200 rounded-full h-2">
-      <div class="h-2 bg-brand rounded-full" style="width: <?= $stats['total_customers'] > 0 ? round($stats['phone_ok'] / $stats['total_customers'] * 100) : 0 ?>%"></div>
-    </div>
-  </div>
+  <?php endforeach; ?>
 </div>
+
+<?php if ($drillChannel && $drillList): ?>
+<!-- Drill-down Liste: konkrete Kunden -->
+<?php
+  $_chLabels = ['email'=>'E-Mail-Marketing','wa'=>'WhatsApp','phone'=>'Telefon/SMS'];
+  $_stLabel  = $drillStatus === 'ok' ? '✓ ERLAUBT' : '✕ GESPERRT';
+  $_stColor  = $drillStatus === 'ok' ? 'emerald' : 'rose';
+?>
+<div class="bg-white rounded-xl border mb-6">
+  <div class="px-5 py-3 border-b flex items-center justify-between">
+    <div>
+      <h2 class="font-bold text-gray-900">📋 <?= count($drillList) ?> Kunden — <?= e($_chLabels[$drillChannel]) ?> <span class="text-<?= $_stColor ?>-700"><?= $_stLabel ?></span></h2>
+      <p class="text-xs text-gray-500 mt-0.5">Hier sind die konkreten Kontaktdaten die du dafür nutzen darfst (bzw. NICHT nutzen darfst).</p>
+    </div>
+    <a href="/admin/consent-log.php" class="text-xs text-gray-500 hover:text-brand">✕ Filter zurücksetzen</a>
+  </div>
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 border-b">
+      <tr>
+        <th class="text-left px-4 py-2 font-medium">Kunde</th>
+        <th class="text-left px-4 py-2 font-medium">Typ</th>
+        <th class="text-left px-4 py-2 font-medium">📧 Email</th>
+        <th class="text-left px-4 py-2 font-medium">📞 Telefon</th>
+        <th class="text-right px-4 py-2 font-medium">Profil</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y">
+      <?php foreach ($drillList as $c): ?>
+      <tr class="hover:bg-gray-50">
+        <td class="px-4 py-2 font-semibold"><?= e($c['name']) ?></td>
+        <td class="px-4 py-2 text-xs text-gray-600"><?= e($c['customer_type'] ?? '—') ?></td>
+        <td class="px-4 py-2 text-xs">
+          <?php if ($c['email']): ?>
+            <a href="mailto:<?= e($c['email']) ?>" class="text-brand hover:underline <?= $drillChannel==='email' && $drillStatus==='no' ? 'line-through text-gray-400 no-underline' : '' ?>"><?= e($c['email']) ?></a>
+          <?php else: ?>
+            <span class="text-gray-400">—</span>
+          <?php endif; ?>
+        </td>
+        <td class="px-4 py-2 text-xs">
+          <?php if ($c['phone']):
+            $ph = preg_replace('/[^+0-9]/','',$c['phone']);
+            $blocked = in_array($drillChannel,['wa','phone'],true) && $drillStatus==='no';
+          ?>
+            <span class="<?= $blocked ? 'line-through text-gray-400' : '' ?>">
+              <a href="tel:<?= e($ph) ?>" class="text-brand hover:underline"><?= e($c['phone']) ?></a>
+              <?php if ($drillChannel==='wa' && !$blocked): ?>
+                <a href="https://wa.me/<?= ltrim($ph,'+') ?>" target="_blank" class="ml-1 text-emerald-600">💬</a>
+              <?php endif; ?>
+            </span>
+          <?php else: ?>
+            <span class="text-gray-400">—</span>
+          <?php endif; ?>
+        </td>
+        <td class="px-4 py-2 text-right">
+          <a href="/admin/view-customer.php?id=<?= (int)$c['customer_id'] ?>" class="text-xs text-brand hover:underline">→ Öffnen</a>
+        </td>
+      </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>
+<?php elseif ($drillChannel): ?>
+<div class="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl mb-6">
+  Keine Kunden in dieser Kategorie.
+</div>
+<?php endif; ?>
 
 <!-- History-Timeline -->
 <div class="bg-white rounded-xl border overflow-hidden">
