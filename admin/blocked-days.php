@@ -35,6 +35,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && verifyCsrf()) {
         q("DELETE FROM admin_blocked_days WHERE bd_id=?", [(int)$_POST['bd_id']]);
         header("Location: /admin/blocked-days.php?deleted=1"); exit;
     }
+    if ($act === 'make_global') {
+        q("UPDATE admin_blocked_days SET applies_to='all', customer_id_fk=NULL, prebook_token=NULL WHERE bd_id=?", [(int)$_POST['bd_id']]);
+        header("Location: /admin/blocked-days.php?globalized=1"); exit;
+    }
 }
 
 $blocks = all("SELECT ab.*, c.name AS cname FROM admin_blocked_days ab LEFT JOIN customer c ON ab.customer_id_fk=c.customer_id WHERE ab.date_to >= CURDATE() ORDER BY ab.date_from ASC");
@@ -47,6 +51,7 @@ include __DIR__ . '/../includes/layout.php';
 
 <?php if (!empty($_GET['saved'])): ?><div class="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl mb-4">✅ Tage gesperrt.</div><?php endif; ?>
 <?php if (!empty($_GET['deleted'])): ?><div class="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-xl mb-4">Sperre aufgehoben.</div><?php endif; ?>
+<?php if (!empty($_GET['globalized'])): ?><div class="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-xl mb-4">🌍 Sperre gilt jetzt global für alle Partner &amp; Kunden.</div><?php endif; ?>
 
 <div id="catform" class="hidden bg-brand-light/30 border-2 border-brand/30 rounded-xl p-4 mb-4">
   <form method="POST" class="flex gap-2 items-end">
@@ -159,7 +164,12 @@ include __DIR__ . '/../includes/layout.php';
         <td class="px-3 py-2 text-xs text-gray-600"><?= e($b['reason'] ?: '—') ?></td>
         <td class="px-3 py-2 text-[10px] text-gray-400"><?= date('d.m. H:i', strtotime($b['created_at'])) ?> · <?= e($b['created_by']) ?></td>
         <td class="px-3 py-2">
+          <div class="flex gap-1">
+          <?php if (!empty($b['customer_id_fk']) || $b['applies_to'] !== 'all' || !empty($b['prebook_token'])): ?>
+          <form method="POST" class="inline" onsubmit="return confirm('Sperre für ALLE Partner &amp; ALLE Kunden gelten lassen?')"><?= csrfField() ?><input type="hidden" name="action" value="make_global"/><input type="hidden" name="bd_id" value="<?= $b['bd_id'] ?>"/><button class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded" title="Gilt ab sofort global — alle Partner + alle Kunden">🌍 Global</button></form>
+          <?php endif; ?>
           <form method="POST" class="inline" onsubmit="return confirm('Sperre aufheben?')"><?= csrfField() ?><input type="hidden" name="action" value="delete_block"/><input type="hidden" name="bd_id" value="<?= $b['bd_id'] ?>"/><button class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded">✕ Aufheben</button></form>
+          </div>
         </td>
       </tr>
       <?php endforeach; ?>

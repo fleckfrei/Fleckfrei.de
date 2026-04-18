@@ -58,6 +58,12 @@ $today = date('Y-m-d');
 $upcoming = all("SELECT * FROM employee_availability WHERE emp_id_fk=? AND date_to >= ? ORDER BY date_from", [$eid, $today]);
 $past = all("SELECT * FROM employee_availability WHERE emp_id_fk=? AND date_to < ? ORDER BY date_from DESC LIMIT 10", [$eid, $today]);
 
+// Admin-globale Sperrtage (Büro zu, alle Partner+Kunden) — partner-seitig zur Info
+$adminBlocks = all("SELECT date_from, date_to, reason, category, weekday_mask FROM admin_blocked_days
+                    WHERE date_to >= ? AND (applies_to='all' OR applies_to IS NULL)
+                    AND customer_id_fk IS NULL AND (prebook_token IS NULL OR prebook_token='')
+                    ORDER BY date_from ASC LIMIT 20", [$today]);
+
 // Upcoming jobs collision check
 $upcomingJobs = all("SELECT j_id, j_date, j_time FROM jobs WHERE emp_id_fk=? AND j_date >= ? AND status=1 AND job_status NOT IN ('CANCELLED','COMPLETED') ORDER BY j_date", [$eid, $today]);
 
@@ -79,6 +85,27 @@ include __DIR__ . '/../includes/layout.php';
   <h1 class="text-2xl font-bold text-gray-900 flex items-center gap-2">📅 Meine Verfügbarkeit</h1>
   <p class="text-sm text-gray-500 mt-1">Urlaub, Krankheit, Schule — markieren Sie Zeiten an denen Sie KEINE Jobs annehmen können. Das Büro sieht das sofort.</p>
 </div>
+
+<?php if (!empty($adminBlocks)): ?>
+<div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+  <div class="font-bold text-red-900 mb-2">🚫 Büro-Sperrtage (alle Partner &amp; Kunden)</div>
+  <div class="text-sm text-red-800 space-y-1">
+    <?php foreach ($adminBlocks as $ab):
+      $from = date('d.m.Y', strtotime($ab['date_from']));
+      $to   = date('d.m.Y', strtotime($ab['date_to']));
+      $wdHint = '';
+      if (!empty($ab['weekday_mask'])) {
+        $wdNames = ['1'=>'Mo','2'=>'Di','3'=>'Mi','4'=>'Do','5'=>'Fr','6'=>'Sa','7'=>'So'];
+        $parts = array_map(fn($n) => $wdNames[$n] ?? $n, explode(',', $ab['weekday_mask']));
+        $wdHint = ' · nur ' . implode('/', $parts);
+      }
+    ?>
+    <div>📅 <b><?= $from ?><?= $ab['date_from']!==$ab['date_to'] ? ' – '.$to : '' ?></b><?= $wdHint ?><?= $ab['category'] ? ' · '.e($ab['category']) : '' ?><?= $ab['reason'] ? ' — '.e($ab['reason']) : '' ?></div>
+    <?php endforeach; ?>
+  </div>
+  <div class="text-[11px] text-red-700 mt-2">An diesen Tagen werden keine Jobs vergeben. Du brauchst hier keinen eigenen Urlaub eintragen.</div>
+</div>
+<?php endif; ?>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <!-- Add new -->
